@@ -1,0 +1,142 @@
+[
+  {
+    "id": "01",
+    "name": "Operational Split",
+    "design": "split",
+    "promise": "Real attacks become code fixes",
+    "explanation": "Cefense turns real-world attacks into precise code fixes. It watches live threats, matches them to reachable paths in your repositories, prepares the smallest safe repair, and proves the path is closed. Instead of just reporting problems, it delivers verified immunity so the same attack cannot succeed again across your systems."
+  },
+  {
+    "id": "02",
+    "name": "Closure Relay",
+    "design": "relay",
+    "promise": "Observe attack. Close the path",
+    "explanation": "Cefense observes real attacks as they happen, maps them to exact vulnerable paths in your code, and prepares focused fixes with proof. The goal is not more alerts. It is closing the path so the same exploit cannot be reused against your systems or anyone else on the network again."
+  },
+  {
+    "id": "03",
+    "name": "Proof Ledger",
+    "design": "ledger",
+    "promise": "Attacks matched to exact code",
+    "explanation": "Most tools only tell you about vulnerabilities. Cefense goes further. It reconstructs real attacks, finds where they can reach inside your repositories, generates the precise change needed, and verifies the path is no longer open. The result is actual immunity instead of another report. The repair includes replay evidence, immediately."
+  },
+  {
+    "id": "04",
+    "name": "High Agency",
+    "design": "agency",
+    "promise": "From attack to proven fix",
+    "explanation": "Cefense works by watching live attack patterns across the internet. When a new technique appears, it matches that technique against your codebase, identifies reachable paths, and prepares a minimal repair. You receive both the fix and evidence that the path has been closed. Every closure remains visible, reviewable, and attributable."
+  },
+  {
+    "id": "05",
+    "name": "Four-Step Rail",
+    "design": "rail",
+    "promise": "Turn attacks into closed paths",
+    "explanation": "The core loop is simple: observe a real attack, match it to your code, prepare a focused fix, and prove the path is closed. Cefense exists to make this loop fast and reliable so teams stop collecting findings and start closing real attack paths. Every decision stays direct and reviewable."
+  },
+  {
+    "id": "06",
+    "name": "Outside In",
+    "design": "outside-in",
+    "promise": "Live attacks become safe code",
+    "explanation": "Cefense does not start with your code. It starts with real attacks happening in the wild. It then works backward to find whether those attacks can reach your repositories, prepares the smallest safe change, and gives you proof the path is no longer usable. Review remains focused, fast, and accountable."
+  },
+  {
+    "id": "07",
+    "name": "Outcome First",
+    "design": "outcome",
+    "promise": "Attack in. Path closed out",
+    "explanation": "Security tools usually stop at detection. Cefense continues until the reachable path is closed. It reconstructs what the attacker did, locates the exact code involved, prepares a reviewable repair, and verifies the exploit no longer works. That final proof is the product. The outcome is specific, reviewable, durable, and proven."
+  },
+  {
+    "id": "08",
+    "name": "Evidence Stack",
+    "design": "evidence",
+    "promise": "Observed attacks fixed with proof",
+    "explanation": "Cefense turns observed attacks into closed code paths. It monitors real threat activity, matches successful techniques to your repositories, generates precise fixes, and confirms the path is blocked. The output is not a list of issues. It is verified immunity against specific attack patterns. Every closure stays attributable and reviewable."
+  },
+  {
+    "id": "09",
+    "name": "Network Signal",
+    "design": "signal",
+    "promise": "Match attacks to your code",
+    "explanation": "When an attack succeeds somewhere on the internet, Cefense treats it as a signal. It checks whether the same technique can reach your code, prepares a focused repair if it can, and proves the path has been closed. This is how shared immunity is built. Each closure strengthens connected systems."
+  },
+  {
+    "id": "10",
+    "name": "Stubborn Metric",
+    "design": "metric",
+    "promise": "Real attacks. Precise code fixes",
+    "explanation": "Cefense is built around one stubborn idea: a finding is not the end of the job. The job ends only when the reachable path is closed and the change is proven. Everything in the product exists to make that final step faster and more reliable. Nothing else receives equal priority."
+  },
+  {
+    "id": "11",
+    "name": "Input Output",
+    "design": "input-output",
+    "promise": "Attack seen. Path closed fast",
+    "explanation": "Real attacks are the input. Closed paths are the output. Cefense watches live threats, reconstructs the technique, finds matching reachable code in your repositories, prepares the repair, and verifies the path is gone. That full sequence is the product. The team reviews one focused change, then records durable closure evidence."
+  },
+  {
+    "id": "12",
+    "name": "Gap Closed",
+    "design": "gap",
+    "promise": "From exploit to verified fix",
+    "explanation": "Cefense exists to close the gap between knowing about an attack and actually blocking it in code. It matches real-world exploits to your repositories, prepares the smallest safe change, and provides evidence that the path can no longer be used. Teams review one focused repair, replay it, and keep evidence."
+  },
+  {
+    "id": "13",
+    "name": "Live Source",
+    "design": "source",
+    "promise": "Attacks turned into code immunity",
+    "explanation": "The product watches 254 security sources for real attack activity. When something new appears, it checks your code for reachable paths, prepares a focused fix, and proves the path is closed. The result is faster immunity against techniques that are already working in the wild. Teams act before techniques spread."
+  },
+  {
+    "id": "14",
+    "name": "Exact Path",
+    "design": "path",
+    "promise": "Live threats become code patches",
+    "explanation": "Cefense does not ask you to interpret long vulnerability reports. It shows you a real attack, the exact path it can take through your code, the proposed repair, and proof that the path is no longer open. Clarity and closure are the goals. Every state remains focused, legible, and reviewable."
+  },
+  {
+    "id": "15",
+    "name": "Immunity Delta",
+    "design": "delta",
+    "promise": "Real attacks. Reachable code fixed",
+    "explanation": "Most security products increase awareness. Cefense increases immunity. It takes real attacks, maps them onto your codebase, prepares precise repairs, and verifies the reachable path has been eliminated. The difference is finishing the job instead of stopping at detection. Teams review fewer items, act faster, and retain evidence for closure."
+  },
+  {
+    "id": "16",
+    "name": "Strict Sequence",
+    "design": "sequence",
+    "promise": "Turn exploits into closed paths",
+    "explanation": "Cefense follows a strict sequence: observe the attack, match it to reachable code, prepare the fix, and prove the path is closed. Every screen and every action is designed to support that sequence without distraction or unnecessary complexity. The interface keeps each state visible, connected, operational, and easy to verify."
+  },
+  {
+    "id": "17",
+    "name": "Reconstruction",
+    "design": "reconstruction",
+    "promise": "Close the path with proof",
+    "explanation": "The system begins with live attack data rather than static rules. It reconstructs what successful attackers are doing, checks whether those techniques apply to your repositories, and delivers both the repair and the evidence that the path is blocked. Each repair stays focused, reviewable, and grounded in reproducible attack behavior."
+  },
+  {
+    "id": "18",
+    "name": "Fewer Findings",
+    "design": "focus",
+    "promise": "Real attacks stopped in code",
+    "explanation": "Cefense is designed for teams that are tired of accumulating findings. It focuses only on reachable paths from real attacks and stays with the problem until the path is closed and the closure is proven. That is the entire product thesis. Teams see fewer issues and complete more closures, faster."
+  },
+  {
+    "id": "19",
+    "name": "Chain of Proof",
+    "design": "chain",
+    "promise": "Find path. Close path. Prove",
+    "explanation": "An attack is observed. The technique is reconstructed. Matching paths in your code are identified. A minimal repair is prepared. The path is verified as closed. Cefense exists to make this chain fast, clear, and repeatable. Teams review the exact change, replay the original behavior, and preserve evidence for closure."
+  },
+  {
+    "id": "20",
+    "name": "Collective Defense",
+    "design": "collective",
+    "promise": "Turn threats into code fixes",
+    "explanation": "Cefense treats every real attack as a chance to improve collective defense. Once a technique is understood, it can be matched against many codebases and turned into proven closures. The network learns once so individual systems do not have to learn the hard way. Every connected repository benefits from that."
+  }
+]

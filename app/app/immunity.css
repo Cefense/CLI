@@ -1,0 +1,1691 @@
+/* Immunity is a catalog surface, not another dark workspace panel. Keep the
+   theme entirely scoped so Feed, Fix, Proof, and the source views do not move. */
+.product-workspace .immunity-content {
+  --immunity-bg: #f8f8f7;
+  --immunity-panel: rgba(255, 255, 255, 0.82);
+  --immunity-ink: #1c2738;
+  --immunity-muted: #6b7587;
+  --immunity-line: rgba(83, 96, 125, 0.18);
+  padding: 0;
+  overflow: hidden;
+  color: var(--immunity-ink);
+  background: var(--immunity-bg);
+}
+
+.product-canvas-reports .product-topbar {
+  border-bottom: 1px solid rgba(191, 197, 187, 0.7);
+  background: rgba(244, 243, 238, 0.92);
+}
+.product-canvas-reports .workspace-flow-strip {
+  display: none;
+}
+@media (min-width: 821px) {
+  .product-workspace .product-canvas-reports .product-topbar {
+    display: none;
+  }
+}
+.product-canvas-reports .workspace-flow-strip {
+  border-color: rgba(190, 196, 187, 0.78);
+  background: rgba(255, 255, 252, 0.78);
+  box-shadow: 0 12px 34px rgba(68, 73, 62, 0.08), inset 0 1px 0 #fff;
+}
+.product-canvas-reports .workspace-flow-strip button.active {
+  color: #31402d;
+  border-color: rgba(120, 145, 108, 0.42);
+  background: #dcebd8;
+  box-shadow: 0 8px 24px rgba(92, 118, 78, 0.12), inset 0 1px 0 #fff;
+}
+.product-canvas-reports .workspace-flow-strip button.active i {
+  color: #44673e;
+  border-color: #78966c;
+  background: #eff7eb;
+}
+
+.immunity-library-view {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 clamp(18px, 3vw, 46px) 56px;
+  scroll-behavior: smooth;
+  scroll-padding-top: 86px;
+  scrollbar-color: #3b443d transparent;
+}
+.immunity-library-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 24px;
+}
+.immunity-library-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.immunity-library-mark {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid rgba(170, 142, 224, 0.18);
+  border-radius: 15px;
+  color: #c8aeff;
+  background: linear-gradient(145deg, #2e2a3b, #252330);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 24px rgba(0, 0, 0, 0.24);
+  font-size: 34px;
+  font-weight: 760;
+  letter-spacing: -0.08em;
+}
+.immunity-library-title p,
+.immunity-library-search span {
+  margin: 0;
+  color: var(--immunity-muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 720;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+.immunity-library-title h1 {
+  margin: 5px 0 0;
+  color: var(--immunity-ink);
+  font-size: clamp(27px, 3vw, 42px);
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+}
+.immunity-library-title > strong {
+  align-self: center;
+  margin-left: 8px;
+  padding-left: 18px;
+  border-left: 1px solid var(--immunity-line);
+  color: var(--immunity-muted);
+  font-size: 14px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.immunity-library-search {
+  width: min(270px, 30vw);
+  display: grid;
+  gap: 7px;
+}
+.immunity-library-search input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 13px;
+  border: 1px solid #303832;
+  border-radius: 11px;
+  outline: none;
+  color: var(--immunity-ink);
+  background: #151a17;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.22), 0 4px 14px rgba(0, 0, 0, 0.1);
+  font: inherit;
+  font-size: 13px;
+}
+.immunity-library-search input::placeholder {
+  color: #6c756d;
+}
+.immunity-library-search input:focus {
+  border-color: #8f76c8;
+  box-shadow: 0 0 0 3px rgba(143, 118, 200, 0.16);
+}
+.immunity-library-rule {
+  height: 1px;
+  margin: 24px 0 14px;
+  background: var(--immunity-line);
+}
+.immunity-alphabet-nav {
+  position: sticky;
+  z-index: 4;
+  top: 0;
+  margin: 0 0 22px;
+  padding: 4px 2px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border-top: 1px solid rgba(49, 57, 51, 0.9);
+  border-bottom: 1px solid rgba(49, 57, 51, 0.9);
+  background: rgba(13, 16, 15, 0.84);
+  -webkit-backdrop-filter: blur(16px) saturate(125%);
+  backdrop-filter: blur(16px) saturate(125%);
+}
+.immunity-library-search-compact {
+  width: 34px;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  transition: width 220ms var(--ws-ease), border-color 180ms ease, background 180ms ease;
+}
+.immunity-library-search-compact.open {
+  width: min(210px, 24vw);
+  gap: 4px;
+  padding-right: 4px;
+  border-color: #39443c;
+  background: rgba(21, 26, 23, 0.92);
+}
+.immunity-library-search-compact button {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+.immunity-library-search-compact button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.immunity-search-glyph {
+  position: relative;
+  width: 13px;
+  height: 13px;
+  display: block;
+  border: 2px solid #a1aaa0;
+  border-radius: 50%;
+}
+.immunity-search-glyph::after {
+  content: "";
+  position: absolute;
+  right: -5px;
+  bottom: -4px;
+  width: 7px;
+  height: 2px;
+  border-radius: 999px;
+  background: #a1aaa0;
+  transform: rotate(45deg);
+  transform-origin: left center;
+}
+.immunity-library-search-compact input {
+  min-width: 0;
+  width: 100%;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  outline: 0;
+  color: var(--immunity-ink);
+  background: transparent;
+  font: inherit;
+  font-family: var(--sans);
+  font-size: 12px;
+}
+.immunity-library-search-compact input::placeholder {
+  color: #6c756d;
+}
+.immunity-alphabet-track {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(27, minmax(22px, 1fr));
+  align-items: center;
+}
+.immunity-index-glider {
+  position: absolute;
+  z-index: 0;
+  inset: 2px auto 2px 0;
+  width: calc(100% / var(--alphabet-count));
+  border-radius: 8px;
+  background: #302a42;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 5px 12px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  transform: translateX(calc(var(--alphabet-index) * 100%));
+  transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1), background-color 220ms ease;
+}
+.immunity-alphabet-track button {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 8px;
+  color: #7c867d;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  transition: color 220ms ease, opacity 220ms ease, transform 220ms ease;
+}
+.immunity-alphabet-track button:hover:not(:disabled) {
+  color: #d1d9d0;
+  transform: translateY(-1px);
+}
+.immunity-alphabet-track button.active {
+  color: #cebaff;
+}
+.immunity-alphabet-track button:disabled {
+  opacity: 0.26;
+  cursor: default;
+}
+.immunity-threat-groups {
+  display: grid;
+  gap: 20px;
+}
+.immunity-threat-group {
+  min-width: 0;
+  scroll-margin-top: 84px;
+}
+.immunity-letter-heading {
+  min-height: 58px;
+  margin: 12px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid rgba(48, 57, 50, 0.78);
+}
+.immunity-letter-heading strong {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: #c6adff;
+  background: #2b2738;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  font-family: var(--mono);
+  font-size: 29px;
+  font-weight: 780;
+  letter-spacing: 0.1em;
+  line-height: 1;
+}
+.immunity-letter-heading span {
+  color: #8e978f;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.immunity-threat-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(120px, 1fr));
+  gap: 10px;
+}
+.immunity-threat-card {
+  width: 100%;
+  min-width: 0;
+  min-height: 148px;
+  padding: 18px 12px 15px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #2a322d;
+  border-radius: 14px;
+  text-align: center;
+  background: linear-gradient(145deg, rgba(22, 28, 24, 0.96), rgba(17, 22, 19, 0.96));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 10px 26px rgba(0, 0, 0, 0.12);
+  font: inherit;
+  cursor: pointer;
+  animation: immunity-threat-card-in 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--card-order, 0) * 12ms);
+  transition: color 160ms var(--ws-ease), transform 160ms var(--ws-ease);
+}
+.immunity-threat-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--threat-color), #2a322d 52%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 16px 30px color-mix(in srgb, var(--threat-color), transparent 88%);
+}
+.immunity-threat-icon {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  flex: 0 0 auto;
+  color: var(--mark-color);
+  background: transparent;
+}
+.immunity-threat-icon::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 46px;
+  height: 46px;
+  border: 1px solid color-mix(in srgb, var(--mark-color), transparent 42%);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--mark-color), transparent 91%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.035), 0 8px 18px color-mix(in srgb, var(--mark-color), transparent 88%);
+  opacity: 1;
+  transform: translate(-50%, -50%) rotate(calc(var(--mark-angle) * 0.18));
+}
+.immunity-threat-icon::after {
+  content: none;
+}
+.immunity-threat-icon i {
+  display: none;
+}
+.immunity-threat-icon b {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  color: var(--mark-color);
+  font-family: var(--mono);
+  font-size: 30px;
+  font-weight: 780;
+  letter-spacing: -0.12em;
+  line-height: 1;
+  text-shadow: 0 2px 14px color-mix(in srgb, var(--mark-color), transparent 68%);
+  transform: rotate(calc(var(--mark-angle) * 0.2));
+}
+.immunity-threat-icon.symbol-horse b {
+  font-family: Georgia, serif;
+  font-size: 39px;
+  letter-spacing: 0;
+}
+.immunity-threat-icon.symbol-snake b {
+  font-size: 45px;
+  font-weight: 500;
+  transform: rotate(-12deg) scaleX(1.35);
+}
+.immunity-threat-icon.symbol-phish b {
+  font-family: Georgia, serif;
+  font-size: 36px;
+  letter-spacing: 0;
+}
+.immunity-threat-icon.symbol-shield b {
+  font-size: 37px;
+  letter-spacing: 0;
+}
+.immunity-threat-icon.symbol-code b,
+.immunity-threat-icon.symbol-terminal b {
+  font-size: 20px;
+  letter-spacing: -0.16em;
+}
+.immunity-threat-icon.symbol-lock b {
+  font-size: 39px;
+  letter-spacing: 0;
+}
+.immunity-threat-icon.symbol-cloud b {
+  font-size: 38px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.immunity-threat-icon.symbol-network b,
+.immunity-threat-icon.symbol-radar b {
+  font-size: 42px;
+  font-weight: 500;
+}
+.immunity-threat-icon.symbol-package b,
+.immunity-threat-icon.symbol-database b,
+.immunity-threat-icon.symbol-web b {
+  font-size: 35px;
+  letter-spacing: 0;
+}
+.immunity-threat-icon.symbol-malware b,
+.immunity-threat-icon.symbol-exploit b,
+.immunity-threat-icon.symbol-impact b {
+  font-size: 37px;
+  letter-spacing: 0;
+}
+.immunity-threat-icon.symbol-barrier b {
+  font-size: 36px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.immunity-threat-card strong {
+  max-width: 100%;
+  color: #eef2ed;
+  font-size: 13px;
+  font-weight: 680;
+  line-height: 1.22;
+  overflow-wrap: anywhere;
+}
+.immunity-threat-card.tone-coral { --threat-color: #d85d56; }
+.immunity-threat-card.tone-violet { --threat-color: #7866bc; }
+.immunity-threat-card.tone-green { --threat-color: #72a64a; }
+.immunity-threat-card.tone-amber { --threat-color: #c88718; }
+.immunity-threat-card.tone-cyan { --threat-color: #3ca9a3; }
+.immunity-threat-card.tone-blue { --threat-color: #4d80c9; }
+.immunity-threat-card.tone-gold { --threat-color: #c5a11c; }
+.immunity-threat-card.tone-plum { --threat-color: #9a67a8; }
+@keyframes immunity-threat-card-in {
+  from { opacity: 0; transform: translate3d(0, 9px, 0); filter: blur(2px); }
+  to { opacity: 1; transform: none; filter: blur(0); }
+}
+.immunity-library-empty {
+  min-height: 240px;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  color: var(--immunity-muted);
+  text-align: center;
+}
+.immunity-library-empty strong {
+  color: var(--immunity-ink);
+  font-size: 18px;
+}
+
+/* Each catalog item opens a full in-workspace threat profile. Keep the
+   catalog's dark, research-library identity while giving the profile enough
+   structure to explain Cefense's point of view, not just repeat a label. */
+.immunity-threat-detail {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: 22px clamp(18px, 3vw, 46px) 64px;
+  color: var(--immunity-ink);
+  background:
+    radial-gradient(circle at 86% 0%, rgba(216, 93, 86, 0.12), transparent 25rem),
+    radial-gradient(circle at 4% 72%, rgba(60, 169, 163, 0.1), transparent 26rem),
+    var(--immunity-bg);
+}
+.immunity-detail-toolbar {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid var(--immunity-line);
+  color: var(--immunity-muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.immunity-detail-toolbar > span {
+  flex: 1;
+  text-align: center;
+}
+.immunity-detail-toolbar > b {
+  color: #d7dfd6;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+.immunity-detail-back {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid rgba(216, 93, 86, 0.28);
+  border-radius: 9px;
+  color: #f2c1ba;
+  background: rgba(216, 93, 86, 0.1);
+  font: inherit;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+.immunity-detail-back:hover {
+  border-color: rgba(216, 93, 86, 0.5);
+  background: rgba(216, 93, 86, 0.18);
+  transform: translateX(-2px);
+}
+.immunity-detail-body {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+}
+.immunity-detail-hero {
+  min-height: 300px;
+  padding: clamp(52px, 9vh, 108px) 0 clamp(46px, 7vh, 82px);
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr);
+  gap: clamp(24px, 5vw, 70px);
+  align-items: center;
+  border-bottom: 1px solid var(--immunity-line);
+}
+.immunity-detail-mark {
+  width: 108px;
+  height: 108px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--mark-color), #ffffff 18%);
+  border-radius: 28px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.025));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 20px 50px color-mix(in srgb, var(--mark-color), transparent 84%);
+}
+.immunity-detail-mark .immunity-threat-icon {
+  transform: scale(1.35);
+}
+.immunity-detail-hero-copy {
+  min-width: 0;
+}
+.immunity-detail-kicker,
+.immunity-detail-label,
+.immunity-detail-tags span,
+.immunity-detail-note > span {
+  color: var(--immunity-muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 720;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.immunity-detail-kicker {
+  margin: 0 0 14px;
+  color: var(--mark-color);
+}
+.immunity-detail-hero h1 {
+  max-width: 940px;
+  margin: 0;
+  color: #f3f5ef;
+  font-size: clamp(38px, 6vw, 84px);
+  font-weight: 780;
+  line-height: 0.92;
+  letter-spacing: -0.075em;
+  overflow-wrap: anywhere;
+}
+.immunity-detail-summary {
+  max-width: 680px;
+  margin: 24px 0 0;
+  color: #a8b0a7;
+  font-size: clamp(16px, 1.6vw, 20px);
+  line-height: 1.5;
+}
+.immunity-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 26px;
+}
+.immunity-detail-tags span {
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  color: #9da79d;
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+}
+.immunity-detail-tags span:first-child {
+  border-color: color-mix(in srgb, var(--mark-color), transparent 58%);
+  color: var(--mark-color);
+  background: color-mix(in srgb, var(--mark-color), transparent 90%);
+}
+.immunity-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.28fr) minmax(300px, 0.72fr);
+  gap: 14px;
+  padding-top: 34px;
+}
+.immunity-detail-main,
+.immunity-detail-aside {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+.immunity-detail-card {
+  padding: clamp(22px, 3vw, 34px);
+  border: 1px solid #2a322d;
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(22, 28, 24, 0.94), rgba(17, 22, 19, 0.94));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 18px 40px rgba(0, 0, 0, 0.1);
+}
+.immunity-detail-card-featured {
+  border-color: rgba(216, 93, 86, 0.34);
+  background: linear-gradient(145deg, rgba(63, 32, 29, 0.72), rgba(23, 25, 21, 0.94));
+}
+.immunity-detail-label {
+  margin: 0 0 17px;
+  color: #849087;
+}
+.immunity-detail-card h2 {
+  max-width: 17ch;
+  margin: 0;
+  color: #eef2ed;
+  font-size: clamp(23px, 3vw, 38px);
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+}
+.immunity-detail-card > p:not(.immunity-detail-label) {
+  max-width: 68ch;
+  margin: 18px 0 0;
+  color: #a5aea5;
+  font-size: 15px;
+  line-height: 1.6;
+}
+.immunity-detail-list {
+  margin: 28px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--immunity-line);
+}
+.immunity-detail-list li {
+  min-height: 60px;
+  padding: 13px 0;
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 12px;
+  align-items: center;
+  border-bottom: 1px solid var(--immunity-line);
+}
+.immunity-detail-list li > span {
+  color: #718078;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.immunity-detail-list li > strong {
+  color: #d9e0d7;
+  font-size: 15px;
+  font-weight: 620;
+  line-height: 1.3;
+}
+.immunity-detail-boundaries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 27px;
+}
+.immunity-detail-boundaries span {
+  padding: 10px 12px;
+  border: 1px solid rgba(60, 169, 163, 0.28);
+  border-radius: 11px;
+  color: #9ed8d2;
+  background: rgba(60, 169, 163, 0.09);
+  font-size: 13px;
+}
+.immunity-detail-response {
+  min-height: 390px;
+  background:
+    radial-gradient(circle at 86% 14%, rgba(77, 128, 201, 0.23), transparent 13rem),
+    linear-gradient(145deg, rgba(25, 34, 47, 0.95), rgba(17, 22, 19, 0.96));
+}
+.immunity-detail-response .immunity-detail-label {
+  color: #8eb7e9;
+}
+.immunity-detail-response-steps {
+  margin-top: 28px;
+  display: grid;
+  gap: 10px;
+}
+.immunity-detail-response-steps span {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding-top: 10px;
+  border-top: 1px solid rgba(142, 183, 233, 0.16);
+  color: #b6c0ca;
+  font-size: 13px;
+}
+.immunity-detail-response-steps b {
+  color: #8eb7e9;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.immunity-detail-note {
+  padding: 22px;
+  border: 1px solid rgba(114, 214, 164, 0.24);
+  border-radius: 18px;
+  background: rgba(114, 214, 164, 0.07);
+}
+.immunity-detail-note > span {
+  color: #86d3a6;
+}
+.immunity-detail-note p {
+  margin: 14px 0 18px;
+  color: #a7b4aa;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.immunity-detail-note button {
+  padding: 0;
+  border: 0;
+  color: #9de1bb;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 720;
+  cursor: pointer;
+}
+.immunity-detail-note button span {
+  margin-left: 7px;
+}
+
+@media (max-width: 1500px) {
+  .immunity-threat-grid { grid-template-columns: repeat(8, minmax(100px, 1fr)); }
+}
+@media (max-width: 1100px) {
+  .immunity-threat-grid { grid-template-columns: repeat(5, minmax(100px, 1fr)); }
+}
+@media (max-width: 700px) {
+  .immunity-library-view { padding: 0 12px 40px; }
+  .immunity-library-search-compact.open { width: min(190px, 48vw); }
+  .immunity-library-head { align-items: stretch; flex-direction: column; }
+  .immunity-library-title { align-items: flex-start; flex-wrap: wrap; }
+  .immunity-library-title > strong { margin-left: 80px; padding-left: 0; border-left: 0; }
+  .immunity-library-search { width: 100%; }
+  .immunity-alphabet-nav { margin-inline: -12px; padding-inline: 8px; }
+  .immunity-threat-groups { gap: 16px; }
+  .immunity-threat-grid { grid-template-columns: repeat(3, minmax(90px, 1fr)); gap: 8px; }
+  .immunity-letter-heading strong { width: 46px; height: 46px; font-size: 23px; }
+  .immunity-threat-card { min-height: 122px; padding: 14px 7px 12px; }
+  .immunity-threat-icon { width: 48px; height: 48px; }
+  .immunity-threat-card strong { font-size: 11px; }
+  .immunity-threat-detail {
+    padding: 14px 12px 40px;
+  }
+  .immunity-detail-toolbar > span,
+  .immunity-detail-toolbar > b {
+    display: none;
+  }
+  .immunity-detail-toolbar {
+    justify-content: flex-start;
+  }
+  .immunity-detail-hero {
+    min-height: 0;
+    padding-block: 42px 38px;
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 16px;
+  }
+  .immunity-detail-mark {
+    width: 64px;
+    height: 64px;
+    border-radius: 18px;
+  }
+  .immunity-detail-mark .immunity-threat-icon {
+    transform: scale(0.84);
+  }
+  .immunity-detail-hero h1 {
+    font-size: clamp(30px, 10vw, 54px);
+  }
+  .immunity-detail-grid {
+    grid-template-columns: 1fr;
+    padding-top: 18px;
+  }
+  .immunity-detail-response {
+    min-height: 0;
+  }
+}
+@media (max-width: 460px) {
+  .immunity-threat-grid { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .immunity-library-view { scroll-behavior: auto; }
+  .immunity-index-glider,
+  .immunity-alphabet-track button,
+  .immunity-threat-card { transition: none; }
+  .immunity-threat-card { animation: none; }
+}
+
+/* Immunity palette: a light research-library surface with its own indigo
+   identity. Feed, Fix, Proof, and the marketing pages keep their palettes. */
+.product-workspace .immunity-content {
+  --immunity-accent: #7158b5;
+  --immunity-accent-deep: #49367e;
+  --immunity-accent-soft: #e7e0f8;
+  --immunity-teal: #397e87;
+  --immunity-card-shadow: rgba(64, 71, 98, 0.1);
+  background: var(--immunity-bg);
+}
+
+.product-workspace .immunity-content .immunity-library-view {
+  scrollbar-color: #9b8bc9 transparent;
+}
+
+.product-workspace .immunity-content .immunity-alphabet-nav {
+  top: 12px;
+  margin: 12px 0 26px;
+  padding: 7px 8px;
+  border: 1px solid rgba(95, 80, 147, 0.18);
+  border-radius: 15px;
+  background: rgba(251, 252, 255, 0.76);
+  box-shadow:
+    0 12px 28px rgba(76, 74, 107, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+  backdrop-filter: blur(18px) saturate(125%);
+}
+.product-workspace .immunity-content .immunity-index-glider {
+  inset: 2px 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #7660ba, #6048a0);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    0 6px 14px rgba(89, 68, 143, 0.2);
+}
+.product-workspace .immunity-content .immunity-alphabet-track button {
+  color: #788295;
+}
+.product-workspace .immunity-content .immunity-alphabet-track button:hover:not(:disabled) {
+  color: #4d3c82;
+}
+.product-workspace .immunity-content .immunity-alphabet-track button.active {
+  color: #fff;
+}
+.product-workspace .immunity-content .immunity-library-search-compact.open {
+  border-color: rgba(95, 80, 147, 0.28);
+  background: rgba(235, 231, 249, 0.86);
+}
+.product-workspace .immunity-content .immunity-library-search-compact button:hover {
+  background: rgba(113, 88, 181, 0.12);
+}
+.product-workspace .immunity-content .immunity-search-glyph {
+  border-color: #6f5aab;
+  background: transparent;
+}
+.product-workspace .immunity-content .immunity-search-glyph::after {
+  background-color: #6f5aab;
+}
+.product-workspace .immunity-content .immunity-search-glyph::after {
+  border: 0;
+}
+.product-workspace .immunity-content .immunity-library-search-compact input {
+  color: #253149;
+}
+.product-workspace .immunity-content .immunity-library-search-compact input::placeholder {
+  color: #8790a2;
+}
+
+.product-workspace .immunity-content .immunity-letter-heading {
+  min-height: 62px;
+  margin: 14px 0 14px;
+  gap: 15px;
+  border-bottom: 0;
+}
+.product-workspace .immunity-content .immunity-letter-heading strong {
+  width: 58px;
+  height: 58px;
+  border: 1px solid rgba(113, 88, 181, 0.18);
+  border-radius: 16px;
+  color: #614998;
+  background: linear-gradient(145deg, #eeeafb, #e1daf5);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 9px 20px rgba(93, 76, 143, 0.1);
+}
+.product-workspace .immunity-content .immunity-letter-heading span {
+  color: #718096;
+}
+
+.product-workspace .immunity-content .immunity-threat-card {
+  min-height: 148px;
+  border-color: rgba(89, 102, 132, 0.16);
+  border-radius: 17px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(246, 247, 251, 0.86));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 9px 22px var(--immunity-card-shadow);
+}
+.product-workspace .immunity-content .immunity-threat-card:hover {
+  border-color: color-mix(in srgb, var(--threat-color), #8b94a8 56%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    0 16px 30px color-mix(in srgb, var(--threat-color), transparent 84%);
+}
+.product-workspace .immunity-content .immunity-threat-card strong {
+  color: #263247;
+  font-weight: 720;
+}
+.product-workspace .immunity-content .immunity-threat-icon::before {
+  border-color: color-mix(in srgb, var(--mark-color), #ffffff 24%);
+  background: color-mix(in srgb, var(--mark-color), #ffffff 82%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.68),
+    0 8px 18px color-mix(in srgb, var(--mark-color), transparent 84%);
+}
+.product-workspace .immunity-content .immunity-threat-icon b {
+  text-shadow: 0 2px 12px color-mix(in srgb, var(--mark-color), transparent 72%);
+}
+.product-workspace .immunity-content .immunity-threat-card.tone-coral { --threat-color: #c85f57; }
+.product-workspace .immunity-content .immunity-threat-card.tone-violet { --threat-color: #735bb2; }
+.product-workspace .immunity-content .immunity-threat-card.tone-green { --threat-color: #4b9568; }
+.product-workspace .immunity-content .immunity-threat-card.tone-amber { --threat-color: #b4771e; }
+.product-workspace .immunity-content .immunity-threat-card.tone-cyan { --threat-color: #318d91; }
+.product-workspace .immunity-content .immunity-threat-card.tone-blue { --threat-color: #4a76b9; }
+.product-workspace .immunity-content .immunity-threat-card.tone-gold { --threat-color: #a5871d; }
+.product-workspace .immunity-content .immunity-threat-card.tone-plum { --threat-color: #8e5c9e; }
+
+/* The detail profile follows the same light library instead of falling back
+   to the old dark workspace treatment. */
+.product-workspace .immunity-content .immunity-threat-detail {
+  color: var(--immunity-ink);
+  background:
+    radial-gradient(circle at 88% 0%, rgba(145, 119, 213, 0.2), transparent 28rem),
+    radial-gradient(circle at 4% 76%, rgba(91, 176, 181, 0.14), transparent 26rem),
+    var(--immunity-bg);
+}
+.product-workspace .immunity-content .immunity-detail-toolbar {
+  min-height: 48px;
+  border-bottom: 0;
+  color: #7b8496;
+}
+.product-workspace .immunity-content .immunity-detail-toolbar > b {
+  color: #5e6880;
+}
+.product-workspace .immunity-content .immunity-detail-back {
+  border-color: rgba(113, 88, 181, 0.24);
+  color: #5e4798;
+  background: rgba(231, 224, 248, 0.72);
+}
+.product-workspace .immunity-content .immunity-detail-back:hover {
+  border-color: rgba(113, 88, 181, 0.46);
+  background: rgba(231, 224, 248, 0.98);
+}
+.product-workspace .immunity-content .immunity-detail-hero {
+  min-height: 300px;
+  border-bottom: 0;
+}
+.product-workspace .immunity-content .immunity-detail-mark {
+  border-color: color-mix(in srgb, var(--mark-color), #ffffff 28%);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(233, 230, 246, 0.74));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 20px 50px color-mix(in srgb, var(--mark-color), transparent 84%);
+}
+.product-workspace .immunity-content .immunity-detail-hero h1 {
+  color: #1c2a40;
+}
+.product-workspace .immunity-content .immunity-detail-summary {
+  color: #66748a;
+}
+.product-workspace .immunity-content .immunity-detail-kicker {
+  color: var(--mark-color);
+}
+.product-workspace .immunity-content .immunity-detail-tags span {
+  border-color: rgba(83, 96, 125, 0.16);
+  color: #718096;
+  background: rgba(255, 255, 255, 0.56);
+}
+.product-workspace .immunity-content .immunity-detail-tags span:first-child {
+  border-color: color-mix(in srgb, var(--mark-color), transparent 58%);
+  color: var(--mark-color);
+  background: color-mix(in srgb, var(--mark-color), #ffffff 88%);
+}
+.product-workspace .immunity-content .immunity-detail-card {
+  border-color: rgba(83, 96, 125, 0.15);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(246, 247, 251, 0.8));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 18px 40px rgba(64, 71, 98, 0.08);
+}
+.product-workspace .immunity-content .immunity-detail-card-featured {
+  border-color: rgba(113, 88, 181, 0.24);
+  background: linear-gradient(145deg, rgba(239, 235, 251, 0.94), rgba(255, 255, 255, 0.82));
+}
+.product-workspace .immunity-content .immunity-detail-label {
+  color: #748096;
+}
+.product-workspace .immunity-content .immunity-detail-card h2 {
+  color: #233149;
+}
+.product-workspace .immunity-content .immunity-detail-card > p:not(.immunity-detail-label) {
+  color: #68768a;
+}
+.product-workspace .immunity-content .immunity-detail-list {
+  border-top-color: rgba(83, 96, 125, 0.15);
+}
+.product-workspace .immunity-content .immunity-detail-list li {
+  border-bottom-color: rgba(83, 96, 125, 0.15);
+}
+.product-workspace .immunity-content .immunity-detail-list li > span {
+  color: #8994a6;
+}
+.product-workspace .immunity-content .immunity-detail-list li > strong {
+  color: #334159;
+}
+.product-workspace .immunity-content .immunity-detail-boundaries span {
+  border-color: rgba(57, 126, 135, 0.25);
+  color: #32717a;
+  background: rgba(57, 126, 135, 0.08);
+}
+.product-workspace .immunity-content .immunity-detail-response {
+  background:
+    radial-gradient(circle at 86% 14%, rgba(113, 88, 181, 0.2), transparent 13rem),
+    linear-gradient(145deg, rgba(239, 235, 251, 0.94), rgba(247, 250, 252, 0.9));
+}
+.product-workspace .immunity-content .immunity-detail-response .immunity-detail-label,
+.product-workspace .immunity-content .immunity-detail-response-steps b {
+  color: #6650a4;
+}
+.product-workspace .immunity-content .immunity-detail-response-steps span {
+  border-top-color: rgba(113, 88, 181, 0.16);
+  color: #66748a;
+}
+.product-workspace .immunity-content .immunity-detail-note {
+  border-color: rgba(57, 126, 135, 0.24);
+  background: rgba(222, 244, 242, 0.68);
+}
+.product-workspace .immunity-content .immunity-detail-note > span,
+.product-workspace .immunity-content .immunity-detail-note button {
+  color: #32717a;
+}
+.product-workspace .immunity-content .immunity-detail-note p {
+  color: #617589;
+}
+
+/* Polish pass 1 — navigation should feel like one calm instrument. */
+.product-workspace .immunity-content .immunity-library-view {
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  isolation: isolate;
+}
+.product-workspace .immunity-content .immunity-alphabet-nav {
+  transition:
+    border-color 260ms var(--ws-ease),
+    background-color 320ms var(--ws-ease),
+    box-shadow 360ms var(--ws-ease);
+}
+.product-workspace .immunity-content .immunity-alphabet-nav:focus-within {
+  border-color: rgba(113, 88, 181, 0.34);
+  box-shadow:
+    0 14px 32px rgba(76, 74, 107, 0.11),
+    0 0 0 4px rgba(113, 88, 181, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.98);
+}
+.product-workspace .immunity-content .immunity-alphabet-track {
+  min-height: 34px;
+}
+.product-workspace .immunity-content .immunity-index-glider {
+  transition:
+    transform 560ms cubic-bezier(0.16, 1, 0.3, 1),
+    background 280ms var(--ws-ease),
+    box-shadow 280ms var(--ws-ease);
+  will-change: transform;
+}
+.product-workspace .immunity-content .immunity-alphabet-track button {
+  transition:
+    color 240ms var(--ws-ease),
+    opacity 240ms var(--ws-ease),
+    transform 240ms var(--ws-ease),
+    background-color 240ms var(--ws-ease);
+  will-change: transform;
+}
+.product-workspace .immunity-content .immunity-alphabet-track button:focus-visible,
+.product-workspace .immunity-content .immunity-library-search-compact button:focus-visible,
+.product-workspace .immunity-content .immunity-detail-back:focus-visible {
+  outline: 3px solid rgba(113, 88, 181, 0.28);
+  outline-offset: 3px;
+}
+.product-workspace .immunity-content .immunity-library-search-compact {
+  transition:
+    width 360ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 240ms var(--ws-ease),
+    background-color 240ms var(--ws-ease),
+    box-shadow 300ms var(--ws-ease);
+}
+.product-workspace .immunity-content .immunity-library-search-compact.open {
+  box-shadow: 0 7px 18px rgba(84, 68, 137, 0.1);
+}
+.product-workspace .immunity-content .immunity-library-search-compact input {
+  caret-color: #7158b5;
+}
+.product-workspace .immunity-content .immunity-library-search-compact input::-webkit-search-cancel-button {
+  opacity: 0.55;
+  filter: sepia(1) saturate(1.6) hue-rotate(205deg);
+}
+
+/* Polish pass 2 — the catalog gets hierarchy, tactility, and a quieter scan. */
+.product-workspace .immunity-content .immunity-threat-groups {
+  gap: 28px;
+}
+.product-workspace .immunity-content .immunity-threat-group {
+  content-visibility: auto;
+  contain-intrinsic-size: 220px;
+}
+.product-workspace .immunity-content .immunity-letter-heading strong {
+  transition:
+    transform 240ms var(--ws-ease),
+    box-shadow 240ms var(--ws-ease),
+    background 240ms var(--ws-ease);
+}
+.product-workspace .immunity-content .immunity-letter-heading:hover strong {
+  transform: translateY(-2px) rotate(-2deg);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 13px 24px rgba(93, 76, 143, 0.15);
+}
+.product-workspace .immunity-content .immunity-threat-grid {
+  gap: 12px;
+}
+.product-workspace .immunity-content .immunity-threat-card {
+  position: relative;
+  overflow: hidden;
+  contain: layout paint;
+  transition:
+    transform 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 260ms var(--ws-ease),
+    background 260ms var(--ws-ease),
+    box-shadow 320ms var(--ws-ease);
+  will-change: transform;
+}
+.product-workspace .immunity-content .immunity-threat-card::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle at 88% 0%, color-mix(in srgb, var(--threat-color), transparent 78%), transparent 44%);
+  opacity: 0;
+  transition: opacity 280ms var(--ws-ease);
+  pointer-events: none;
+}
+.product-workspace .immunity-content .immunity-threat-card::after {
+  content: "↗";
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  right: 12px;
+  color: var(--threat-color);
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 760;
+  opacity: 0;
+  transform: translate3d(-4px, 4px, 0);
+  transition:
+    opacity 220ms var(--ws-ease),
+    transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+.product-workspace .immunity-content .immunity-threat-card:hover,
+.product-workspace .immunity-content .immunity-threat-card:focus-visible {
+  transform: translateY(-3px);
+}
+.product-workspace .immunity-content .immunity-threat-card:hover::before,
+.product-workspace .immunity-content .immunity-threat-card:focus-visible::before,
+.product-workspace .immunity-content .immunity-threat-card:hover::after,
+.product-workspace .immunity-content .immunity-threat-card:focus-visible::after {
+  opacity: 1;
+}
+.product-workspace .immunity-content .immunity-threat-card:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--threat-color), transparent 70%);
+  outline-offset: 3px;
+}
+.product-workspace .immunity-content .immunity-threat-card:active {
+  transform: translateY(-1px) scale(0.985);
+}
+.product-workspace .immunity-content .immunity-threat-card > * {
+  position: relative;
+  z-index: 1;
+}
+.product-workspace .immunity-content .immunity-threat-card strong {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  transition: color 220ms var(--ws-ease), transform 220ms var(--ws-ease);
+}
+.product-workspace .immunity-content .immunity-threat-card:hover strong,
+.product-workspace .immunity-content .immunity-threat-card:focus-visible strong {
+  color: #1d2a42;
+  transform: translateY(-1px);
+}
+.product-workspace .immunity-content .immunity-threat-card .immunity-threat-icon {
+  transition: transform 280ms cubic-bezier(0.16, 1, 0.3, 1), filter 280ms var(--ws-ease);
+}
+.product-workspace .immunity-content .immunity-threat-card:hover .immunity-threat-icon,
+.product-workspace .immunity-content .immunity-threat-card:focus-visible .immunity-threat-icon {
+  filter: saturate(1.08);
+  transform: translateY(-2px) scale(1.035);
+}
+
+/* Polish pass 3 — search and empty states should feel intentional. */
+.product-workspace .immunity-content .immunity-library-empty {
+  min-height: 280px;
+  margin: 18px 0;
+  padding: 34px;
+  border: 1px dashed rgba(113, 88, 181, 0.26);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.46);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+.product-workspace .immunity-content .immunity-library-empty strong {
+  color: #2a3851;
+}
+.product-workspace .immunity-content .immunity-library-empty span {
+  color: #748096;
+}
+
+/* Polish pass 4 — detail feels like a destination, and return feels located. */
+.product-workspace .immunity-content .immunity-threat-detail {
+  scroll-padding-top: 76px;
+  overscroll-behavior: contain;
+}
+.product-workspace .immunity-content .immunity-detail-toolbar {
+  position: sticky;
+  z-index: 6;
+  top: 0;
+  margin: -10px 0 0;
+  padding: 10px 0;
+  background: rgba(238, 241, 247, 0.76);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+  backdrop-filter: blur(18px) saturate(125%);
+}
+.product-workspace .immunity-content .immunity-detail-back {
+  transition:
+    transform 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 220ms var(--ws-ease),
+    border-color 220ms var(--ws-ease),
+    box-shadow 220ms var(--ws-ease);
+}
+.product-workspace .immunity-content .immunity-detail-back:hover {
+  box-shadow: 0 8px 18px rgba(84, 68, 137, 0.12);
+}
+.product-workspace .immunity-content .immunity-detail-hero {
+  animation: immunity-detail-enter 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.product-workspace .immunity-content .immunity-detail-mark {
+  animation: immunity-detail-mark-enter 700ms cubic-bezier(0.16, 1, 0.3, 1) 40ms both;
+}
+.product-workspace .immunity-content .immunity-detail-hero-copy {
+  animation: immunity-detail-copy-enter 620ms cubic-bezier(0.16, 1, 0.3, 1) 80ms both;
+}
+.product-workspace .immunity-content .immunity-detail-grid {
+  animation: immunity-detail-grid-enter 620ms cubic-bezier(0.16, 1, 0.3, 1) 160ms both;
+}
+.product-workspace .immunity-content .immunity-detail-card {
+  transition:
+    transform 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 260ms var(--ws-ease),
+    box-shadow 320ms var(--ws-ease);
+}
+.product-workspace .immunity-content .immunity-detail-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(113, 88, 181, 0.24);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 22px 46px rgba(64, 71, 98, 0.11);
+}
+.product-workspace .immunity-content .immunity-detail-response-steps span {
+  transition: color 220ms var(--ws-ease), transform 220ms var(--ws-ease);
+}
+.product-workspace .immunity-content .immunity-detail-response-steps span:hover {
+  color: #334159;
+  transform: translateX(3px);
+}
+.product-workspace .immunity-content .immunity-detail-note {
+  transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 280ms var(--ws-ease);
+}
+.product-workspace .immunity-content .immunity-detail-note:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 34px rgba(57, 126, 135, 0.1);
+}
+@keyframes immunity-detail-enter {
+  from { opacity: 0; transform: translate3d(22px, 0, 0); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes immunity-detail-mark-enter {
+  from { opacity: 0; transform: scale(0.84) rotate(-4deg); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes immunity-detail-copy-enter {
+  from { opacity: 0; transform: translate3d(12px, 0, 0); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes immunity-detail-grid-enter {
+  from { opacity: 0; transform: translate3d(0, 14px, 0); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes immunity-catalog-return {
+  from { opacity: 0; transform: translate3d(-14px, 0, 0); }
+  to { opacity: 1; transform: none; }
+}
+.product-workspace .immunity-content .immunity-library-view.is-returning {
+  animation: immunity-catalog-return 560ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .product-workspace .immunity-content .immunity-library-view.is-returning,
+  .product-workspace .immunity-content .immunity-detail-hero,
+  .product-workspace .immunity-content .immunity-detail-mark,
+  .product-workspace .immunity-content .immunity-detail-hero-copy,
+  .product-workspace .immunity-content .immunity-detail-grid {
+    animation: none;
+  }
+  .product-workspace .immunity-content .immunity-threat-card,
+  .product-workspace .immunity-content .immunity-detail-card,
+  .product-workspace .immunity-content .immunity-detail-note {
+    transition: none;
+  }
+}
+
+/* Real atlas artwork: the mark is an image, not a symbol inside a tile. */
+.product-workspace .immunity-content .immunity-threat-icon.image-icon {
+  width: 72px;
+  height: 72px;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+  background-image: url("/immunity/threat-icon-atlas-64.png");
+  background-repeat: no-repeat;
+  background-size: 800% 800%;
+  background-position: var(--icon-x) var(--icon-y);
+  box-shadow: none;
+  filter:
+    drop-shadow(0 0 0.75px rgba(21, 36, 58, 0.78))
+    hue-rotate(var(--icon-hue))
+    saturate(1.08)
+    contrast(1.02)
+    drop-shadow(0 7px 9px color-mix(in srgb, var(--mark-color), transparent 72%));
+  transform: rotate(var(--icon-tilt)) scale(var(--icon-scale));
+}
+.product-workspace .immunity-content .immunity-threat-icon.image-icon::before,
+.product-workspace .immunity-content .immunity-threat-icon.image-icon::after,
+.product-workspace .immunity-content .immunity-threat-icon.image-icon i,
+.product-workspace .immunity-content .immunity-threat-icon.image-icon b {
+  display: none;
+  content: none;
+}
+.product-workspace .immunity-content .immunity-threat-card:hover .immunity-threat-icon.image-icon,
+.product-workspace .immunity-content .immunity-threat-card:focus-visible .immunity-threat-icon.image-icon {
+  filter:
+    drop-shadow(0 0 0.9px rgba(21, 36, 58, 0.86))
+    hue-rotate(var(--icon-hue))
+    saturate(1.18)
+    contrast(1.04)
+    drop-shadow(0 10px 13px color-mix(in srgb, var(--mark-color), transparent 62%));
+  transform: rotate(var(--icon-tilt)) translateY(-2px) scale(calc(var(--icon-scale) + 0.04));
+}
+.product-workspace .immunity-content .immunity-detail-mark .immunity-threat-icon.image-icon {
+  width: 92px;
+  height: 92px;
+  transform: rotate(var(--icon-tilt)) scale(1.08);
+}
+
+/* The library itself is open and image-led: no card boxes around the threats. */
+.product-workspace .immunity-content .immunity-threat-card {
+  min-height: 122px;
+  padding: 9px 7px 8px;
+  gap: 9px;
+  justify-content: flex-start;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.product-workspace .immunity-content .immunity-threat-card::before {
+  display: none;
+}
+.product-workspace .immunity-content .immunity-threat-card::after {
+  display: none;
+}
+.product-workspace .immunity-content .immunity-threat-card:hover,
+.product-workspace .immunity-content .immunity-threat-card:focus-visible {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.product-workspace .immunity-content .immunity-threat-card strong {
+  width: 100%;
+  min-height: 31px;
+  color: #263247;
+  font-size: 12.5px;
+  line-height: 1.18;
+}
+.product-workspace .immunity-content .immunity-threat-card:hover strong,
+.product-workspace .immunity-content .immunity-threat-card:focus-visible strong {
+  color: var(--threat-color);
+}
+
+/* Letter groups are labels, not cards. */
+.product-workspace .immunity-content .immunity-letter-heading strong {
+  width: auto;
+  height: auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: #614998;
+  background: transparent;
+  box-shadow: none;
+  font-size: 38px;
+  letter-spacing: -0.08em;
+}
+.product-workspace .immunity-content .immunity-letter-heading:hover strong {
+  transform: none;
+  box-shadow: none;
+}
+
+/* Warm Immunity library — the yellow research-paper palette and the quiet
+   item boundary mirror the scanability of the Oncos catalog without sharing
+   any Oncos code. */
+.product-workspace .immunity-content {
+  --immunity-bg: #fffdf8;
+  --immunity-panel: rgba(255, 254, 250, 0.94);
+  --immunity-ink: #282419;
+  --immunity-muted: #85775e;
+  --immunity-line: rgba(139, 108, 44, 0.2);
+  --immunity-accent: #b87917;
+  --immunity-accent-deep: #7e5419;
+  --immunity-accent-soft: #f1dfae;
+  --immunity-teal: #64734b;
+  --immunity-card-shadow: rgba(110, 79, 25, 0.08);
+  background:
+    radial-gradient(circle at 92% 0%, rgba(232, 189, 104, 0.13), transparent 32rem),
+    radial-gradient(circle at 2% 94%, rgba(205, 177, 105, 0.07), transparent 30rem),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.72), transparent 48%),
+    var(--immunity-bg);
+}
+
+.product-workspace .immunity-content .immunity-library-view {
+  scrollbar-color: #c9a55f transparent;
+}
+
+.product-workspace .immunity-content .immunity-alphabet-nav {
+  border-color: rgba(139, 108, 44, 0.22);
+  background: rgba(255, 254, 250, 0.94);
+  box-shadow:
+    0 12px 30px rgba(104, 76, 26, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+.product-workspace .immunity-content .immunity-index-glider {
+  background: linear-gradient(135deg, #d6a640, #ad7117);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.36),
+    0 7px 16px rgba(155, 101, 18, 0.24);
+}
+
+.product-workspace .immunity-content .immunity-alphabet-track button {
+  color: #88795f;
+}
+
+.product-workspace .immunity-content .immunity-alphabet-track button:hover:not(:disabled) {
+  color: #805314;
+}
+
+.product-workspace .immunity-content .immunity-alphabet-track button.active {
+  color: #fffdf8;
+}
+
+.product-workspace .immunity-content .immunity-library-search-compact.open {
+  border-color: rgba(139, 108, 44, 0.3);
+  background: rgba(246, 232, 194, 0.9);
+  box-shadow: 0 7px 18px rgba(110, 79, 25, 0.1);
+}
+
+.product-workspace .immunity-content .immunity-library-search-compact button:hover {
+  background: rgba(184, 121, 23, 0.11);
+}
+
+.product-workspace .immunity-content .immunity-search-glyph {
+  border-color: #ad7117;
+}
+
+.product-workspace .immunity-content .immunity-search-glyph::after {
+  background-color: #ad7117;
+}
+
+.product-workspace .immunity-content .immunity-library-search-compact input {
+  color: #332b1e;
+  caret-color: #ad7117;
+}
+
+.product-workspace .immunity-content .immunity-library-search-compact input::placeholder {
+  color: #96866b;
+}
+
+.product-workspace .immunity-content .immunity-letter-heading strong {
+  color: #b06f12;
+}
+
+.product-workspace .immunity-content .immunity-letter-heading span {
+  color: #8d7b5d;
+}
+
+/* Every catalog entry has its own SVG file. No atlas crop, hue shift, tilt,
+   or scale trick is used to pretend repeated art is unique. */
+.product-workspace .immunity-content .immunity-threat-icon.image-icon {
+  width: 64px;
+  height: 64px;
+  border: 0;
+  border-radius: 0;
+  background-color: var(--mark-color);
+  background-image: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--mark-color), #3b2b13 8%),
+    color-mix(in srgb, var(--mark-color), #f3cc6a 24%)
+  );
+  background-repeat: no-repeat;
+  background-size: auto;
+  background-position: center;
+  -webkit-mask-image: var(--icon-url);
+  mask-image: var(--icon-url);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: 52px 52px;
+  mask-size: 52px 52px;
+  box-shadow: none;
+  filter: drop-shadow(0 7px 10px color-mix(in srgb, var(--mark-color), transparent 72%));
+  transform: none;
+}
+
+.product-workspace .immunity-content .immunity-threat-card:hover .immunity-threat-icon.image-icon,
+.product-workspace .immunity-content .immunity-threat-card:focus-visible .immunity-threat-icon.image-icon {
+  filter: drop-shadow(0 10px 13px color-mix(in srgb, var(--mark-color), transparent 62%));
+  transform: translateY(-2px) scale(1.035);
+}
+
+.product-workspace .immunity-content .immunity-detail-mark .immunity-threat-icon.image-icon {
+  width: 92px;
+  height: 92px;
+  -webkit-mask-size: 76px 76px;
+  mask-size: 76px 76px;
+  transform: none;
+}
+
+/* Oncos-like boundary: visible enough to group each item, quiet enough to
+   preserve the airy eight-column library. */
+.product-workspace .immunity-content .immunity-threat-card {
+  min-height: 126px;
+  padding: 12px 10px 10px;
+  gap: 8px;
+  justify-content: flex-start;
+  border: 1px solid rgba(139, 108, 44, 0.18);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(255, 255, 253, 0.96), rgba(253, 249, 239, 0.82));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 8px 20px var(--immunity-card-shadow);
+}
+
+.product-workspace .immunity-content .immunity-threat-card:hover,
+.product-workspace .immunity-content .immunity-threat-card:focus-visible {
+  border: 1px solid rgba(177, 113, 17, 0.5);
+  background: linear-gradient(145deg, rgba(255, 254, 250, 0.98), rgba(250, 238, 207, 0.88));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    0 15px 30px rgba(132, 88, 18, 0.14);
+}
+
+.product-workspace .immunity-content .immunity-threat-card:focus-visible {
+  outline: 3px solid rgba(208, 153, 54, 0.28);
+  outline-offset: 3px;
+}
+
+.product-workspace .immunity-content .immunity-threat-card strong {
+  color: #302b22;
+  font-size: 10px;
+}
+
+.product-workspace .immunity-content .immunity-threat-card:hover strong,
+.product-workspace .immunity-content .immunity-threat-card:focus-visible strong {
+  color: #a6670e;
+}
+
+.product-workspace .immunity-content .immunity-threat-detail {
+  background:
+    radial-gradient(circle at 88% 0%, rgba(232, 189, 104, 0.13), transparent 30rem),
+    radial-gradient(circle at 4% 76%, rgba(205, 177, 105, 0.07), transparent 28rem),
+    var(--immunity-bg);
+}
+
+.product-workspace .immunity-content .immunity-detail-toolbar {
+  color: #8b7b62;
+  background: rgba(247, 242, 229, 0.82);
+}
+
+.product-workspace .immunity-content .immunity-detail-back {
+  border-color: rgba(139, 108, 44, 0.28);
+  color: #8a5914;
+  background: rgba(241, 223, 174, 0.7);
+}
+
+.product-workspace .immunity-content .immunity-detail-back:hover {
+  border-color: rgba(139, 108, 44, 0.48);
+  background: rgba(241, 223, 174, 0.94);
+  box-shadow: 0 8px 18px rgba(110, 79, 25, 0.12);
+}
+
+.product-workspace .immunity-content .immunity-detail-mark,
+.product-workspace .immunity-content .immunity-detail-card {
+  border-color: rgba(139, 108, 44, 0.2);
+  background: linear-gradient(145deg, rgba(255, 253, 247, 0.92), rgba(249, 241, 220, 0.8));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 18px 40px rgba(110, 79, 25, 0.08);
+}
+
+.product-workspace .immunity-content .immunity-detail-card-featured {
+  border-color: rgba(184, 121, 23, 0.3);
+  background: linear-gradient(145deg, rgba(247, 231, 190, 0.9), rgba(255, 253, 247, 0.86));
+}
+
+.product-workspace .immunity-content .immunity-library-empty {
+  border-color: rgba(139, 108, 44, 0.3);
+  background: rgba(255, 254, 250, 0.72);
+}
+
+/* Seven-column catalog rhythm: a little more room per entry, with quieter
+   marks and labels so the library feels airy rather than packed. */
+.product-workspace .immunity-content .immunity-threat-grid {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.product-workspace .immunity-content .immunity-threat-icon.image-icon {
+  width: 51px;
+  height: 51px;
+  background-color: var(--mark-color);
+  background-image: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--mark-color), #ffffff 28%),
+    var(--mark-color) 52%,
+    color-mix(in srgb, var(--mark-color), #2c2112 22%)
+  );
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  background-position: center;
+  filter:
+    drop-shadow(0 1px 0 color-mix(in srgb, var(--mark-color), #ffffff 30%))
+    drop-shadow(0 6px 10px color-mix(in srgb, var(--mark-color), transparent 72%));
+  -webkit-mask-size: 42px 42px;
+  mask-size: 42px 42px;
+}
+
+@media (max-width: 700px) {
+  .product-workspace .immunity-content .immunity-threat-grid {
+    grid-template-columns: repeat(3, minmax(90px, 1fr));
+  }
+
+  .product-workspace .immunity-content .immunity-threat-card {
+    min-height: 120px;
+    padding: 10px 8px 9px;
+    gap: 7px;
+  }
+
+  .product-workspace .immunity-content .immunity-threat-icon.image-icon {
+    width: 51px;
+    height: 51px;
+    -webkit-mask-size: 42px 42px;
+    mask-size: 42px 42px;
+  }
+}

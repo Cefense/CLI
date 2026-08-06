@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #f3f2ed;
+  --paper-light: #fbfbf8;
+  --ink: #171816;
+  --muted: #62645e;
+  --line: rgba(23,24,22,.12);
+  --blue: #315f9e;
+  --mint: #9fe1c0;
+  --coral: #d96255;
+  --display: "Avenir Next", "Helvetica Neue", Helvetica, Arial, ui-sans-serif, sans-serif;
+  --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono: "SFMono-Regular", "SF Mono", Consolas, monospace;
+}
+
+/* Headings use the clean, wide display face from the reference. Body copy and
+   technical labels retain their existing readable and monospace systems. */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--display);
+  font-weight: 500;
+}
+
+* { box-sizing: border-box; }
+html { min-height: 100%; overscroll-behavior: none; }
+body {
+  min-height: 100%;
+  margin: 0;
+  overflow-x: hidden;
+  overscroll-behavior: none;
+  color: var(--ink);
+  background: var(--paper);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+a { color: inherit; }
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid #315f9e;
+  outline-offset: 3px;
+}
+::selection { color: #fff; background: #315f9e; }
+
+.wordmark {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 820;
+  letter-spacing: -.035em;
+  text-decoration: none;
+}
+.wordmark-dot { position: relative; flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; background: var(--ink); }
+.wordmark-dot::before, .wordmark-dot::after { content: ""; position: absolute; inset: 6px; border: 1px solid var(--paper-light); border-radius: 50%; }
+.wordmark-dot::after { inset: 10px; background: var(--paper-light); }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { transition-duration: 1ms!important; animation-duration: 1ms!important; }
+}

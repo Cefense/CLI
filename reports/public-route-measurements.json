@@ -1,0 +1,36 @@
+{
+  "capturedAt": "2026-07-19T00:00:00-06:00",
+  "environment": "Codex in-app browser, localhost development server, 1280x720 viewport",
+  "routes": [
+    { "path": "/", "navigationMs": 90, "viewportControls": 7, "blackSurfaces": 0, "horizontalOverflow": false, "minTextPx": 16 },
+    { "path": "/product", "navigationMs": 52, "viewportControls": 7, "blackSurfaces": 0, "horizontalOverflow": false, "minTextPx": 16 },
+    { "path": "/threats", "navigationMs": 51, "viewportControls": 7, "blackSurfaces": 0, "horizontalOverflow": false, "minTextPx": 16 },
+    { "path": "/pricing", "navigationMs": 45, "viewportControls": 7, "blackSurfaces": 0, "horizontalOverflow": false, "minTextPx": 16 },
+    { "path": "/company", "navigationMs": 42, "viewportControls": 7, "blackSurfaces": 0, "horizontalOverflow": false, "minTextPx": 16 }
+  ],
+  "mobile": {
+    "viewport": "390x844",
+    "menuOpenControls": 7,
+    "menuExpanded": true,
+    "routes": [
+      { "path": "/", "horizontalOverflow": false, "minTextPx": 15 },
+      { "path": "/product", "horizontalOverflow": false, "minTextPx": 15 },
+      { "path": "/threats", "horizontalOverflow": false, "minTextPx": 15 },
+      { "path": "/pricing", "horizontalOverflow": false, "minTextPx": 15 },
+      { "path": "/company", "horizontalOverflow": false, "minTextPx": 15 }
+    ]
+  },
+  "workspace": {
+    "path": "/app?view=feed",
+    "navigationMs": 65,
+    "domSnapshot": "",
+    "measured": false,
+    "reason": "The protected route returned no inspectable DOM in the local browser session; authenticated task completion could not be instrumented."
+  },
+  "contrastToolOutput": [
+    { "foreground": "#686b65", "background": "#f3f2ed", "fontSize": "16px", "fontWeight": 720, "ratio": 4.83 },
+    { "foreground": "#62645e", "background": "#f3f2ed", "fontSize": "16px", "fontWeight": 400, "ratio": 5.35 },
+    { "foreground": "#666963", "background": "#f2f1ec", "fontSize": "15px", "fontWeight": 400, "ratio": 4.93 },
+    { "foreground": "#ffffff", "background": "#20221e", "fontSize": "15px", "fontWeight": 720, "ratio": 16.04 }
+  ]
+}
