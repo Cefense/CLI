@@ -1,0 +1,47 @@
+{
+  "name": "cefense-cli",
+  "version": "0.1.0",
+  "description": "The command-line interface for Cefense.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "cefense": "dist/index.js",
+    "cf": "dist/index.js"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./core": "./dist/core/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "watch": "tsc -p tsconfig.build.json --watch",
+    "check-types": "tsc --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test \".test-build/tests/*.test.js\"",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.7.0",
+    "@napi-rs/keyring": "^2.0.0",
+    "commander": "^15.0.0",
+    "open": "^11.0.2",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "typescript": "~6.0.3"
+  },
+  "keywords": [
+    "cefense",
+    "security",
+    "sast",
+    "vulnerability",
+    "cli"
+  ]
+}
