@@ -18,6 +18,7 @@ import type {
   GithubReposResponse,
   GithubStatus,
   HealthResponse,
+  MergeResult,
   MeResponse,
   ProfileResponse,
   Project,
@@ -268,6 +269,15 @@ export class CefenseClient {
 
   generateFix(findingId: string): Promise<{ fix: Fix }> {
     return this.request("POST", `/api/fix/findings/${encodeURIComponent(findingId)}/generate`);
+  }
+
+  mergeFix(
+    findingId: string,
+    options: { method?: "merge" | "squash" | "rebase"; deleteBranch?: boolean } = {},
+  ): Promise<MergeResult> {
+    return this.request("POST", `/api/fix/findings/${encodeURIComponent(findingId)}/merge`, {
+      body: options,
+    });
   }
 
   publishFix(findingId: string): Promise<{ fix: Fix }> {

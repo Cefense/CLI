@@ -13,7 +13,7 @@ import { statusCommand } from "./commands/status.js";
 import { scanCommand } from "./commands/scan.js";
 import { observedCommand, observedShow } from "./commands/observed.js";
 import { fixCommand } from "./commands/fix.js";
-import { fixGenerate, fixPublish, fixShow } from "./commands/fixcmds.js";
+import { fixGenerate, fixMerge, fixPublish, fixShow } from "./commands/fixcmds.js";
 import { skillInstall, skillList, skillShow, skillUninstall } from "./commands/skill.js";
 
 const program = new Command();
@@ -165,7 +165,15 @@ withGlobals(program.command("status"))
 withGlobals(program.command("scan"))
   .description("rescan a repository")
   .option("--no-watch", "queue the scan without following its progress")
-  .action(run((globals, command) => scanCommand(globals, { watch: command.opts().watch !== false })));
+  .option("--wait", "block until the scan finishes")
+  .action(
+    run((globals, command) =>
+      scanCommand(globals, {
+        watch: command.opts().watch !== false,
+        wait: Boolean(command.opts().wait),
+      }),
+    ),
+  );
 
 function findingsOptions(command: Command): Command {
   return withGlobals(command)
@@ -232,6 +240,20 @@ withGlobals(fix.command("publish"))
   .argument("<finding-id>", "the finding whose patch to open a pull request for")
   .description("open a pull request with a generated patch")
   .action(run((globals, command) => fixPublish(globals, command.args[0] as string)));
+
+withGlobals(fix.command("merge"))
+  .argument("[finding-id]", "the finding whose pull request to merge")
+  .description("merge the pull request and delete its branch")
+  .addOption(new Option("--method <method>", "merge, squash, or rebase").default("squash"))
+  .option("--no-delete-branch", "keep the branch after merging")
+  .action(
+    run((globals, command) =>
+      fixMerge(globals, command.args[0], {
+        method: command.opts().method,
+        deleteBranch: command.opts().deleteBranch !== false,
+      }),
+    ),
+  );
 
 const skill = program
   .command("skill")

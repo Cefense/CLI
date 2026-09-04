@@ -74,7 +74,7 @@ cf observed                   # browse what the scan found
 cf skill install              # teach your coding agent to do all of the above
 ```
 
-From the findings view, press `g` to generate a patch and `p` to open a pull request. You never leave the finding you are reading.
+From the findings view, press `g` to generate a patch, `p` to open a pull request, and `m` to merge it. You never leave the finding you are reading.
 
 ## Commands
 
@@ -105,7 +105,7 @@ From the findings view, press `g` to generate a patch and `p` to open a pull req
 | Command | What it does |
 | --- | --- |
 | `cf status` | the dashboard: repositories, live scan progress, finding counts |
-| `cf scan` | rescan a repository and watch it run |
+| `cf scan` | rescan a repository, `--wait` to block until it settles |
 | `cf observed` | browse every finding in your code |
 | `cf observed show <finding-id>` | one finding in full, with research, data flow and references |
 | `cf matched` | only the findings joined to the research that explains them |
@@ -113,8 +113,11 @@ From the findings view, press `g` to generate a patch and `p` to open a pull req
 | `cf fix show <finding-id>` | the patch generated for one finding |
 | `cf fix generate <finding-id>` | generate a patch, `--wait` to block until it is ready |
 | `cf fix publish <finding-id>` | open a pull request with a generated patch |
+| `cf fix merge [finding-id]` | merge that pull request and delete its branch, prompts when omitted |
 
-Findings and fixes are the same data from two angles. `cf observed` carries the same `g` and `p` keys as `cf fix`, so you can patch a vulnerability without switching views.
+Findings and fixes are the same data from two angles. `cf observed` carries the same `g`, `p`, and `m` keys as `cf fix`, so you can take a vulnerability from patch to merged pull request without leaving the finding you are reading.
+
+Run `cf fix merge` with no argument and it offers the open pull requests to choose from, or merges straight away when there is only one.
 
 ### Coding agents
 
@@ -146,6 +149,7 @@ Single keys act on whatever is selected. Labels are context aware, so a finding 
 | --- | --- | --- |
 | `g` | `observed`, `matched`, `fix` | generate a patch, or regenerate, or retry |
 | `p` | `observed`, `matched`, `fix` | open the pull request, or view it |
+| `m` | `observed`, `matched`, `fix` | merge that pull request and delete its branch |
 | `o` | `observed`, `matched` | open the file on GitHub |
 | `a` | `observed`, `matched` | read the research behind the finding |
 | `u` | `fix` | refresh |
@@ -203,7 +207,11 @@ cf observed --repo acme/api --agent               # ids, severities, counts
 cf observed show <finding-id> --agent             # one finding, in full
 cf fix generate <finding-id> --wait --agent       # blocks until ready or failed
 cf fix publish <finding-id> --yes --agent         # opens the pull request
+cf fix merge <finding-id> --yes --agent           # merges it, deletes the branch
+cf scan --repo acme/api --wait --agent            # confirms the finding is gone
 ```
+
+The last scan is the point: it is what proves the path no longer resolves.
 
 ### Error codes
 
@@ -226,12 +234,19 @@ Stable across releases. Match on `error.code`, never on `error.message`.
 | `unknown_target` | 2 | `cf skill install` was given an agent it does not know |
 | `global_unsupported` | 2 | `--global` used with an agent that has no user-wide location |
 | `skill_missing` | 4 | the bundled skill is absent, reinstall the package |
+| `fix_not_published` | 2 | no pull request has been opened yet |
+| `invalid_merge_method` | 2 | `--method` was not merge, squash, or rebase |
+| `pull_request_blocked` | 4 | a required review or status check is pending |
+| `pull_request_conflicted` | 4 | the branch conflicts with its base |
+| `pull_request_draft` | 4 | the pull request is still a draft |
+| `pull_request_closed` | 4 | it was closed without merging |
 | `internal_error` | 4 | unexpected failure |
 
 ### Notes for agents
 
 - **Signing in blocks.** `cf auth login` opens a browser and waits for the loopback callback, which is inherent to OAuth2 with PKCE. Run it in the background, read the sign-in URL from **stderr**, surface it to the user, then poll `cf auth status --agent`.
-- **Publishing is gated.** `cf fix publish` refuses with `confirmation_required` unless `--yes` is passed. Treat that as a decision for the user, not a flag to add automatically.
+- **Publishing and merging are gated.** Both refuse with `confirmation_required` unless `--yes` is passed. Treat each as a separate decision for the user, not a flag to add automatically: agreeing to open a pull request is not agreeing to merge it.
+- **Merging never forces its way past a rule.** A required review, a failing check, a conflict, or a draft each stop `cf fix merge` with a code to report. Branch protection is respected, not bypassed.
 - **Pass `--repo owner/name`** to skip the directory-linking prompt entirely.
 - **Payloads are compact.** Null and internal fields are stripped, and heavy fields are summarised. The same 32 findings are 45 KB under `--json` and 18 KB under `--agent`.
 

@@ -201,6 +201,14 @@ export interface FindingsResponse {
   hasMore: boolean;
 }
 
+export interface MergeResult {
+  fix: Fix | null;
+  merged: boolean;
+  alreadyMerged: boolean;
+  commitSha: string | null;
+  branchDeleted: boolean;
+}
+
 export interface Fix {
   id: string;
   findingId: string;

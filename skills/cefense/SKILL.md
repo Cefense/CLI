@@ -92,14 +92,50 @@ cf fix publish <finding-id> --yes --agent
 
 Ask the user in this conversation first, and show them the diff and the file. `--yes` is not a flag to add because a command failed. If a pull request is already open you get `{"alreadyOpen":true,...}` with the existing `prUrl`, not a duplicate.
 
+### Merge, only when asked
+
+```sh
+cf fix merge <finding-id> --yes --agent
+```
+
+Merges the pull request and deletes its branch. `--method merge|squash|rebase` picks the strategy, squash by default, and `--no-delete-branch` keeps the branch. Always pass the finding id under `--agent`: with none, and no terminal to prompt in, it fails with `usage_error`.
+
+**This lands code on the default branch.** It carries the same `--yes` gate as publishing, for the same reason, and it is a larger step than opening a pull request. Ask separately: agreeing to open a pull request is not agreeing to merge it.
+
+It refuses rather than forcing its way past anything: `pull_request_blocked` when a required review or status check is pending, `pull_request_conflicted` on conflicts, `pull_request_draft` on a draft, `pull_request_closed` if it was closed unmerged. Branch protection is respected, not bypassed. Report the code and stop.
+
 ### Rescan
 
 ```sh
-cf scan --repo acme/api --agent
-cf status --agent
+cf scan --repo acme/api --wait --agent
 ```
 
-`cf scan` queues a scan and returns its `scanId` at once. Poll `cf status --agent` and read `scan.status` on the repository: `queued`, `running`, `completed`, `failed`. Rescan after merging a fix, not before, and remember finding ids belong to a scan: after a rescan, list again rather than reusing old ids.
+`--wait` blocks until the scan settles, up to about ten minutes, and returns `status`, `findings`, and `error`. Without it you get the `scanId` immediately and have to poll `cf status --agent` yourself.
+
+Rescan after merging a fix, not before. Finding ids belong to a scan, so after a rescan list again rather than reusing old ids.
+
+## Closing the loop unattended
+
+When the user has asked for the whole cycle rather than one finding, this is the shape. Cefense scans what is on the repository's **default branch** as GitHub has it, so your own code has to land first.
+
+```sh
+cf scan --repo acme/api --wait --agent
+cf observed --repo acme/api --severity critical,high --agent
+cf observed show <finding-id> --repo acme/api --agent
+cf fix generate <finding-id> --wait --agent
+cf fix publish <finding-id> --yes --agent
+cf fix merge <finding-id> --yes --agent
+cf scan --repo acme/api --wait --agent
+```
+
+The last scan is the point of the exercise: it is what proves the path no longer resolves. Compare its `counts` against the first one and say what actually closed.
+
+Rules for running this unattended:
+
+- **Get consent once, for the loop, and say what it includes.** "Fix and merge the critical findings in acme/api" is consent to merge. "Have a look at the findings" is not.
+- **Still read every diff.** Speed is not permission to stop judging. A patch that narrows the input instead of fixing the sink should be reported, not merged.
+- **One finding at a time.** Generate, publish, merge, and confirm before starting the next. Batching means a bad patch is discovered after five have landed.
+- **Stop on the first refusal.** `pull_request_blocked` and `pull_request_conflicted` mean a human set a rule. Report and wait.
 
 ## Working efficiently
 
@@ -121,6 +157,12 @@ cf status --agent
 | `finding_not_found` | 2 | the id is not in the latest scan, list again |
 | `fix_not_found` | 2 | generate the patch first |
 | `fix_not_ready` | 2 | the patch is not `ready`, check its status |
+| `fix_not_published` | 2 | open the pull request before merging it |
+| `invalid_merge_method` | 2 | use merge, squash, or rebase |
+| `pull_request_blocked` | 4 | a required review or check is pending, stop |
+| `pull_request_conflicted` | 4 | the branch conflicts with its base, stop |
+| `pull_request_draft` | 4 | the pull request is still a draft |
+| `pull_request_closed` | 4 | it was closed without merging |
 | `fix_in_progress` | 2 | one is already generating, poll instead of starting another |
 | `confirmation_required` | 2 | ask the user, then pass `--yes` |
 | `feature_required` | 4 | the account does not include this, tell the user |
@@ -129,7 +171,7 @@ cf status --agent
 
 ## Rules
 
-- Never run `cf fix publish` without the user agreeing to it in this conversation.
+- Never run `cf fix publish` or `cf fix merge` without the user agreeing to it in this conversation, and treat merging as a separate ask from opening.
 - Never invent a finding id, a severity, a CVE, or an exploit path. All of it comes from the JSON.
 - Never edit a file to silence a finding instead of fixing it, and never suppress or filter a finding away to make a report look better.
 - Never ask for a token or write credentials to a file. The CLI keeps its token in the operating system keychain.

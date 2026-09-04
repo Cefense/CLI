@@ -1,5 +1,6 @@
 import open from "open";
 import type { Session } from "../core/session.js";
+import { messageOf } from "../core/errors.js";
 import type { Fix, Project } from "../core/types.js";
 import type { BrowserAction, BrowserContext } from "../ui/browser.js";
 import { confirmByTyping } from "../ui/prompts.js";
@@ -187,6 +188,53 @@ export function fixActions<T>(
         context.setStatus(
           result.fix.prUrl ? `Opened ${result.fix.prUrl}` : "Published, but no URL was returned.",
         );
+      },
+    },
+    {
+      key: "m",
+      label: (item) => {
+        const fix = target(item)?.fix;
+        if (fix?.status !== "opened" || !fix.prNumber) return null;
+        return "merge pull request";
+      },
+      run: async (item, context) => {
+        const found = target(item);
+        const fix = found?.fix;
+        if (!found || fix?.status !== "opened" || !fix.prNumber) return;
+
+        const confirmed = await context.suspend(async () => {
+          out.line();
+          out.warn(
+            `This merges pull request #${fix.prNumber} into ${c.bold(project.defaultBranch ?? "the default branch")} of ${c.bold(project.fullName)}.`,
+          );
+          out.hint(`Squash merge of ${fix.filePath}, then delete the branch.`);
+          if (fix.prUrl) out.hint(fix.prUrl);
+          out.line();
+          return confirmByTyping({
+            message: `Type ${project.name} to confirm`,
+            expected: project.name,
+          });
+        });
+        if (!confirmed) {
+          context.setStatus("Nothing was merged.");
+          return;
+        }
+
+        context.setStatus(`Merging #${fix.prNumber}.`);
+        try {
+          const result = await session.client.mergeFix(found.findingId, {
+            method: "squash",
+            deleteBranch: true,
+          });
+          await context.refresh();
+          context.setStatus(
+            result.alreadyMerged
+              ? `#${fix.prNumber} was already merged.`
+              : `Merged #${fix.prNumber}${result.branchDeleted ? " and deleted the branch" : ""}. Rescan with r to confirm.`,
+          );
+        } catch (error) {
+          context.setStatus(messageOf(error));
+        }
       },
     },
   ];

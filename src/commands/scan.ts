@@ -1,6 +1,6 @@
 import type { CefenseClient } from "../core/client.js";
 import type { Project, ScanSummary } from "../core/types.js";
-import { openSession, type GlobalOptions } from "../core/session.js";
+import { openSession, type GlobalOptions, type Session } from "../core/session.js";
 import { resolveLinkedProject } from "./link.js";
 import * as out from "../ui/output.js";
 import { spinner } from "../ui/prompts.js";
@@ -69,9 +69,27 @@ export async function watchScan(
   return latest;
 }
 
+async function awaitScan(
+  session: Session,
+  githubRepoId: string,
+  attempts = 300,
+): Promise<ScanSummary | null> {
+  let latest: ScanSummary | null = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+    const { projects } = await session.client
+      .projects()
+      .catch(() => ({ projects: [] as Project[] }));
+    const project = projects.find((entry) => entry.githubRepoId === githubRepoId);
+    latest = project?.scan ?? latest;
+    if (latest && terminal(latest)) return latest;
+  }
+  return latest;
+}
+
 export async function scanCommand(
   globals: GlobalOptions,
-  options: { watch?: boolean } = {},
+  options: { watch?: boolean; wait?: boolean } = {},
 ): Promise<number> {
   const session = await openSession(globals, { auth: true });
   const { project } = await resolveLinkedProject(session, globals);
@@ -80,10 +98,25 @@ export async function scanCommand(
   const { scanId } = await session.client.startScan(project.githubRepoId);
 
   if (isAgentMode()) {
-    out.agentEmit({ repository: project.fullName, scanId }, [
-      `cf observed --repo ${project.fullName} --agent`,
-    ]);
-    return 0;
+    if (!options.wait) {
+      out.agentEmit({ repository: project.fullName, scanId }, [
+        `cf scan --repo ${project.fullName} --wait --agent`,
+        `cf observed --repo ${project.fullName} --agent`,
+      ]);
+      return 0;
+    }
+    const settled = await awaitScan(session, project.githubRepoId);
+    out.agentEmit(
+      {
+        repository: project.fullName,
+        scanId,
+        status: settled?.status ?? "running",
+        findings: settled?.findingCount ?? null,
+        error: settled?.error ?? null,
+      },
+      [`cf observed --repo ${project.fullName} --severity critical,high --agent`],
+    );
+    return settled?.status === "failed" ? 4 : 0;
   }
 
   if (out.isJsonMode()) {
