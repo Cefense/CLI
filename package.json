@@ -1,9 +1,16 @@
 {
-  "name": "cefense-cli",
+  "name": "@cefense-npm/cefense-cli",
   "version": "0.1.0",
   "description": "The command-line interface for Cefense.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Cefense/CLI.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "cefense": "dist/index.js",
     "cf": "dist/index.js"
