@@ -1,3 +1,4 @@
+import { isAgentMode } from "./mode.js";
 const ESC = String.fromCharCode(27);
 const CTRL_C = String.fromCharCode(3);
 const CTRL_D = String.fromCharCode(4);
@@ -132,5 +133,6 @@ export function paint(lines: string[]): void {
 }
 
 export function isInteractive(): boolean {
+  if (isAgentMode()) return false;
   return Boolean(process.stdout.isTTY && process.stdin.isTTY);
 }

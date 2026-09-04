@@ -11,6 +11,8 @@ import { c, glyph, scanStatusLabel } from "../ui/theme.js";
 import { confirmByTyping } from "../ui/prompts.js";
 import { observedCommand } from "./observed.js";
 import { watchScan } from "./scan.js";
+import { isAgentMode } from "../ui/mode.js";
+import { compactProject, prune } from "../core/compact.js";
 
 type Row =
   | { kind: "project"; project: Project }
@@ -116,6 +118,20 @@ export async function statusCommand(
 
   let projects = initial.projects;
   const available = (listing?.repos ?? []).filter((repo) => !repo.connected);
+
+  if (isAgentMode()) {
+    out.agentEmit(
+      {
+        apiUrl: session.apiUrl,
+        email: me.user.email,
+        github: github ? prune({ connected: github.connected, login: github.login }) : null,
+        repositories: projects.map(compactProject),
+        availableToConnect: available.length,
+      },
+      ["cf observed --agent", "cf scan --agent"],
+    );
+    return 0;
+  }
 
   if (out.isJsonMode()) {
     out.json({ apiUrl: session.apiUrl, user: me.user, github, projects, available: available.length });

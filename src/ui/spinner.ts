@@ -1,5 +1,6 @@
 import { c } from "./theme.js";
 import { isInteractive } from "./screen.js";
+import { isAgentMode } from "./mode.js";
 
 const ESC = String.fromCharCode(27);
 const CLEAR_LINE = `${ESC}[2K${ESC}[1G`;
@@ -41,6 +42,10 @@ function toneMark(tone: SpinnerTone): string {
 }
 
 export function createSpinner(): Spinner {
+  if (isAgentMode()) {
+    return { start() {}, message() {}, stop() {} };
+  }
+
   if (!isInteractive()) {
     let last = "";
     return {

@@ -9,6 +9,7 @@ export interface GlobalOptions {
   apiUrl?: string;
   repo?: string;
   json?: boolean;
+  agent?: boolean;
   color?: boolean;
   verbose?: boolean;
   yes?: boolean;

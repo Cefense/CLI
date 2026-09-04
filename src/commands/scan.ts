@@ -6,6 +6,7 @@ import * as out from "../ui/output.js";
 import { spinner } from "../ui/prompts.js";
 import { elapsed, progressBar } from "../ui/format.js";
 import { c } from "../ui/theme.js";
+import { isAgentMode } from "../ui/mode.js";
 
 const POLL_MS = 2000;
 
@@ -77,6 +78,13 @@ export async function scanCommand(
 
   const running = project.scan && !terminal(project.scan);
   const { scanId } = await session.client.startScan(project.githubRepoId);
+
+  if (isAgentMode()) {
+    out.agentEmit({ repository: project.fullName, scanId }, [
+      `cf observed --repo ${project.fullName} --agent`,
+    ]);
+    return 0;
+  }
 
   if (out.isJsonMode()) {
     out.json({ repository: project.fullName, scanId });

@@ -12,6 +12,8 @@ import { confirm, spinner } from "../ui/prompts.js";
 import { c, glyph } from "../ui/theme.js";
 import { keyValue } from "../ui/table.js";
 import { VERSION } from "../version.js";
+import { isAgentMode } from "../ui/mode.js";
+import { prune } from "../core/compact.js";
 
 export async function authLogin(
   globals: GlobalOptions,
@@ -44,10 +46,14 @@ export async function authLogin(
   try {
     authorization = await requestAuthorizationCode(config, {
       onUrl: (url) => {
-        out.info("Opening your browser to sign in. If it does not open, paste this:");
-        out.line();
-        out.line(`    ${c.cyan(url)}`);
-        out.line();
+        if (isAgentMode()) {
+          process.stderr.write(`Open this URL to sign in: ${url}\n`);
+        } else {
+          out.info("Opening your browser to sign in. If it does not open, paste this:");
+          out.line();
+          out.line(`    ${c.cyan(url)}`);
+          out.line();
+        }
         void open(url).catch(() => undefined);
         progress.start("Waiting for authentication in the browser");
       },
@@ -63,7 +69,7 @@ export async function authLogin(
   const client = new CefenseClient({ apiUrl, config, credentials });
   const me = await client.me().catch((error: unknown) => {
     throw new CefenseError("Signed in, but that token could not read your Cefense account.", {
-      remedy: "Run cf doctor to check the API, then try again.",
+      remedy: "Run cf auth status to check the API, then try again.",
       cause: error,
     });
   });
@@ -84,6 +90,21 @@ export async function authLogin(
   if (saved.warning) out.warn(saved.warning);
 
   const github = await client.githubStatus().catch(() => null);
+
+  if (isAgentMode()) {
+    out.agentEmit(
+      {
+        apiUrl,
+        authenticated: true,
+        email: me.user.email,
+        userId: me.user.id,
+        credentialBackend: saved.backend,
+      },
+      github?.connected ? ["cf status --agent"] : ["cf repo connect <owner/name>"],
+    );
+    return 0;
+  }
+
   out.line();
   if (github && !github.connected) {
     out.info("Next: connect a repository");
@@ -143,6 +164,11 @@ export async function authLogout(
     signedOut += 1;
   }
 
+  if (isAgentMode()) {
+    out.agentEmit({ signedOut }, signedOut > 0 ? ["cf auth login"] : []);
+    return 0;
+  }
+
   if (signedOut === 0) {
     out.line();
     out.info("You were not signed in.");
@@ -155,6 +181,11 @@ export async function authStatus(globals: GlobalOptions): Promise<number> {
   const session = await openSession(globals, { auth: false });
 
   if (!session.credentials) {
+    if (isAgentMode()) {
+      out.agentEmit({ apiUrl: session.apiUrl, authenticated: false }, ["cf auth login"]);
+      return 3;
+    }
+
     if (out.isJsonMode()) {
       out.json({ apiUrl: session.apiUrl, authenticated: false });
       return 3;
@@ -171,6 +202,21 @@ export async function authStatus(globals: GlobalOptions): Promise<number> {
     session.client.githubStatus().catch(() => null),
     session.client.billing().catch(() => null),
   ]);
+
+  if (isAgentMode()) {
+    out.agentEmit(
+      {
+        apiUrl: session.apiUrl,
+        authenticated: true,
+        email: me.user.email,
+        userId: me.user.id,
+        credentialBackend: session.backend,
+        github: github ? prune({ connected: github.connected, login: github.login }) : null,
+      },
+      github?.connected ? ["cf status --agent"] : ["cf repo connect <owner/name>"],
+    );
+    return 0;
+  }
 
   if (out.isJsonMode()) {
     out.json({

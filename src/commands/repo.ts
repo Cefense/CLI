@@ -11,6 +11,8 @@ import { relativeTime, terminalWidth } from "../ui/format.js";
 import { c, glyph, scanStatusLabel } from "../ui/theme.js";
 import { pickProject } from "./pick.js";
 import { watchScan } from "./scan.js";
+import { isAgentMode } from "../ui/mode.js";
+import { compactProject } from "../core/compact.js";
 
 async function ensureGithubConnected(session: Session, assumeYes: boolean): Promise<void> {
   const status = await session.client.githubStatus();
@@ -18,7 +20,7 @@ async function ensureGithubConnected(session: Session, assumeYes: boolean): Prom
 
   if (!status.configured) {
     throw new CefenseError("GitHub is not configured on this Cefense instance.", {
-      remedy: "Run cf doctor for the full picture.",
+      remedy: "Run cf status for the full picture.",
     });
   }
 
@@ -153,6 +155,19 @@ export async function repoConnect(
     }
   }
 
+  if (isAgentMode()) {
+    out.agentEmit(
+      {
+        connected: connected.map((entry) => ({
+          repository: entry.project.fullName,
+          scanId: entry.scanId,
+        })),
+      },
+      connected[0] ? [`cf observed --repo ${connected[0].project.fullName} --agent`] : [],
+    );
+    return 0;
+  }
+
   if (out.isJsonMode()) {
     out.json(connected.map((entry) => ({ repository: entry.project.fullName, scanId: entry.scanId })));
     return 0;
@@ -183,6 +198,16 @@ export async function repoConnect(
 export async function repoList(globals: GlobalOptions): Promise<number> {
   const session = await openSession(globals, { auth: true });
   const { projects } = await session.client.projects();
+
+  if (isAgentMode()) {
+    out.agentEmit(
+      { repositories: projects.map(compactProject) },
+      projects[0]
+        ? [`cf observed --repo ${projects[0].fullName} --agent`]
+        : ["cf repo connect <owner/name>"],
+    );
+    return 0;
+  }
 
   if (out.isJsonMode()) {
     out.json(projects);
@@ -244,6 +269,10 @@ export async function repoSetDefault(
 
   if (options.unset) {
     const cleared = clearRepoDefault(scope);
+    if (isAgentMode()) {
+      out.agentEmit({ scope, cleared, unset: true });
+      return 0;
+    }
     out.line();
     if (cleared) out.success(`Cleared the default repository for ${scope}`);
     else out.info(`No default repository was set for ${scope}`);
@@ -294,6 +323,12 @@ export async function repoSetDefault(
   }
 
   writeRepoDefault(scope, { githubRepoId: project.githubRepoId, fullName: project.fullName });
+
+  if (isAgentMode()) {
+    out.agentEmit({ scope, repository: project.fullName, unset: false }, ["cf observed --agent"]);
+    return 0;
+  }
+
   out.line();
   out.success(`Default set: ${c.bold(project.fullName)}`);
   out.hint(`Stored for ${scope}`);
@@ -331,6 +366,10 @@ export async function repoDisconnect(
       return 0;
     }
     await session.client.disconnectGithubAccount();
+    if (isAgentMode()) {
+      out.agentEmit({ disconnectedAccount: status.login ?? true });
+      return 0;
+    }
     out.success("GitHub account disconnected");
     out.line();
     return 0;
@@ -378,6 +417,11 @@ export async function repoDisconnect(
   await session.client.disconnectRepo(project.githubRepoId);
   const scope = defaultScope();
   if (readRepoDefault(scope)?.githubRepoId === project.githubRepoId) clearRepoDefault(scope);
+
+  if (isAgentMode()) {
+    out.agentEmit({ disconnected: project.fullName }, ["cf repo list --agent"]);
+    return 0;
+  }
 
   out.success(`Disconnected ${project.fullName}`);
   out.line();

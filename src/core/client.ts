@@ -193,7 +193,7 @@ export class CefenseClient {
     }
     if (response.status === 503) {
       return new CefenseError(message ?? "The Cefense API is not fully configured.", {
-        remedy: "Run cf doctor to see what is missing.",
+        remedy: "Run cf status to see what is missing.",
       });
     }
     return new CefenseError(message ?? `${url.pathname} returned ${response.status}.`);

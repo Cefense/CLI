@@ -7,6 +7,8 @@ import * as out from "../ui/output.js";
 import { relativeTime, wrapText } from "../ui/format.js";
 import { c, displaySeverity, glyph, severityColor, severityRank } from "../ui/theme.js";
 import { fixActions, fixLabel, renderDiff } from "./fixactions.js";
+import { isAgentMode } from "../ui/mode.js";
+import { compactFix } from "../core/compact.js";
 
 interface Row {
   finding: Finding;
@@ -102,6 +104,17 @@ export async function fixCommand(globals: GlobalOptions): Promise<number> {
   const { project } = await resolveLinkedProject(session, globals);
 
   const { rows, scanId } = await loadRows(session, project);
+
+  if (isAgentMode()) {
+    out.agentEmit({
+      repository: project.fullName,
+      scanId,
+      fixes: rows
+        .filter((row) => row.fix)
+        .map((row) => compactFix(row.fix as Fix, { diff: true })),
+    });
+    return 0;
+  }
 
   if (out.isJsonMode()) {
     out.json({ repository: project.fullName, scanId, fixes: rows.map((row) => row.fix).filter(Boolean) });

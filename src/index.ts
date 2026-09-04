@@ -4,14 +4,16 @@ import { CancelledError, EXIT_INTERRUPTED, isCefenseError } from "./core/errors.
 import type { GlobalOptions } from "./core/session.js";
 import { setColorEnabled } from "./ui/theme.js";
 import { exitFullScreen } from "./ui/screen.js";
+import { isAgentMode, setAgentMode } from "./ui/mode.js";
 import * as out from "./ui/output.js";
 import { VERSION } from "./version.js";
 import { authLogin, authLogout, authStatus } from "./commands/auth.js";
 import { repoConnect, repoDisconnect, repoList, repoSetDefault } from "./commands/repo.js";
 import { statusCommand } from "./commands/status.js";
 import { scanCommand } from "./commands/scan.js";
-import { observedCommand } from "./commands/observed.js";
+import { observedCommand, observedShow } from "./commands/observed.js";
 import { fixCommand } from "./commands/fix.js";
+import { fixGenerate, fixPublish, fixShow } from "./commands/fixcmds.js";
 
 const program = new Command();
 
@@ -20,6 +22,7 @@ function withGlobals(command: Command): Command {
     .option("--api-url <url>", "Cefense instance to talk to")
     .option("--repo <owner/name>", "repository to act on")
     .option("--json", "emit JSON instead of a rendered view")
+    .option("--agent", "machine mode: compact JSON envelope, structured errors, never interactive")
     .option("--no-color", "disable colour")
     .option("--verbose", "show more detail on failure")
     .option("-y, --yes", "skip confirmation prompts")
@@ -32,20 +35,35 @@ function globalsFrom(command: Command): GlobalOptions {
   const pick = <T>(key: string): T | undefined =>
     (own[key] as T | undefined) ?? (root[key] as T | undefined);
 
+  const agent = Boolean(pick<boolean>("agent"));
+
   const globals: GlobalOptions = {
     apiUrl: pick<string>("apiUrl"),
     repo: pick<string>("repo"),
-    json: Boolean(pick<boolean>("json")),
-    color: own.color === false || root.color === false ? false : true,
+    json: agent || Boolean(pick<boolean>("json")),
+    agent,
+    color: agent || own.color === false || root.color === false ? false : true,
     verbose: Boolean(pick<boolean>("verbose")),
     yes: Boolean(pick<boolean>("yes")),
-    noLink: own.link === false || root.link === false,
+    noLink: agent || own.link === false || root.link === false,
   };
 
   const noColorEnv = Boolean(process.env.NO_COLOR);
+  setAgentMode(agent);
   setColorEnabled(globals.color !== false && !noColorEnv && Boolean(process.stdout.isTTY || process.env.FORCE_COLOR));
   out.setJsonMode(Boolean(globals.json));
+  out.setCommandName(commandPath(command));
   return globals;
+}
+
+function commandPath(command: Command): string {
+  const parts: string[] = [];
+  let node: Command | null = command;
+  while (node && node.name() !== "cefense") {
+    parts.unshift(node.name());
+    node = node.parent;
+  }
+  return parts.join(" ") || "cefense";
 }
 
 function run(handler: (globals: GlobalOptions, command: Command) => Promise<number>) {
@@ -56,6 +74,11 @@ function run(handler: (globals: GlobalOptions, command: Command) => Promise<numb
       process.exitCode = await handler(globals, command);
     } catch (error) {
       exitFullScreen();
+      if (globals.agent) {
+        out.agentError(error);
+        process.exitCode = isCefenseError(error) ? error.exitCode : 4;
+        return;
+      }
       if (error instanceof CancelledError) {
         process.exitCode = EXIT_INTERRUPTED;
         out.line();
@@ -145,13 +168,13 @@ withGlobals(program.command("scan"))
 
 function findingsOptions(command: Command): Command {
   return withGlobals(command)
-    .addOption(new Option("--severity <list>", "critical,high,medium,low"))
+    .addOption(new Option("--severity <list>", "critical,high,watch,info (medium and low also accepted)"))
     .addOption(new Option("--category <list>", "code,dependency,secret,misconfig,os-package"))
     .option("--limit <n>", "maximum findings to fetch", (value) => Number.parseInt(value, 10))
     .option("--exit-code", "exit 1 when a critical or high finding is present");
 }
 
-findingsOptions(program.command("observed"))
+const observed = findingsOptions(program.command("observed"))
   .description("browse the findings in your code")
   .option("--matched", "only findings joined to security research")
   .action(
@@ -165,6 +188,11 @@ findingsOptions(program.command("observed"))
       }),
     ),
   );
+
+withGlobals(observed.command("show"))
+  .argument("<finding-id>", "the finding to show in full")
+  .description("show one finding with its research, data flow and fix")
+  .action(run((globals, command) => observedShow(globals, command.args[0] as string)));
 
 findingsOptions(program.command("matched"))
   .description("findings joined to the research that explains them")
@@ -180,13 +208,34 @@ findingsOptions(program.command("matched"))
     ),
   );
 
-withGlobals(program.command("fix"))
+const fix = withGlobals(program.command("fix"))
   .description("generate patches for findings and open pull requests")
   .action(run((globals) => fixCommand(globals)));
 
+withGlobals(fix.command("show"))
+  .argument("<finding-id>", "the finding whose patch you want")
+  .description("show the patch generated for one finding")
+  .action(run((globals, command) => fixShow(globals, command.args[0] as string)));
+
+withGlobals(fix.command("generate"))
+  .argument("<finding-id>", "the finding to patch")
+  .description("generate a patch for one finding")
+  .option("--wait", "poll until the patch is ready or fails")
+  .action(
+    run((globals, command) =>
+      fixGenerate(globals, command.args[0] as string, { wait: Boolean(command.opts().wait) }),
+    ),
+  );
+
+withGlobals(fix.command("publish"))
+  .argument("<finding-id>", "the finding whose patch to open a pull request for")
+  .description("open a pull request with a generated patch")
+  .action(run((globals, command) => fixPublish(globals, command.args[0] as string)));
+
 process.on("uncaughtException", (error) => {
   exitFullScreen();
-  out.renderError(error);
+  if (isAgentMode()) out.agentError(error);
+  else out.renderError(error);
   process.exit(4);
 });
 

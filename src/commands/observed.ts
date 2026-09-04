@@ -9,6 +9,8 @@ import { fixActions, fixLabel, renderFixSection } from "./fixactions.js";
 import * as out from "../ui/output.js";
 import { relativeTime, terminalWidth, wrapText } from "../ui/format.js";
 import { c, displaySeverity, glyph, severityColor, severityRank } from "../ui/theme.js";
+import { isAgentMode } from "../ui/mode.js";
+import { compactFinding, compactFindingDetail } from "../core/compact.js";
 
 export interface ObservedOptions {
   severity?: string;
@@ -175,8 +177,8 @@ export async function observedCommand(
 
   const query = {
     limit: options.limit,
-    severity: options.severity,
-    category: options.category,
+    severity: normaliseSeverity(options.severity),
+    category: normaliseCategory(options.category),
     matched: options.onlyMatched ? true : options.matched,
   };
 
@@ -196,6 +198,31 @@ export async function observedCommand(
   const worst = rows.some(
     (row) => row.finding.severity === "critical" || row.finding.severity === "high",
   );
+
+  if (isAgentMode()) {
+    const counts: Record<string, number> = {};
+    for (const row of rows) {
+      counts[row.finding.severity] = (counts[row.finding.severity] ?? 0) + 1;
+    }
+    out.agentEmit(
+      {
+        repository: project.fullName,
+        scanId: first.scanId,
+        total: first.total,
+        hasMore: first.hasMore,
+        counts,
+        findings: rows.map((row) => compactFinding(row.finding, row.fix)),
+      },
+      rows[0]
+        ? [
+            `cf observed show ${rows[0].finding.id} --repo ${project.fullName} --agent`,
+            `cf fix generate ${rows[0].finding.id} --wait --agent`,
+            `cf scan --repo ${project.fullName} --agent`,
+          ]
+        : [`cf scan --repo ${project.fullName} --agent`],
+    );
+    return options.exitCode && worst ? 1 : 0;
+  }
 
   if (out.isJsonMode()) {
     out.json({
@@ -296,4 +323,94 @@ export function requireLimit(value: string): number {
     throw new UsageError("--limit must be a whole number between 1 and 1000.");
   }
   return parsed;
+}
+
+const SEVERITY_ALIASES: Record<string, string> = {
+  critical: "critical",
+  high: "high",
+  watch: "medium",
+  medium: "medium",
+  info: "low",
+  low: "low",
+};
+
+const CATEGORIES = ["code", "dependency", "secret", "misconfig", "os-package"];
+
+function splitList(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function normaliseSeverity(value: string | undefined): string | undefined {
+  const parts = splitList(value);
+  if (parts.length === 0) return undefined;
+  const mapped = parts.map((part) => {
+    const hit = SEVERITY_ALIASES[part];
+    if (!hit) {
+      throw new UsageError(
+        `${part} is not a severity.`,
+        "Use critical, high, watch (medium), or info (low).",
+        "invalid_severity",
+      );
+    }
+    return hit;
+  });
+  return [...new Set(mapped)].join(",");
+}
+
+export function normaliseCategory(value: string | undefined): string | undefined {
+  const parts = splitList(value);
+  if (parts.length === 0) return undefined;
+  for (const part of parts) {
+    if (!CATEGORIES.includes(part)) {
+      throw new UsageError(
+        `${part} is not a category.`,
+        `Use ${CATEGORIES.join(", ")}.`,
+        "invalid_category",
+      );
+    }
+  }
+  return [...new Set(parts)].join(",");
+}
+
+export async function observedShow(globals: GlobalOptions, findingId: string): Promise<number> {
+  const session = await openSession(globals, { auth: true });
+  const { project } = await resolveLinkedProject(session, globals);
+
+  const response = await session.client.findings(project.githubRepoId);
+  const finding = response.findings.find((entry) => entry.id === findingId);
+  if (!finding) {
+    throw new UsageError(
+      `${findingId} is not a finding in the latest scan of ${project.fullName}.`,
+      `Run cf observed --repo ${project.fullName} to list finding ids.`,
+      "finding_not_found",
+    );
+  }
+
+  const { fix } = await session.client
+    .fixForFinding(findingId)
+    .catch(() => ({ fix: null as Fix | null }));
+
+  if (isAgentMode()) {
+    out.agentEmit(
+      { repository: project.fullName, finding: compactFindingDetail(finding, fix) },
+      fix?.status === "ready"
+        ? [`cf fix publish ${findingId} --yes --agent`]
+        : fix
+          ? [`cf fix show ${findingId} --agent`]
+          : [`cf fix generate ${findingId} --wait --agent`],
+    );
+    return 0;
+  }
+
+  if (out.isJsonMode()) {
+    out.json({ repository: project.fullName, finding: { ...finding, fix } });
+    return 0;
+  }
+
+  out.lines(renderDetail(project, { finding, fix }, terminalWidth()));
+  return 0;
 }
