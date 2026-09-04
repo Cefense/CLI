@@ -14,6 +14,7 @@ import { scanCommand } from "./commands/scan.js";
 import { observedCommand, observedShow } from "./commands/observed.js";
 import { fixCommand } from "./commands/fix.js";
 import { fixGenerate, fixPublish, fixShow } from "./commands/fixcmds.js";
+import { skillInstall, skillList, skillShow, skillUninstall } from "./commands/skill.js";
 
 const program = new Command();
 
@@ -231,6 +232,47 @@ withGlobals(fix.command("publish"))
   .argument("<finding-id>", "the finding whose patch to open a pull request for")
   .description("open a pull request with a generated patch")
   .action(run((globals, command) => fixPublish(globals, command.args[0] as string)));
+
+const skill = program
+  .command("skill")
+  .description("teach your coding agent to use Cefense");
+
+withGlobals(skill.command("install", { isDefault: true }))
+  .argument("[agents...]", "claude, cursor, copilot, antigravity, windsurf, devin, cline, gemini, agents")
+  .description("write the Cefense skill into your coding agents")
+  .option("--all", "write it for every supported agent, detected or not")
+  .option("--global", "write it once for your user instead of this repository")
+  .action(
+    run((globals, command) =>
+      skillInstall(globals, command.args, {
+        all: Boolean(command.opts().all),
+        global: Boolean(command.opts().global),
+      }),
+    ),
+  );
+
+withGlobals(skill.command("list"))
+  .description("show every supported agent, and what is installed here")
+  .action(run((globals) => skillList(globals)));
+
+withGlobals(skill.command("show"))
+  .argument("[agent]", "render it the way one agent expects")
+  .description("print the skill without writing it anywhere")
+  .action(run((globals, command) => skillShow(globals, command.args[0])));
+
+withGlobals(skill.command("uninstall"))
+  .argument("[agents...]", "leave empty to remove it everywhere")
+  .description("remove the Cefense skill")
+  .option("--all", "remove it for every supported agent")
+  .option("--global", "remove the user-wide copy instead")
+  .action(
+    run((globals, command) =>
+      skillUninstall(globals, command.args, {
+        all: Boolean(command.opts().all),
+        global: Boolean(command.opts().global),
+      }),
+    ),
+  );
 
 process.on("uncaughtException", (error) => {
   exitFullScreen();

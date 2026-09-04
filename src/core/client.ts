@@ -2,6 +2,7 @@ import { CefenseError, AuthRequiredError, FeatureRequiredError } from "./errors.
 import { refreshCredentials } from "./oauth.js";
 import { saveCredentials } from "./credentials.js";
 import { USER_AGENT } from "../version.js";
+import { isAgentMode } from "../ui/mode.js";
 import type {
   Article,
   ArticleDetail,
@@ -114,6 +115,7 @@ export class CefenseClient {
         accept: "application/json",
         "user-agent": USER_AGENT,
       };
+      if (isAgentMode()) headers["x-cefense-client"] = "agent";
       if (this.credentials?.accessToken) {
         headers.authorization = `Bearer ${this.credentials.accessToken}`;
       }

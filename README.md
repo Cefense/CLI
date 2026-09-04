@@ -9,7 +9,7 @@
 [![types](https://img.shields.io/npm/types/@cefense-npm/cefense-cli?color=0b7285)](https://www.typescriptlang.org)
 [![license](https://img.shields.io/npm/l/@cefense-npm/cefense-cli?color=0b7285)](./LICENSE)
 
-[Install](#install) · [Quickstart](#quickstart) · [Commands](#commands) · [Agent mode](#agent-mode) · [CI](#continuous-integration) · [Security](#where-your-credentials-live)
+[Install](#install) · [Quickstart](#quickstart) · [Commands](#commands) · [Agent mode](#agent-mode) · [Coding agents](#teaching-your-coding-agent) · [CI](#continuous-integration) · [Security](#where-your-credentials-live)
 
 </div>
 
@@ -71,6 +71,7 @@ npx -p @cefense-npm/cefense-cli cf status
 cf auth login                 # sign in through your browser
 cf repo connect               # pick a repository and watch its first scan
 cf observed                   # browse what the scan found
+cf skill install              # teach your coding agent to do all of the above
 ```
 
 From the findings view, press `g` to generate a patch and `p` to open a pull request. You never leave the finding you are reading.
@@ -114,6 +115,17 @@ From the findings view, press `g` to generate a patch and `p` to open a pull req
 | `cf fix publish <finding-id>` | open a pull request with a generated patch |
 
 Findings and fixes are the same data from two angles. `cf observed` carries the same `g` and `p` keys as `cf fix`, so you can patch a vulnerability without switching views.
+
+### Coding agents
+
+| Command | What it does |
+| --- | --- |
+| `cf skill install [agents...]` | write the Cefense skill into every coding agent detected here |
+| `cf skill list` | every supported agent, where it writes, what is installed |
+| `cf skill show [agent]` | print the skill without writing it anywhere |
+| `cf skill uninstall [agents...]` | remove it again, including the section it added |
+
+`cf skill` on its own installs. See [Teaching your coding agent](#teaching-your-coding-agent).
 
 ## Interactive by default
 
@@ -211,6 +223,9 @@ Stable across releases. Match on `error.code`, never on `error.message`.
 | `feature_required` | 4 | the account lacks the required feature pack |
 | `api_error` | 4 | the Cefense API returned an error |
 | `cancelled` | 130 | interrupted |
+| `unknown_target` | 2 | `cf skill install` was given an agent it does not know |
+| `global_unsupported` | 2 | `--global` used with an agent that has no user-wide location |
+| `skill_missing` | 4 | the bundled skill is absent, reinstall the package |
 | `internal_error` | 4 | unexpected failure |
 
 ### Notes for agents
@@ -219,6 +234,45 @@ Stable across releases. Match on `error.code`, never on `error.message`.
 - **Publishing is gated.** `cf fix publish` refuses with `confirmation_required` unless `--yes` is passed. Treat that as a decision for the user, not a flag to add automatically.
 - **Pass `--repo owner/name`** to skip the directory-linking prompt entirely.
 - **Payloads are compact.** Null and internal fields are stripped, and heavy fields are summarised. The same 32 findings are 45 KB under `--json` and 18 KB under `--agent`.
+
+## Teaching your coding agent
+
+Cefense ships the instructions an agent needs to drive it, and `cf skill install` writes them where each tool actually looks.
+
+```sh
+cf skill install
+```
+
+With no arguments it detects the agents configured in the repository and writes to all of them. If it detects none, it writes `AGENTS.md`.
+
+| Agent | Where it writes |
+| --- | --- |
+| Claude Code | `.claude/skills/cefense/SKILL.md` |
+| Cursor | `.cursor/rules/cefense.mdc` |
+| GitHub Copilot | `.github/instructions/cefense.instructions.md` |
+| Google Antigravity | `.agents/rules/cefense.md` |
+| Windsurf | `.windsurf/rules/cefense.md` |
+| Devin Desktop | `.devin/rules/cefense.md` |
+| Cline, Roo Code | `.clinerules/cefense.md` |
+| Gemini CLI | `GEMINI.md` |
+| Codex, Amp, OpenCode, Jules | `AGENTS.md` |
+
+Each file is written in the format that tool expects: Agent Skills frontmatter for Claude Code, MDC with `alwaysApply: false` for Cursor, `applyTo` for Copilot, a `model_decision` trigger for Windsurf and Devin.
+
+`AGENTS.md` and `GEMINI.md` are shared files, so they get a short delimited section rather than the whole document, and the full guide lands at `.cefense/SKILL.md` alongside it. Reinstalling replaces that section in place, and `cf skill uninstall` removes it and leaves the rest of the file untouched.
+
+```sh
+cf skill list                    # what is supported, what is detected, what is installed
+cf skill install claude cursor   # name them instead of detecting
+cf skill install --all           # every supported agent
+cf skill install --global        # for your user: claude, gemini, agents
+cf skill show cursor             # print it, write nothing
+cf skill uninstall               # remove all of it
+```
+
+The files it writes are part of the repository and belong in a commit. They are managed, so hand edits are replaced on the next install.
+
+For onboarding an agent that has never seen Cefense at all, point it at <https://cefense.com/skill.md>. That document installs the CLI, signs the user in, connects the repository, and finishes by running `cf skill install`.
 
 ## Scripting
 
