@@ -10,8 +10,10 @@ import type {
   BillingCatalog,
   BillingFeature,
   BillingMe,
+  BranchesResponse,
   CefenseProfile,
   CliConfigResponse,
+  CommitsResponse,
   Fix,
   FindingsResponse,
   GithubRepo,
@@ -23,6 +25,9 @@ import type {
   ProfileResponse,
   Project,
   ReferralsResponse,
+  SbomFormat,
+  ScanInterval,
+  ScanMode,
   StoredCredentials,
 } from "./types.js";
 
@@ -34,6 +39,8 @@ interface RequestOptions {
   body?: unknown;
   signal?: AbortSignal;
   allowUnauthenticated?: boolean;
+  accept?: string;
+  raw?: boolean;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -113,7 +120,7 @@ export class CefenseClient {
     let renewed = false;
     for (let attempt = 0; ; attempt += 1) {
       const headers: Record<string, string> = {
-        accept: "application/json",
+        accept: options.accept ?? "application/json",
         "user-agent": USER_AGENT,
       };
       if (isAgentMode()) headers["x-cefense-client"] = "agent";
@@ -155,6 +162,7 @@ export class CefenseClient {
       if (response.ok) {
         if (response.status === 204) return undefined as T;
         const text = await response.text();
+        if (options.raw) return text as T;
         return (text ? JSON.parse(text) : undefined) as T;
       }
 
@@ -222,7 +230,10 @@ export class CefenseClient {
     return this.request<{ projects: Project[] }>("GET", "/api/github/projects");
   }
 
-  connectRepo(repo: GithubRepo): Promise<{ project: Project; scanId: string }> {
+  connectRepo(
+    repo: GithubRepo,
+    settings: { coverages?: string[]; scanMode?: ScanMode; scanInterval?: ScanInterval } = {},
+  ): Promise<{ project: Project; scanId: string }> {
     return this.request("POST", "/api/github/repos/connect", {
       body: {
         githubRepoId: repo.githubRepoId,
@@ -232,6 +243,34 @@ export class CefenseClient {
         private: repo.private,
         defaultBranch: repo.defaultBranch,
         htmlUrl: repo.htmlUrl,
+        ...(settings.coverages ? { coverages: settings.coverages } : {}),
+        ...(settings.scanMode ? { scanMode: settings.scanMode } : {}),
+        ...(settings.scanInterval ? { scanInterval: settings.scanInterval } : {}),
+      },
+    });
+  }
+
+  /**
+   * Repository settings are written through the same upsert that connects one,
+   * because that route already owns the row and its validation. The identity
+   * fields are resent unchanged; only the settings differ.
+   */
+  updateRepoSettings(
+    project: Project,
+    settings: { coverages?: string[]; scanMode?: ScanMode; scanInterval?: ScanInterval },
+  ): Promise<{ project: Project; scanId: string | null }> {
+    return this.request("POST", "/api/github/repos/connect", {
+      body: {
+        githubRepoId: project.githubRepoId,
+        fullName: project.fullName,
+        name: project.name,
+        owner: project.owner,
+        private: project.private,
+        defaultBranch: project.defaultBranch,
+        htmlUrl: project.htmlUrl,
+        coverages: settings.coverages ?? project.coverages ?? [],
+        ...(settings.scanMode ? { scanMode: settings.scanMode } : {}),
+        ...(settings.scanInterval ? { scanInterval: settings.scanInterval } : {}),
       },
     });
   }
@@ -244,13 +283,53 @@ export class CefenseClient {
     return this.request("POST", "/api/github/account/disconnect");
   }
 
-  startScan(githubRepoId: string): Promise<{ scanId: string }> {
-    return this.request("POST", `/api/github/projects/${encodeURIComponent(githubRepoId)}/scan`);
+  startScan(githubRepoId: string, ref?: string | null): Promise<{ scanId: string }> {
+    return this.request("POST", `/api/github/projects/${encodeURIComponent(githubRepoId)}/scan`, {
+      body: ref ? { ref } : {},
+    });
+  }
+
+  branches(githubRepoId: string): Promise<BranchesResponse> {
+    return this.request<BranchesResponse>(
+      "GET",
+      `/api/github/projects/${encodeURIComponent(githubRepoId)}/branches`,
+    );
+  }
+
+  commits(githubRepoId: string, query: { limit?: number } = {}): Promise<CommitsResponse> {
+    return this.request<CommitsResponse>(
+      "GET",
+      `/api/github/projects/${encodeURIComponent(githubRepoId)}/commits`,
+      { query },
+    );
+  }
+
+  sbomForRepository(githubRepoId: string, format: SbomFormat): Promise<string> {
+    return this.request<string>("GET", `/api/sbom/repository/${encodeURIComponent(githubRepoId)}`, {
+      query: { format },
+      accept: "application/json, application/xml",
+      raw: true,
+    });
+  }
+
+  sbomForScan(scanId: string, format: SbomFormat): Promise<string> {
+    return this.request<string>("GET", `/api/sbom/scan/${encodeURIComponent(scanId)}`, {
+      query: { format },
+      accept: "application/json, application/xml",
+      raw: true,
+    });
   }
 
   findings(
     githubRepoId: string,
-    query: { limit?: number; offset?: number; severity?: string; category?: string; matched?: boolean } = {},
+    query: {
+      limit?: number;
+      offset?: number;
+      severity?: string;
+      category?: string;
+      matched?: boolean;
+      scanId?: string;
+    } = {},
   ): Promise<FindingsResponse> {
     return this.request<FindingsResponse>(
       "GET",

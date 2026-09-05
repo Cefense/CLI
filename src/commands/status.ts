@@ -10,7 +10,10 @@ import { elapsed, padEnd, progressBar, relativeTime, terminalWidth } from "../ui
 import { c, glyph, scanStatusLabel } from "../ui/theme.js";
 import { confirmByTyping } from "../ui/prompts.js";
 import { observedCommand } from "./observed.js";
+import { branchesCommand } from "./branches.js";
+import { commitsCommand } from "./commits.js";
 import { watchScan } from "./scan.js";
+import { SCAN_INTERVALS, SCAN_MODES } from "./settings.js";
 import { isAgentMode } from "../ui/mode.js";
 import { compactProject, prune } from "../core/compact.js";
 
@@ -80,6 +83,17 @@ function projectDetail(project: Project, width: number): string[] {
     facts.push(["Findings", String(scan.findingCount)]);
     if (scan.finishedAt) facts.push(["Duration", elapsed(scan.createdAt, scan.finishedAt)]);
     if (scan.error) facts.push(["Error", c.red(scan.error)]);
+  }
+  const mode = SCAN_MODES.find((entry) => entry.id === (project.scanMode ?? "manual"));
+  const interval = SCAN_INTERVALS.find((entry) => entry.id === (project.scanInterval ?? "24h"));
+  facts.push([
+    "Mode",
+    project.scanMode === "scheduled"
+      ? `${mode?.label ?? "Manual"}   ${c.dim(interval?.label.toLowerCase() ?? "")}`
+      : (mode?.label ?? "Manual"),
+  ]);
+  if ((project.coverages ?? []).length > 0) {
+    facts.push(["Checks", c.dim(project.coverages.join(", "))]);
   }
   facts.push(["Connected", relativeTime(project.connectedAt)]);
 
@@ -175,7 +189,7 @@ export async function statusCommand(
     return rows;
   };
 
-  let followUp: { action: "findings" | "scan"; project: Project } | null = null;
+  let followUp: { action: "findings" | "scan" | "branches" | "commits"; project: Project } | null = null;
 
   await browse(buildRows(projects), {
     header: () => headerLines(github, projects, me.user.email, session.apiUrl),
@@ -231,6 +245,24 @@ export async function statusCommand(
         },
       },
       {
+        key: "b",
+        label: "branches",
+        run: (row, context) => {
+          if (row?.kind !== "project") return;
+          followUp = { action: "branches", project: row.project };
+          context.close();
+        },
+      },
+      {
+        key: "h",
+        label: "history",
+        run: (row, context) => {
+          if (row?.kind !== "project") return;
+          followUp = { action: "commits", project: row.project };
+          context.close();
+        },
+      },
+      {
         key: "o",
         label: "open",
         run: (row) => {
@@ -277,9 +309,18 @@ export async function statusCommand(
     ],
   });
 
-  const pending = followUp as { action: "findings" | "scan"; project: Project } | null;
+  const pending = followUp as {
+    action: "findings" | "scan" | "branches" | "commits";
+    project: Project;
+  } | null;
   if (pending?.action === "findings") {
     return observedCommand({ ...globals, repo: pending.project.fullName }, {});
+  }
+  if (pending?.action === "branches") {
+    return branchesCommand({ ...globals, repo: pending.project.fullName });
+  }
+  if (pending?.action === "commits") {
+    return commitsCommand({ ...globals, repo: pending.project.fullName });
   }
   if (pending?.action === "scan") {
     await session.client.startScan(pending.project.githubRepoId);

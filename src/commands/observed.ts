@@ -4,7 +4,7 @@ import { UsageError } from "../core/errors.js";
 import type { Finding, Fix, Project } from "../core/types.js";
 import type { Session } from "../core/session.js";
 import { browse } from "../ui/browser.js";
-import { resolveLinkedProject } from "./link.js";
+import { resolveBranch, resolveLinkedProject } from "./link.js";
 import { fixActions, fixLabel, renderFixSection } from "./fixactions.js";
 import * as out from "../ui/output.js";
 import { relativeTime, terminalWidth, wrapText } from "../ui/format.js";
@@ -18,6 +18,8 @@ export interface ObservedOptions {
   matched?: boolean;
   limit?: number;
   exitCode?: boolean;
+  branch?: string;
+  scanId?: string;
 }
 
 export interface Row {
@@ -39,13 +41,37 @@ async function fixesFor(session: Session, scanId: string | null): Promise<Map<st
   return new Map(fixes.map((fix) => [fix.findingId, fix]));
 }
 
+/**
+ * A branch or an explicit scan id turns the findings read into a read of that
+ * scan rather than the newest one, which is what makes a branch switch show the
+ * branch's own findings instead of the default branch's.
+ */
+async function resolveScope(
+  session: Session,
+  project: Project,
+  options: { branch?: string; scanId?: string },
+): Promise<{ scanId?: string; label: string | null }> {
+  if (options.scanId) return { scanId: options.scanId, label: null };
+  if (!options.branch) return { label: null };
+
+  const branch = await resolveBranch(session, project, options.branch);
+  if (!branch.scanId) {
+    throw new UsageError(
+      `${branch.name} has not been scanned yet.`,
+      `Run cf scan --repo ${project.fullName} --branch ${branch.name}.`,
+      "branch_not_scanned",
+    );
+  }
+  return { scanId: branch.scanId, label: branch.name };
+}
+
 function locationOf(finding: Finding): string {
   return finding.startLine ? `${finding.filePath}:${finding.startLine}` : finding.filePath;
 }
 
-function githubUrlFor(project: Project, finding: Finding): string | null {
+function githubUrlFor(project: Project, finding: Finding, ref?: string | null): string | null {
   if (!project.htmlUrl) return null;
-  const branch = project.defaultBranch ?? "HEAD";
+  const branch = ref ?? project.defaultBranch ?? "HEAD";
   const anchor = finding.startLine
     ? `#L${finding.startLine}${finding.endLine && finding.endLine !== finding.startLine ? `-L${finding.endLine}` : ""}`
     : "";
@@ -73,7 +99,7 @@ function renderRow(row: Row, selected: boolean, width: number): string[] {
   return [`${marker} ${severity} ${title}`, `    ${meta}`, ""];
 }
 
-function renderDetail(project: Project, row: Row, width: number): string[] {
+function renderDetail(project: Project, row: Row, width: number, ref?: string | null): string[] {
   const finding = row.finding;
   const body = Math.min(96, width - 4);
   const lines: string[] = [];
@@ -160,7 +186,7 @@ function renderDetail(project: Project, row: Row, width: number): string[] {
 
   for (const fixLine of renderFixSection(row.fix, width)) lines.push(fixLine);
 
-  const link = githubUrlFor(project, finding);
+  const link = githubUrlFor(project, finding, ref);
   if (link) {
     push(c.dim(link));
     push();
@@ -174,12 +200,14 @@ export async function observedCommand(
 ): Promise<number> {
   const session = await openSession(globals, { auth: true });
   const { project } = await resolveLinkedProject(session, globals);
+  const scope = await resolveScope(session, project, options);
 
   const query = {
     limit: options.limit,
     severity: normaliseSeverity(options.severity),
     category: normaliseCategory(options.category),
     matched: options.onlyMatched ? true : options.matched,
+    scanId: scope.scanId,
   };
 
   const load = async (): Promise<{ rows: Row[]; scanId: string | null; total: number; hasMore: boolean }> => {
@@ -207,6 +235,7 @@ export async function observedCommand(
     out.agentEmit(
       {
         repository: project.fullName,
+        branch: scope.label,
         scanId: first.scanId,
         total: first.total,
         hasMore: first.hasMore,
@@ -227,6 +256,7 @@ export async function observedCommand(
   if (out.isJsonMode()) {
     out.json({
       repository: project.fullName,
+      branch: scope.label,
       scanId: first.scanId,
       total: first.total,
       hasMore: first.hasMore,
@@ -276,13 +306,14 @@ export async function observedCommand(
       const summary = [...counts.entries()]
         .map(([label, count]) => severityColor(label.toLowerCase())(`${count} ${label.toLowerCase()}`))
         .join(c.dim("  ·  "));
-      const scope = options.onlyMatched
+      const counted = options.onlyMatched
         ? `${matchedCount} of ${first.total} joined to research`
         : `${visible.length} of ${first.total} ${first.total === 1 ? "finding" : "findings"}`;
-      return ["", `  ${c.bold(project.fullName)}   ${c.dim(scope)}`, `  ${summary}`, ""];
+      const name = scope.label ? `${project.fullName}${c.cyan(`#${scope.label}`)}` : project.fullName;
+      return ["", `  ${c.bold(name)}   ${c.dim(counted)}`, `  ${summary}`, ""];
     },
     renderRow,
-    renderDetail: (row, width) => renderDetail(project, row, width),
+    renderDetail: (row, width) => renderDetail(project, row, width, scope.label),
     filterText: (row) =>
       `${row.finding.title} ${row.finding.filePath} ${row.finding.ruleId ?? ""} ${row.finding.cwe ?? ""} ${row.finding.cveId ?? ""}`,
     emptyMessage: "Nothing matches that filter.",
@@ -296,7 +327,7 @@ export async function observedCommand(
         label: "github",
         run: (row) => {
           if (!row) return;
-          const url = githubUrlFor(project, row.finding);
+          const url = githubUrlFor(project, row.finding, scope.label);
           if (url) void open(url).catch(() => undefined);
         },
       },
@@ -376,15 +407,20 @@ export function normaliseCategory(value: string | undefined): string | undefined
   return [...new Set(parts)].join(",");
 }
 
-export async function observedShow(globals: GlobalOptions, findingId: string): Promise<number> {
+export async function observedShow(
+  globals: GlobalOptions,
+  findingId: string,
+  options: { branch?: string; scanId?: string } = {},
+): Promise<number> {
   const session = await openSession(globals, { auth: true });
   const { project } = await resolveLinkedProject(session, globals);
+  const scope = await resolveScope(session, project, options);
 
-  const response = await session.client.findings(project.githubRepoId);
+  const response = await session.client.findings(project.githubRepoId, { scanId: scope.scanId });
   const finding = response.findings.find((entry) => entry.id === findingId);
   if (!finding) {
     throw new UsageError(
-      `${findingId} is not a finding in the latest scan of ${project.fullName}.`,
+      `${findingId} is not a finding in the scan being read of ${project.fullName}.`,
       `Run cf observed --repo ${project.fullName} to list finding ids.`,
       "finding_not_found",
     );
@@ -411,6 +447,6 @@ export async function observedShow(globals: GlobalOptions, findingId: string): P
     return 0;
   }
 
-  out.lines(renderDetail(project, { finding, fix }, terminalWidth()));
+  out.lines(renderDetail(project, { finding, fix }, terminalWidth(), scope.label));
   return 0;
 }

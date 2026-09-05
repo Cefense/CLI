@@ -3,7 +3,7 @@ name: cefense
 description: Find, understand, and fix security vulnerabilities in this repository using the Cefense CLI. Use when asked to run a security scan, check this repository for vulnerabilities or CVEs, triage or explain security findings, generate a patch for a vulnerability, or open a pull request that fixes one.
 license: MIT
 metadata:
-  version: 1
+  version: 2
   homepage: https://cefense.com
 ---
 
@@ -114,9 +114,64 @@ cf scan --repo acme/api --wait --agent
 
 Rescan after merging a fix, not before. Finding ids belong to a scan, so after a rescan list again rather than reusing old ids.
 
+### Scan a branch other than the default
+
+```sh
+cf branches --repo acme/api --agent
+cf scan --repo acme/api --branch release/2.4 --wait --agent
+cf observed --repo acme/api --branch release/2.4 --agent
+```
+
+`cf branches` lists every branch GitHub shows, each with the last scan of that branch: `scanId`, `scanStatus`, `findings`, `scannedAt`. A branch with no `scanId` has never been scanned.
+
+Findings always belong to one scan, so a branch is read by naming it. Without `--branch` you get the newest scan of the repository, whichever branch it ran on. `--scan <id>` reads one scan directly, which is what to use when you already have an id from `cf branches` or `cf commits`.
+
+A branch that has never been scanned answers `branch_not_scanned` rather than quietly falling back to the default branch. Scan it first.
+
+### Read the scanned history
+
+```sh
+cf commits --repo acme/api --agent
+cf observed --repo acme/api --scan <scan-id> --agent
+```
+
+One row per scanned commit, newest first, each with `sha`, `message`, `author`, `committedAt`, its `scanId`, and the deltas that scan produced: `introduced`, `resolved`, `suppressed`. That is the honest answer to "when did this get introduced" and "did my fix actually close anything", because it is what reconciliation recorded rather than a diff you inferred.
+
+Commits scanned before Cefense recorded commit SHAs are not listed. An empty list means nothing has been scanned with a SHA attached, not that nothing has been committed.
+
+### Scan settings
+
+```sh
+cf settings --repo acme/api --agent
+cf settings mode push --repo acme/api --agent
+cf settings mode scheduled --every 6h --repo acme/api --agent
+cf settings checks sast,sca,secrets --repo acme/api --agent
+```
+
+Run bare, `cf settings` opens an interactive screen for a person, so an agent should always pass a subcommand or `--agent`.
+
+`scanMode` is what triggers a scan: `manual` on request only, `push` on every commit to the default branch, `scheduled` on a fixed interval. `pull-request` is stored but not yet triggered, and the CLI refuses to set it. `scanInterval` is one of `1h`, `6h`, `12h`, `24h`, `168h`, and only means anything under `scheduled`.
+
+`checks` is which analyses run: `sast`, `sca`, `secrets`, `iac`, `quality`, `sbom`. Presets `essentials`, `balanced`, and `everything` expand to sets of those. `runtime` and `pentest` are shown in the product but cannot run on a repository scan, and are refused with `invalid_check`. `--add` and `--remove` change one check without restating the rest.
+
+Changing checks applies from the next scan, not retroactively. Say that rather than implying old findings will change.
+
+**Ask before changing these.** Turning on `push` or `scheduled` scanning spends the user's scans on a schedule they did not set, and turning a check off narrows what gets reported. Settings are the user's policy, not an implementation detail to tune on their behalf.
+
+### Export the component inventory
+
+```sh
+cf sbom --repo acme/api --format cyclonedx --agent
+cf sbom --repo acme/api --format spdx --output sbom.json --agent
+```
+
+Formats are `cyclonedx` (default) and `spdx`. Without `--output` the document comes back in `data.document`; with it, only the `path` is returned and the file is written. `--scan <id>` exports one scan rather than the newest one that has components.
+
+`sbom_unavailable` means the scan has no component inventory. The `sbom` check has to be on, and the repository rescanned, before there is anything to export.
+
 ## Closing the loop unattended
 
-When the user has asked for the whole cycle rather than one finding, this is the shape. Cefense scans what is on the repository's **default branch** as GitHub has it, so your own code has to land first.
+When the user has asked for the whole cycle rather than one finding, this is the shape. By default Cefense scans the repository's **default branch** as GitHub has it, so your own code has to land first. Pass `--branch` to scan somewhere else.
 
 ```sh
 cf scan --repo acme/api --wait --agent
@@ -154,7 +209,14 @@ Rules for running this unattended:
 | `usage_error` | 2 | read `remedy`, it names the fix |
 | `invalid_severity` | 2 | use critical, high, watch, or info |
 | `invalid_category` | 2 | use code, dependency, secret, misconfig, or os-package |
-| `finding_not_found` | 2 | the id is not in the latest scan, list again |
+| `finding_not_found` | 2 | the id is not in the scan being read, list again |
+| `branch_not_found` | 2 | no such branch, run `cf branches` |
+| `branch_not_scanned` | 2 | scan the branch before reading its findings |
+| `invalid_scan_mode` | 2 | use manual, push, or scheduled |
+| `invalid_scan_interval` | 2 | use 1h, 6h, 12h, 24h, or 168h |
+| `invalid_check` | 2 | use sast, sca, secrets, iac, quality, or sbom |
+| `invalid_format` | 2 | use cyclonedx or spdx |
+| `sbom_unavailable` | 4 | enable the sbom check and rescan |
 | `fix_not_found` | 2 | generate the patch first |
 | `fix_not_ready` | 2 | the patch is not `ready`, check its status |
 | `fix_not_published` | 2 | open the pull request before merging it |
@@ -172,6 +234,7 @@ Rules for running this unattended:
 ## Rules
 
 - Never run `cf fix publish` or `cf fix merge` without the user agreeing to it in this conversation, and treat merging as a separate ask from opening.
+- Never change scan settings without asking. `cf settings mode`, `cf settings every`, and `cf settings checks` write the user's policy.
 - Never invent a finding id, a severity, a CVE, or an exploit path. All of it comes from the JSON.
 - Never edit a file to silence a finding instead of fixing it, and never suppress or filter a finding away to make a report look better.
 - Never ask for a token or write credentials to a file. The CLI keeps its token in the operating system keychain.

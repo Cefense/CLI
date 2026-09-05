@@ -33,6 +33,15 @@ export interface BrowserSpec<T> {
   header: (items: T[]) => string[];
   renderRow: (item: T, selected: boolean, width: number) => string[];
   renderDetail?: (item: T, width: number) => string[];
+  /**
+   * What enter does on a screen with no detail pane.
+   *
+   * A settings list is edited in place rather than read, so enter has to act on
+   * the selected row. It is ignored when `renderDetail` is set, because there
+   * enter already means open.
+   */
+  onSelect?: (item: T, context: BrowserContext<T>) => Promise<void> | void;
+  selectLabel?: string | ((item: T | null) => string | null);
   filterText?: (item: T) => string;
   emptyMessage: string;
   actions?: BrowserAction<T>[];
@@ -92,6 +101,13 @@ export async function browse<T>(initial: T[], spec: BrowserSpec<T>): Promise<voi
     } else {
       hints.push(`${glyph.up}${glyph.down} move`);
       if (spec.renderDetail) hints.push("enter open");
+      else if (spec.onSelect) {
+        const label =
+          typeof spec.selectLabel === "function"
+            ? spec.selectLabel(current())
+            : (spec.selectLabel ?? "select");
+        if (label) hints.push(`enter ${label}`);
+      }
       if (spec.filterText) hints.push("/ filter");
       for (const entry of availableActions("list")) hints.push(`${entry.action.key} ${entry.label}`);
       hints.push("q quit");
@@ -323,6 +339,18 @@ export async function browse<T>(initial: T[], spec: BrowserSpec<T>): Promise<voi
     else if (key.name === "enter" && spec.renderDetail && visible.length > 0) {
       detailOpen = true;
       detailScroll = 0;
+    } else if (key.name === "enter" && spec.onSelect && visible.length > 0) {
+      status = null;
+      try {
+        await spec.onSelect(current()!, context);
+      } catch (error) {
+        status = error instanceof Error ? error.message : String(error);
+        suspended = false;
+      }
+      if (closed) {
+        finish();
+        return;
+      }
     } else if (!RESERVED.has(key.name)) {
       const action = availableActions("list").find((entry) => entry.action.key === key.name)?.action;
       if (action) {

@@ -1,4 +1,4 @@
-import type { Finding, Fix, Project, WireSeverity } from "./types.js";
+import type { Branch, CommitEntry, Finding, Fix, Project, WireSeverity } from "./types.js";
 
 export const AGENT_SCHEMA_VERSION = 1;
 
@@ -68,6 +68,9 @@ export function compactProject(project: Project): Record<string, unknown> {
     private: project.private,
     defaultBranch: project.defaultBranch,
     url: project.htmlUrl,
+    scanMode: project.scanMode ?? null,
+    scanInterval: project.scanMode === "scheduled" ? (project.scanInterval ?? null) : null,
+    checks: project.coverages ?? [],
     scan: project.scan
       ? prune({
           id: project.scan.id,
@@ -122,5 +125,33 @@ export function compactFindingDetail(
     references: finding.vulnerabilityRefs.map((ref) =>
       prune({ kind: ref.kind, id: ref.identifier, title: ref.title, url: ref.url }),
     ),
+  });
+}
+
+export function compactBranch(branch: Branch, defaultBranch: string | null): Record<string, unknown> {
+  return prune({
+    name: branch.name,
+    default: branch.name === defaultBranch ? true : null,
+    protected: branch.protected ? true : null,
+    scanId: branch.scanId,
+    scanStatus: branch.scanStatus,
+    findings: branch.findingCount,
+    scannedAt: branch.scannedAt,
+  });
+}
+
+export function compactCommit(commit: CommitEntry): Record<string, unknown> {
+  return prune({
+    sha: commit.sha,
+    shortSha: commit.sha.slice(0, 7),
+    message: commit.message.split("\n")[0] ?? "",
+    author: commit.authorLogin ?? commit.authorName,
+    committedAt: commit.committedAt,
+    scanId: commit.scanId,
+    scanStatus: commit.scanStatus,
+    findings: commit.findingCount,
+    introduced: commit.counts.introduced,
+    resolved: commit.counts.resolved,
+    suppressed: commit.counts.suppressed,
   });
 }

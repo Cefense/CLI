@@ -106,6 +106,9 @@ From the findings view, press `g` to generate a patch, `p` to open a pull reques
 | --- | --- |
 | `cf status` | the dashboard: repositories, live scan progress, finding counts |
 | `cf scan` | rescan a repository, `--wait` to block until it settles |
+| `cf scan --branch <name>` | scan a branch other than the default |
+| `cf branches` | every branch, and the last scan of each |
+| `cf commits` | the scanned commit history, and what each commit introduced or resolved |
 | `cf observed` | browse every finding in your code |
 | `cf observed show <finding-id>` | one finding in full, with research, data flow and references |
 | `cf matched` | only the findings joined to the research that explains them |
@@ -115,9 +118,25 @@ From the findings view, press `g` to generate a patch, `p` to open a pull reques
 | `cf fix publish <finding-id>` | open a pull request with a generated patch |
 | `cf fix merge [finding-id]` | merge that pull request and delete its branch, prompts when omitted |
 
+`cf observed` and `cf matched` both take `--branch <name>` to read one branch's last scan, and `--scan <id>` to read a scan by id. Without either you get the newest scan of the repository, whichever branch it ran on.
+
 Findings and fixes are the same data from two angles. `cf observed` carries the same `g`, `p`, and `m` keys as `cf fix`, so you can take a vulnerability from patch to merged pull request without leaving the finding you are reading.
 
 Run `cf fix merge` with no argument and it offers the open pull requests to choose from, or merges straight away when there is only one.
+
+### Scanning policy and exports
+
+| Command | What it does |
+| --- | --- |
+| `cf settings` | a screen for when this repository is scanned, and which checks run |
+| `cf settings mode <mode>` | `manual`, `push`, or `scheduled`, `--every` to set the interval |
+| `cf settings every <interval>` | scan on a schedule: `1h`, `6h`, `12h`, `24h`, `168h` |
+| `cf settings checks [checks...]` | `sast`, `sca`, `secrets`, `iac`, `quality`, `sbom`, `--add` or `--remove` |
+| `cf sbom` | export the component inventory, `--format cyclonedx\|spdx`, `--output <file>` |
+
+`push` scans every commit that lands on the default branch. `scheduled` scans on its interval whether or not anything changed. Changing checks applies from the next scan, and the `sbom` check has to be on before there is an inventory to export.
+
+`cf settings` on its own opens a screen: move through the triggers, the schedule and the checks, and press `enter` to choose or toggle. Each change is saved as you make it. The three subcommands are the non-interactive way in, and each asks when given no argument.
 
 ### Coding agents
 
@@ -153,7 +172,10 @@ Single keys act on whatever is selected. Labels are context aware, so a finding 
 | `o` | `observed`, `matched` | open the file on GitHub |
 | `a` | `observed`, `matched` | read the research behind the finding |
 | `u` | `fix` | refresh |
-| `f` `r` `o` `d` `c` | `status` | findings, rescan, open, set default, connect |
+| `enter` | `settings` | choose the trigger or interval under the cursor, or toggle the check |
+| `s` `f` `o` | `branches` | scan this branch, read its findings, open it on GitHub |
+| `f` `o` | `commits` | read that scan's findings, open the commit on GitHub |
+| `f` `r` `b` `h` `o` `d` `c` | `status` | findings, rescan, branches, history, open, disconnect, connect |
 
 Publishing always requires typing the repository name to confirm. There is no accidental pull request.
 
@@ -203,6 +225,7 @@ The `next` array names real commands that act on what was just returned, so an a
 
 ```sh
 cf auth status --agent                            # 3 if not signed in
+cf branches --repo acme/api --agent               # branches, and the last scan of each
 cf observed --repo acme/api --agent               # ids, severities, counts
 cf observed show <finding-id> --agent             # one finding, in full
 cf fix generate <finding-id> --wait --agent       # blocks until ready or failed
@@ -223,7 +246,14 @@ Stable across releases. Match on `error.code`, never on `error.message`.
 | `usage_error` | 2 | a flag or argument is missing or wrong |
 | `invalid_severity` | 2 | unrecognised value passed to `--severity` |
 | `invalid_category` | 2 | unrecognised value passed to `--category` |
-| `finding_not_found` | 2 | no such finding in the latest scan |
+| `finding_not_found` | 2 | no such finding in the scan being read |
+| `branch_not_found` | 2 | no branch by that name on the repository |
+| `branch_not_scanned` | 2 | the branch has never been scanned |
+| `invalid_scan_mode` | 2 | `cf settings mode` was given a mode that cannot trigger |
+| `invalid_scan_interval` | 2 | unrecognised value passed to `--every` |
+| `invalid_check` | 2 | a check that cannot run on a repository scan |
+| `invalid_format` | 2 | `--format` was not cyclonedx or spdx |
+| `sbom_unavailable` | 4 | the scan recorded no components |
 | `fix_not_found` | 2 | no patch has been generated yet |
 | `fix_not_ready` | 2 | the patch is not in a publishable state |
 | `fix_in_progress` | 2 | a patch is already generating |
@@ -248,6 +278,7 @@ Stable across releases. Match on `error.code`, never on `error.message`.
 - **Publishing and merging are gated.** Both refuse with `confirmation_required` unless `--yes` is passed. Treat each as a separate decision for the user, not a flag to add automatically: agreeing to open a pull request is not agreeing to merge it.
 - **Merging never forces its way past a rule.** A required review, a failing check, a conflict, or a draft each stop `cf fix merge` with a code to report. Branch protection is respected, not bypassed.
 - **Pass `--repo owner/name`** to skip the directory-linking prompt entirely.
+- **Scan settings are the user's policy.** `cf settings mode`, `cf settings every`, and `cf settings checks` change what gets scanned and how often. Ask before writing them.
 - **Payloads are compact.** Null and internal fields are stripped, and heavy fields are summarised. The same 32 findings are 45 KB under `--json` and 18 KB under `--agent`.
 
 ## Teaching your coding agent

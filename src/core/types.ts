@@ -87,6 +87,12 @@ export interface GithubReposResponse {
 
 export type ScanStatus = "queued" | "running" | "completed" | "failed";
 
+export type ScanMode = "manual" | "push" | "pull-request" | "scheduled";
+
+export type ScanInterval = "1h" | "6h" | "12h" | "24h" | "168h";
+
+export type SbomFormat = "cyclonedx" | "spdx";
+
 export interface ScanSummary {
   id: string;
   status: ScanStatus;
@@ -109,6 +115,9 @@ export interface Project {
   defaultBranch: string | null;
   htmlUrl: string | null;
   coverages: string[];
+  scanMode?: ScanMode;
+  scanInterval?: ScanInterval;
+  lastScheduledAt?: string | null;
   profile: {
     languages?: string[];
     frameworks?: string[];
@@ -116,6 +125,41 @@ export interface Project {
   } | null;
   connectedAt: string;
   scan: ScanSummary | null;
+}
+
+export interface Branch {
+  name: string;
+  protected: boolean;
+  scanId: string | null;
+  scanStatus: ScanStatus | null;
+  findingCount: number | null;
+  scannedAt: string | null;
+}
+
+export interface BranchesResponse {
+  defaultBranch: string | null;
+  branches: Branch[];
+}
+
+export interface CommitEntry {
+  sha: string;
+  message: string;
+  authorName: string;
+  authorLogin: string | null;
+  authorAvatarUrl: string | null;
+  committedAt: string;
+  scanId: string;
+  scanStatus: ScanStatus;
+  findingCount: number;
+  counts: {
+    introduced: number;
+    resolved: number;
+    suppressed: number;
+  };
+}
+
+export interface CommitsResponse {
+  commits: CommitEntry[];
 }
 
 export type WireSeverity = "critical" | "high" | "medium" | "low";

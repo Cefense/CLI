@@ -11,6 +11,10 @@ import { authLogin, authLogout, authStatus } from "./commands/auth.js";
 import { repoConnect, repoDisconnect, repoList, repoSetDefault } from "./commands/repo.js";
 import { statusCommand } from "./commands/status.js";
 import { scanCommand } from "./commands/scan.js";
+import { branchesCommand } from "./commands/branches.js";
+import { commitsCommand } from "./commands/commits.js";
+import { settingsChecks, settingsInterval, settingsMode, settingsShow } from "./commands/settings.js";
+import { sbomCommand } from "./commands/sbom.js";
 import { observedCommand, observedShow } from "./commands/observed.js";
 import { fixCommand } from "./commands/fix.js";
 import { fixGenerate, fixMerge, fixPublish, fixShow } from "./commands/fixcmds.js";
@@ -164,21 +168,34 @@ withGlobals(program.command("status"))
 
 withGlobals(program.command("scan"))
   .description("rescan a repository")
+  .option("--branch <name>", "scan a branch other than the default")
   .option("--no-watch", "queue the scan without following its progress")
   .option("--wait", "block until the scan finishes")
   .action(
     run((globals, command) =>
       scanCommand(globals, {
+        branch: command.opts().branch,
         watch: command.opts().watch !== false,
         wait: Boolean(command.opts().wait),
       }),
     ),
   );
 
+withGlobals(program.command("branches"))
+  .description("every branch, and the last scan of each")
+  .action(run((globals) => branchesCommand(globals)));
+
+withGlobals(program.command("commits"))
+  .description("the scanned commit history, and what each one introduced")
+  .option("--limit <n>", "maximum commits to fetch", (value) => Number.parseInt(value, 10))
+  .action(run((globals, command) => commitsCommand(globals, { limit: command.opts().limit })));
+
 function findingsOptions(command: Command): Command {
   return withGlobals(command)
     .addOption(new Option("--severity <list>", "critical,high,watch,info (medium and low also accepted)"))
     .addOption(new Option("--category <list>", "code,dependency,secret,misconfig,os-package"))
+    .option("--branch <name>", "read the findings of a branch's last scan")
+    .option("--scan <id>", "read the findings of one scan")
     .option("--limit <n>", "maximum findings to fetch", (value) => Number.parseInt(value, 10))
     .option("--exit-code", "exit 1 when a critical or high finding is present");
 }
@@ -193,6 +210,8 @@ const observed = findingsOptions(program.command("observed"))
         category: command.opts().category,
         limit: command.opts().limit,
         matched: command.opts().matched,
+        branch: command.opts().branch,
+        scanId: command.opts().scan,
         exitCode: Boolean(command.opts().exitCode),
       }),
     ),
@@ -201,7 +220,16 @@ const observed = findingsOptions(program.command("observed"))
 withGlobals(observed.command("show"))
   .argument("<finding-id>", "the finding to show in full")
   .description("show one finding with its research, data flow and fix")
-  .action(run((globals, command) => observedShow(globals, command.args[0] as string)));
+  .option("--branch <name>", "read the finding from a branch's last scan")
+  .option("--scan <id>", "read the finding from one scan")
+  .action(
+    run((globals, command) =>
+      observedShow(globals, command.args[0] as string, {
+        branch: command.opts().branch,
+        scanId: command.opts().scan,
+      }),
+    ),
+  );
 
 findingsOptions(program.command("matched"))
   .description("findings joined to the research that explains them")
@@ -211,6 +239,8 @@ findingsOptions(program.command("matched"))
         severity: command.opts().severity,
         category: command.opts().category,
         limit: command.opts().limit,
+        branch: command.opts().branch,
+        scanId: command.opts().scan,
         exitCode: Boolean(command.opts().exitCode),
         onlyMatched: true,
       }),
@@ -251,6 +281,54 @@ withGlobals(fix.command("merge"))
       fixMerge(globals, command.args[0], {
         method: command.opts().method,
         deleteBranch: command.opts().deleteBranch !== false,
+      }),
+    ),
+  );
+
+const settings = withGlobals(program.command("settings"))
+  .description("when this repository is scanned, and which checks run")
+  .action(run((globals) => settingsShow(globals)));
+
+withGlobals(settings.command("mode"))
+  .argument("[mode]", "manual, push, or scheduled")
+  .description("choose what triggers a scan")
+  .option("--every <interval>", "with scheduled: 1h, 6h, 12h, 24h, or 168h")
+  .action(
+    run((globals, command) =>
+      settingsMode(globals, command.args[0], { every: command.opts().every }),
+    ),
+  );
+
+withGlobals(settings.command("every"))
+  .argument("[interval]", "1h, 6h, 12h, 24h, or 168h")
+  .description("scan on a schedule, this often")
+  .action(run((globals, command) => settingsInterval(globals, command.args[0])));
+
+withGlobals(settings.command("checks"))
+  .argument("[checks...]", "sast, sca, secrets, iac, quality, sbom, or a preset")
+  .description("choose which checks run on each scan")
+  .option("--add", "turn these on and leave the rest alone")
+  .option("--remove", "turn these off and leave the rest alone")
+  .action(
+    run((globals, command) =>
+      settingsChecks(globals, command.args, {
+        add: Boolean(command.opts().add),
+        remove: Boolean(command.opts().remove),
+      }),
+    ),
+  );
+
+withGlobals(program.command("sbom"))
+  .description("export the component inventory of the last scan")
+  .addOption(new Option("--format <format>", "cyclonedx or spdx").default("cyclonedx"))
+  .option("--output <file>", "write to a file instead of stdout")
+  .option("--scan <id>", "export one scan rather than the newest with components")
+  .action(
+    run((globals, command) =>
+      sbomCommand(globals, {
+        format: command.opts().format,
+        output: command.opts().output,
+        scan: command.opts().scan,
       }),
     ),
   );

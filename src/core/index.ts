@@ -32,6 +32,16 @@ export {
   clearRepoDefault,
 } from "./config.js";
 export {
+  compactBranch,
+  compactCommit,
+  compactFinding,
+  compactFindingDetail,
+  compactFix,
+  compactProject,
+  prune,
+  AGENT_SCHEMA_VERSION,
+} from "./compact.js";
+export {
   defaultScope,
   gitRemote,
   gitToplevel,

@@ -89,17 +89,20 @@ async function awaitScan(
 
 export async function scanCommand(
   globals: GlobalOptions,
-  options: { watch?: boolean; wait?: boolean } = {},
+  options: { watch?: boolean; wait?: boolean; branch?: string } = {},
 ): Promise<number> {
   const session = await openSession(globals, { auth: true });
   const { project } = await resolveLinkedProject(session, globals);
 
+  const ref = options.branch?.trim() || null;
+  const label = ref && ref !== project.defaultBranch ? `${project.fullName}#${ref}` : project.fullName;
+
   const running = project.scan && !terminal(project.scan);
-  const { scanId } = await session.client.startScan(project.githubRepoId);
+  const { scanId } = await session.client.startScan(project.githubRepoId, ref);
 
   if (isAgentMode()) {
     if (!options.wait) {
-      out.agentEmit({ repository: project.fullName, scanId }, [
+      out.agentEmit({ repository: project.fullName, branch: ref, scanId }, [
         `cf scan --repo ${project.fullName} --wait --agent`,
         `cf observed --repo ${project.fullName} --agent`,
       ]);
@@ -109,6 +112,7 @@ export async function scanCommand(
     out.agentEmit(
       {
         repository: project.fullName,
+        branch: ref,
         scanId,
         status: settled?.status ?? "running",
         findings: settled?.findingCount ?? null,
@@ -120,7 +124,7 @@ export async function scanCommand(
   }
 
   if (out.isJsonMode()) {
-    out.json({ repository: project.fullName, scanId });
+    out.json({ repository: project.fullName, branch: ref, scanId });
     return 0;
   }
 
@@ -130,17 +134,19 @@ export async function scanCommand(
   }
 
   if (options.watch === false) {
-    out.success(`Scan queued for ${c.bold(project.fullName)}`);
+    out.success(`Scan queued for ${c.bold(label)}`);
     out.hint(`scan ${scanId}`);
     out.line();
     return 0;
   }
 
-  const scan = await watchScan(session.client, project.githubRepoId, project.fullName);
+  const scan = await watchScan(session.client, project.githubRepoId, label);
   out.line();
   if (scan?.status === "completed" && scan.findingCount > 0) {
     out.info("Next: review the findings");
-    out.line(`    ${c.dim(`cf observed --repo ${project.fullName}`)}`);
+    out.line(
+      `    ${c.dim(`cf observed --repo ${project.fullName}${ref ? ` --branch ${ref}` : ""}`)}`,
+    );
     out.line();
   }
   return scan?.status === "failed" ? 4 : 0;
