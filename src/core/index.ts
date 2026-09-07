@@ -1,4 +1,4 @@
-export { CefenseClient } from "./client.js";
+export { CefenseClient, type RepoSettings } from "./client.js";
 export { openSession, type GlobalOptions, type Session } from "./session.js";
 export { fetchDiscovery, assertVersionSupported, compareVersions } from "./discovery.js";
 export {
@@ -32,6 +32,7 @@ export {
   clearRepoDefault,
 } from "./config.js";
 export {
+  compactAuditEvent,
   compactBranch,
   compactCommit,
   compactFinding,
@@ -46,12 +47,25 @@ export {
   gitRemote,
   gitToplevel,
   matchProject,
+  parseGitRemote,
   parseGithubRemote,
   parseRepoArgument,
   resolveProject,
   type RepoLocation,
   type Resolution,
 } from "./repo.js";
+export {
+  PROVIDERS,
+  blobUrl,
+  commitUrl,
+  parseProvider,
+  providerFromRepoId,
+  providerHost,
+  providerLabel,
+  providerOf,
+  treeUrl,
+  type Provider,
+} from "./providers.js";
 export {
   AuthRequiredError,
   CancelledError,

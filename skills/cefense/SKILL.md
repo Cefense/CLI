@@ -3,7 +3,7 @@ name: cefense
 description: Find, understand, and fix security vulnerabilities in this repository using the Cefense CLI. Use when asked to run a security scan, check this repository for vulnerabilities or CVEs, triage or explain security findings, generate a patch for a vulnerability, or open a pull request that fixes one.
 license: MIT
 metadata:
-  version: 2
+  version: 3
   homepage: https://cefense.com
 ---
 
@@ -41,7 +41,9 @@ Pass `--agent` to every command. It prints exactly one line of JSON to stdout, n
 
 ## Vocabulary
 
-**Observed** is something real in this repository's code. **Matched** is an Observed finding joined to the research that explains it. **Fix** is a patch for one finding, and the pull request that carries it.
+**Observed** is something real in this repository's code. **Matched** is an Observed finding joined to the research that explains it. **Fix** is a patch for one finding, and the pull request that carries it. **Triage** is the user's recorded decision about a finding, kept per repository so it survives every rescan.
+
+Repositories live on GitHub, GitLab, or Bitbucket. Everything below works the same on all three: once a repository is connected it is addressed by `--repo owner/name` and nothing else changes. Only account connection and `cf scan --url` are GitHub-specific.
 
 Severities read as Critical, High, Watch, Info. On the wire they are `critical`, `high`, `medium`, `low`, and filters take either spelling. Findings carry both `severity` (the wire value) and `severityLabel` (what to tell a person).
 
@@ -60,6 +62,20 @@ cf matched --repo acme/api --agent
 Filters: `--severity critical,high,watch,info`, `--category code,dependency,secret,misconfig,os-package`, `--limit <n>` (1 to 1000), `--exit-code` to exit `1` when any Critical or High is present.
 
 `cf matched` is the sharper list. Those findings have research behind them, so they are the ones you can explain rather than merely report.
+
+### Record a decision
+
+```sh
+cf triage <finding-id> false-positive --note "the input is a constant" --agent
+cf triage <finding-id> accepted-risk --note "internal tool, behind SSO" --agent
+cf triage <finding-id> open --agent
+```
+
+Decisions are `false-positive` (it is not real), `accepted-risk` (it is real and the user is living with it), and `open` (undo a previous decision). They are stored against the finding's fingerprint, so they survive the rescan that replaces this scan's finding ids.
+
+**Ask the user first, every time.** Dismissing a finding is the user's judgement about their own risk, not a tidying step, and it is recorded against their account with whatever `--note` says. Never triage to make a report look cleaner, and never triage in bulk.
+
+A finding with no fingerprint answers `finding_not_triageable`: there is nothing durable to attach the decision to. Report that rather than retrying.
 
 ### Read one in full
 
@@ -128,16 +144,17 @@ Findings always belong to one scan, so a branch is read by naming it. Without `-
 
 A branch that has never been scanned answers `branch_not_scanned` rather than quietly falling back to the default branch. Scan it first.
 
-### Read the scanned history
+### Read the history
 
 ```sh
 cf commits --repo acme/api --agent
+cf commits --repo acme/api --branch release/2.4 --agent
 cf observed --repo acme/api --scan <scan-id> --agent
 ```
 
-One row per scanned commit, newest first, each with `sha`, `message`, `author`, `committedAt`, its `scanId`, and the deltas that scan produced: `introduced`, `resolved`, `suppressed`. That is the honest answer to "when did this get introduced" and "did my fix actually close anything", because it is what reconciliation recorded rather than a diff you inferred.
+One row per commit on the branch, newest first, as the host has it. `scanned` says whether Cefense has scanned that exact commit. Only a scanned commit carries `scanId`, `findings`, and the deltas reconciliation produced: `introduced`, `resolved`, `suppressed`. Everything else is absent, so read `scanned` before reporting a commit as clean: an unscanned commit is unknown, not safe.
 
-Commits scanned before Cefense recorded commit SHAs are not listed. An empty list means nothing has been scanned with a SHA attached, not that nothing has been committed.
+The deltas are the honest answer to "when did this get introduced" and "did my fix actually close anything", because they are what reconciliation recorded rather than a diff you inferred. `data.historyAvailable` is false when the host connection cannot read the history at all; that is a reconnect, not an empty repository.
 
 ### Scan settings
 
@@ -145,6 +162,7 @@ Commits scanned before Cefense recorded commit SHAs are not listed. An empty lis
 cf settings --repo acme/api --agent
 cf settings mode push --repo acme/api --agent
 cf settings mode scheduled --every 6h --repo acme/api --agent
+cf settings depth max --repo acme/api --agent
 cf settings checks sast,sca,secrets --repo acme/api --agent
 ```
 
@@ -152,11 +170,43 @@ Run bare, `cf settings` opens an interactive screen for a person, so an agent sh
 
 `scanMode` is what triggers a scan: `manual` on request only, `push` on every commit to the default branch, `scheduled` on a fixed interval. `pull-request` is stored but not yet triggered, and the CLI refuses to set it. `scanInterval` is one of `1h`, `6h`, `12h`, `24h`, `168h`, and only means anything under `scheduled`.
 
+`scanDepth` is how hard each scan looks. `default` runs the full pipeline once, balancing depth against time. `max` keeps sending fresh passes until nothing new turns up: exhaustive, and much slower, so it is for an audit or a release rather than routine scanning. Say that before turning it on, because the user pays for the time.
+
 `checks` is which analyses run: `sast`, `sca`, `secrets`, `iac`, `quality`, `sbom`. Presets `essentials`, `balanced`, and `everything` expand to sets of those. `runtime` and `pentest` are shown in the product but cannot run on a repository scan, and are refused with `invalid_check`. `--add` and `--remove` change one check without restating the rest.
 
 Changing checks applies from the next scan, not retroactively. Say that rather than implying old findings will change.
 
-**Ask before changing these.** Turning on `push` or `scheduled` scanning spends the user's scans on a schedule they did not set, and turning a check off narrows what gets reported. Settings are the user's policy, not an implementation detail to tune on their behalf.
+**Ask before changing these.** Turning on `push` or `scheduled` scanning spends the user's scans on a schedule they did not set, turning `max` depth on makes every scan much slower, and turning a check off narrows what gets reported. Settings are the user's policy, not an implementation detail to tune on their behalf.
+
+### Read what has happened
+
+```sh
+cf audit --agent
+cf audit --category fix,repository --limit 50 --agent
+cf audit --before 2026-09-01T00:00:00Z --agent
+```
+
+Every recorded action on the account, newest first: who did it, what it targeted, what changed, and whether it succeeded. Categories are `scan`, `finding`, `fix`, `repository`, `settings`, `export`, `account`, `integration`.
+
+This is the record, so use it to answer "who dismissed this", "when did scanning turn on", and "did that pull request actually merge" instead of guessing from the current state. It is append-only and nothing you run can edit it.
+
+### Connect a repository
+
+```sh
+cf provider list --agent
+cf repo list --agent
+cf repo connect acme/api --provider gitlab --agent
+```
+
+`cf provider list` shows GitHub, GitLab, and Bitbucket, which are available on this deployment, and which the user has connected. Connecting an account itself needs a browser, so `cf provider connect` fails under `--agent` with `provider_not_connected` and the URL to send the user to. Report that; do not try to work around it.
+
+Repositories on a connected account are connected without a browser. `--provider` is only needed when more than one account is connected and the host is not obvious from the argument.
+
+```sh
+cf scan --url https://github.com/acme/api --wait --agent
+```
+
+Connects a GitHub repository by URL and scans it in one step. GitHub only. **This adds a repository to the user's account**, so ask first, exactly as you would before opening a pull request.
 
 ### Export the component inventory
 
@@ -214,6 +264,15 @@ Rules for running this unattended:
 | `branch_not_scanned` | 2 | scan the branch before reading its findings |
 | `invalid_scan_mode` | 2 | use manual, push, or scheduled |
 | `invalid_scan_interval` | 2 | use 1h, 6h, 12h, 24h, or 168h |
+| `invalid_scan_depth` | 2 | use default or max |
+| `invalid_triage_status` | 2 | use open, false-positive, or accepted-risk |
+| `invalid_audit_category` | 2 | use one of the eight audit categories |
+| `invalid_date` | 2 | pass an ISO timestamp to `--before` |
+| `invalid_provider` | 2 | use github, gitlab, or bitbucket |
+| `finding_not_triageable` | 4 | the finding has no fingerprint, report and stop |
+| `provider_not_connected` | 4 | the account needs a browser, send the user the URL |
+| `provider_reconnect_required` | 4 | the host token expired, the user must reconnect |
+| `provider_unavailable` | 4 | that host is not configured on this deployment |
 | `invalid_check` | 2 | use sast, sca, secrets, iac, quality, or sbom |
 | `invalid_format` | 2 | use cyclonedx or spdx |
 | `sbom_unavailable` | 4 | enable the sbom check and rescan |
@@ -234,7 +293,9 @@ Rules for running this unattended:
 ## Rules
 
 - Never run `cf fix publish` or `cf fix merge` without the user agreeing to it in this conversation, and treat merging as a separate ask from opening.
-- Never change scan settings without asking. `cf settings mode`, `cf settings every`, and `cf settings checks` write the user's policy.
+- Never change scan settings without asking. `cf settings mode`, `cf settings every`, `cf settings depth`, and `cf settings checks` write the user's policy.
+- Never run `cf triage` without the user agreeing to that specific decision. Dismissing a finding is their call about their own risk, and it is recorded under their name.
+- Never run `cf scan --url` without asking. It connects a repository to the user's account.
 - Never invent a finding id, a severity, a CVE, or an exploit path. All of it comes from the JSON.
 - Never edit a file to silence a finding instead of fixing it, and never suppress or filter a finding away to make a report look better.
 - Never ask for a token or write credentials to a file. The CLI keeps its token in the operating system keychain.

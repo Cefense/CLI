@@ -36,7 +36,7 @@ _`cf observed`, a generated patch, and a pull request, in under a minute._
 
 Cefense scans your repositories for vulnerabilities, joins each finding to the security research that explains it, and generates patches you can ship as pull requests.
 
-This CLI is a complete alternative to the web workspace. Everything the GUI does against a real API route, this does too: connect repositories, run scans, browse findings, read the research behind them, generate a patch, review the diff, and open the pull request.
+This CLI is a complete alternative to the web workspace. Everything the GUI does against a real API route, this does too: connect GitHub, GitLab and Bitbucket accounts, connect repositories, run scans, browse findings, read the research behind them, triage what is not real, generate a patch, review the diff, open the pull request, and read the account's audit log.
 
 It talks only to the Cefense public API. It never reaches into a database, and it ships with no client secret and no baked-in endpoints.
 
@@ -88,15 +88,27 @@ From the findings view, press `g` to generate a patch, `p` to open a pull reques
 
 `cf auth logout --all` signs out of every stored instance. `cf auth login --force` signs in again over an existing session.
 
+### Code hosts
+
+| Command | What it does |
+| --- | --- |
+| `cf provider list` | GitHub, GitLab and Bitbucket: which are available, which are connected |
+| `cf provider connect <host>` | connect a code host account |
+| `cf provider disconnect <host>` | disconnect a code host account and every credential behind it |
+
+Authorization runs in a browser, because the round trip is bound to a cookie the backend sets on the browser that started it. `cf provider connect` opens the page and waits for the connection to appear, then returns.
+
 ### Repositories
 
 | Command | What it does |
 | --- | --- |
-| `cf repo connect [owner/name]` | connect a GitHub repository and follow its first scan |
+| `cf repo connect [owner/name]` | connect a repository and follow its first scan |
 | `cf repo list` | connected repositories, their scan state and finding counts |
 | `cf repo set-default [owner/name]` | choose the repository this directory acts on |
 | `cf repo disconnect [owner/name]` | disconnect one repository |
-| `cf repo disconnect --account` | disconnect the GitHub account entirely |
+| `cf repo disconnect --account` | disconnect a code host account entirely |
+
+Repositories live on GitHub, GitLab, or Bitbucket. Once one is connected it is addressed by `owner/name` and everything below treats it the same, whichever host it came from. `--provider <host>` picks the host when more than one account is connected and the argument does not say; without it the CLI uses the one connected account, or what your git remote points at.
 
 `cf repo set-default --unset` clears the link for the current directory. `cf repo connect --no-watch` queues the scan without following it.
 
@@ -107,8 +119,11 @@ From the findings view, press `g` to generate a patch, `p` to open a pull reques
 | `cf status` | the dashboard: repositories, live scan progress, finding counts |
 | `cf scan` | rescan a repository, `--wait` to block until it settles |
 | `cf scan --branch <name>` | scan a branch other than the default |
+| `cf scan --url <repository-url>` | connect a public GitHub repository by URL and scan it |
 | `cf branches` | every branch, and the last scan of each |
-| `cf commits` | the scanned commit history, and what each commit introduced or resolved |
+| `cf commits` | the commit history, and what each scanned commit introduced or resolved |
+| `cf triage <finding-id> <decision>` | record a finding as `false-positive`, `accepted-risk`, or `open` |
+| `cf audit` | everything that has happened on this account, newest first |
 | `cf observed` | browse every finding in your code |
 | `cf observed show <finding-id>` | one finding in full, with research, data flow and references |
 | `cf matched` | only the findings joined to the research that explains them |
@@ -119,6 +134,10 @@ From the findings view, press `g` to generate a patch, `p` to open a pull reques
 | `cf fix merge [finding-id]` | merge that pull request and delete its branch, prompts when omitted |
 
 `cf observed` and `cf matched` both take `--branch <name>` to read one branch's last scan, and `--scan <id>` to read a scan by id. Without either you get the newest scan of the repository, whichever branch it ran on.
+
+`cf commits` reads the host's own history, not only what Cefense has scanned, so most rows are commits nothing has scanned yet: those have no findings and no deltas rather than a zero. `--branch <name>` reads another branch, `--limit <n>` shows fewer.
+
+A triage decision is stored against the finding's fingerprint, so it survives the rescan that replaces this scan's finding ids. `--note` records why. Press `t` in `cf observed` to do the same thing on the finding you are reading. `cf audit` takes `--category`, `--limit`, and `--before <timestamp>`.
 
 Findings and fixes are the same data from two angles. `cf observed` carries the same `g`, `p`, and `m` keys as `cf fix`, so you can take a vulnerability from patch to merged pull request without leaving the finding you are reading.
 
@@ -131,12 +150,13 @@ Run `cf fix merge` with no argument and it offers the open pull requests to choo
 | `cf settings` | a screen for when this repository is scanned, and which checks run |
 | `cf settings mode <mode>` | `manual`, `push`, or `scheduled`, `--every` to set the interval |
 | `cf settings every <interval>` | scan on a schedule: `1h`, `6h`, `12h`, `24h`, `168h` |
+| `cf settings depth <depth>` | `default` for the balanced pipeline, `max` to keep going until nothing new turns up |
 | `cf settings checks [checks...]` | `sast`, `sca`, `secrets`, `iac`, `quality`, `sbom`, `--add` or `--remove` |
 | `cf sbom` | export the component inventory, `--format cyclonedx\|spdx`, `--output <file>` |
 
-`push` scans every commit that lands on the default branch. `scheduled` scans on its interval whether or not anything changed. Changing checks applies from the next scan, and the `sbom` check has to be on before there is an inventory to export.
+`push` scans every commit that lands on the default branch. `scheduled` scans on its interval whether or not anything changed. `max` depth keeps sending fresh passes until a round finds nothing new: exhaustive, and much slower, so it is for an audit or a release rather than routine scanning. Changing checks or depth applies from the next scan, and the `sbom` check has to be on before there is an inventory to export.
 
-`cf settings` on its own opens a screen: move through the triggers, the schedule and the checks, and press `enter` to choose or toggle. Each change is saved as you make it. The three subcommands are the non-interactive way in, and each asks when given no argument.
+`cf settings` on its own opens a screen: move through the triggers, the schedule, the depth and the checks, and press `enter` to choose or toggle. Each change is saved as you make it. The four subcommands are the non-interactive way in, and each asks when given no argument.
 
 ### Coding agents
 
@@ -169,12 +189,13 @@ Single keys act on whatever is selected. Labels are context aware, so a finding 
 | `g` | `observed`, `matched`, `fix` | generate a patch, or regenerate, or retry |
 | `p` | `observed`, `matched`, `fix` | open the pull request, or view it |
 | `m` | `observed`, `matched`, `fix` | merge that pull request and delete its branch |
-| `o` | `observed`, `matched` | open the file on GitHub |
+| `o` | `observed`, `matched` | open the file on its code host |
 | `a` | `observed`, `matched` | read the research behind the finding |
+| `t` | `observed`, `matched` | record the finding as a false positive, an accepted risk, or open |
 | `u` | `fix` | refresh |
-| `enter` | `settings` | choose the trigger or interval under the cursor, or toggle the check |
-| `s` `f` `o` | `branches` | scan this branch, read its findings, open it on GitHub |
-| `f` `o` | `commits` | read that scan's findings, open the commit on GitHub |
+| `enter` | `settings` | choose the trigger, interval or depth under the cursor, or toggle the check |
+| `s` `f` `o` | `branches` | scan this branch, read its findings, open it on its code host |
+| `f` `o` | `commits` | read that scan's findings, open the commit on its code host |
 | `f` `r` `b` `h` `o` `d` `c` | `status` | findings, rescan, branches, history, open, disconnect, connect |
 
 Publishing always requires typing the repository name to confirm. There is no accidental pull request.
@@ -225,6 +246,7 @@ The `next` array names real commands that act on what was just returned, so an a
 
 ```sh
 cf auth status --agent                            # 3 if not signed in
+cf provider list --agent                          # which code hosts are connected
 cf branches --repo acme/api --agent               # branches, and the last scan of each
 cf observed --repo acme/api --agent               # ids, severities, counts
 cf observed show <finding-id> --agent             # one finding, in full
@@ -251,7 +273,16 @@ Stable across releases. Match on `error.code`, never on `error.message`.
 | `branch_not_scanned` | 2 | the branch has never been scanned |
 | `invalid_scan_mode` | 2 | `cf settings mode` was given a mode that cannot trigger |
 | `invalid_scan_interval` | 2 | unrecognised value passed to `--every` |
+| `invalid_scan_depth` | 2 | `cf settings depth` was not given default or max |
 | `invalid_check` | 2 | a check that cannot run on a repository scan |
+| `invalid_triage_status` | 2 | `cf triage` was not given open, false-positive, or accepted-risk |
+| `invalid_audit_category` | 2 | unrecognised value passed to `cf audit --category` |
+| `invalid_date` | 2 | `cf audit --before` was not an ISO timestamp |
+| `invalid_provider` | 2 | not github, gitlab, or bitbucket |
+| `finding_not_triageable` | 4 | the finding has no fingerprint to attach a decision to |
+| `provider_not_connected` | 4 | that code host account is not connected |
+| `provider_reconnect_required` | 4 | the code host token expired |
+| `provider_unavailable` | 4 | that code host is not configured on this deployment |
 | `invalid_format` | 2 | `--format` was not cyclonedx or spdx |
 | `sbom_unavailable` | 4 | the scan recorded no components |
 | `fix_not_found` | 2 | no patch has been generated yet |
@@ -278,6 +309,8 @@ Stable across releases. Match on `error.code`, never on `error.message`.
 - **Publishing and merging are gated.** Both refuse with `confirmation_required` unless `--yes` is passed. Treat each as a separate decision for the user, not a flag to add automatically: agreeing to open a pull request is not agreeing to merge it.
 - **Merging never forces its way past a rule.** A required review, a failing check, a conflict, or a draft each stop `cf fix merge` with a code to report. Branch protection is respected, not bypassed.
 - **Pass `--repo owner/name`** to skip the directory-linking prompt entirely.
+- **Connecting an account needs a browser.** `cf provider connect` cannot complete under `--agent` and fails with `provider_not_connected` and the URL to send the user to. Connecting a repository on an already-connected account needs no browser.
+- **Triage is the user's decision.** `cf triage` records their judgement about their own risk under their name, so ask before running it, and never run it in bulk to tidy a report.
 - **Scan settings are the user's policy.** `cf settings mode`, `cf settings every`, and `cf settings checks` change what gets scanned and how often. Ask before writing them.
 - **Payloads are compact.** Null and internal fields are stripped, and heavy fields are summarised. The same 32 findings are 45 KB under `--json` and 18 KB under `--agent`.
 

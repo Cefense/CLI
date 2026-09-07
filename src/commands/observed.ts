@@ -3,10 +3,13 @@ import { openSession, type GlobalOptions } from "../core/session.js";
 import { UsageError } from "../core/errors.js";
 import type { Finding, Fix, Project } from "../core/types.js";
 import type { Session } from "../core/session.js";
+import { blobUrl, providerLabel, providerOf } from "../core/providers.js";
 import { browse } from "../ui/browser.js";
 import { resolveBranch, resolveLinkedProject } from "./link.js";
 import { fixActions, fixLabel, renderFixSection } from "./fixactions.js";
+import { applyTriage, TRIAGE_LABELS } from "./triage.js";
 import * as out from "../ui/output.js";
+import { select } from "../ui/prompts.js";
 import { relativeTime, terminalWidth, wrapText } from "../ui/format.js";
 import { c, displaySeverity, glyph, severityColor, severityRank } from "../ui/theme.js";
 import { isAgentMode } from "../ui/mode.js";
@@ -69,13 +72,12 @@ function locationOf(finding: Finding): string {
   return finding.startLine ? `${finding.filePath}:${finding.startLine}` : finding.filePath;
 }
 
-function githubUrlFor(project: Project, finding: Finding, ref?: string | null): string | null {
-  if (!project.htmlUrl) return null;
+function sourceUrlFor(project: Project, finding: Finding, ref?: string | null): string | null {
   const branch = ref ?? project.defaultBranch ?? "HEAD";
-  const anchor = finding.startLine
-    ? `#L${finding.startLine}${finding.endLine && finding.endLine !== finding.startLine ? `-L${finding.endLine}` : ""}`
-    : "";
-  return `${project.htmlUrl}/blob/${branch}/${finding.filePath}${anchor}`;
+  return blobUrl(project, finding.filePath, branch, {
+    start: finding.startLine,
+    end: finding.endLine,
+  });
 }
 
 function renderRow(row: Row, selected: boolean, width: number): string[] {
@@ -125,6 +127,16 @@ function renderDetail(project: Project, row: Row, width: number, ref?: string | 
   ].filter(Boolean);
   if (refs.length > 0) push(c.dim(refs.join("      ")));
 
+  if (finding.introducedIn) {
+    const origin = finding.introducedIn;
+    push();
+    push(
+      c.dim(
+        `introduced in ${origin.sha.slice(0, 7)} by ${origin.authorName}, ${relativeTime(origin.committedAt)}`,
+      ),
+    );
+  }
+
   if (finding.description) {
     push();
     for (const wrapped of wrapText(finding.description, body)) push(wrapped);
@@ -141,6 +153,13 @@ function renderDetail(project: Project, row: Row, width: number, ref?: string | 
       .forEach((codeLine, index) => {
         push(`${c.dim(String(start + index).padStart(5))} ${c.dim("|")} ${codeLine}`);
       });
+  }
+
+  if (finding.exploitPath) {
+    push();
+    push(c.dim("EXPLOIT PATH"));
+    push();
+    for (const wrapped of wrapText(finding.exploitPath, body)) push(wrapped);
   }
 
   if (finding.dataflow) {
@@ -186,7 +205,7 @@ function renderDetail(project: Project, row: Row, width: number, ref?: string | 
 
   for (const fixLine of renderFixSection(row.fix, width)) lines.push(fixLine);
 
-  const link = githubUrlFor(project, finding, ref);
+  const link = sourceUrlFor(project, finding, ref);
   if (link) {
     push(c.dim(link));
     push();
@@ -324,11 +343,51 @@ export async function observedCommand(
       ),
       {
         key: "o",
-        label: "github",
+        label: providerLabel(providerOf(project)).toLowerCase(),
         run: (row) => {
           if (!row) return;
-          const url = githubUrlFor(project, row.finding, scope.label);
+          const url = sourceUrlFor(project, row.finding, scope.label);
           if (url) void open(url).catch(() => undefined);
+        },
+      },
+      {
+        key: "t",
+        label: (row) => (row?.finding.fingerprint ? "triage" : null),
+        run: async (row, context) => {
+          if (!row) return;
+          if (!row.finding.fingerprint) {
+            context.setStatus("This finding has no fingerprint, so a decision would not survive a rescan.");
+            return;
+          }
+          const decision = await context.suspend(async () => {
+            out.line();
+            out.info(row.finding.title);
+            out.line();
+            return select({
+              message: "How should this finding be recorded?",
+              initialValue: "false_positive",
+              choices: [
+                {
+                  value: "false_positive",
+                  label: TRIAGE_LABELS.false_positive,
+                  hint: "it is not real",
+                },
+                {
+                  value: "accepted_risk",
+                  label: TRIAGE_LABELS.accepted_risk,
+                  hint: "it is real and you are living with it",
+                },
+                { value: "open", label: TRIAGE_LABELS.open, hint: "undo a previous decision" },
+              ],
+            });
+          });
+          context.setStatus("Recording.");
+          const applied = await applyTriage(
+            session,
+            row.finding.id,
+            decision as "open" | "false_positive" | "accepted_risk",
+          );
+          context.setStatus(`Marked ${TRIAGE_LABELS[applied].toLowerCase()}`);
         },
       },
       {

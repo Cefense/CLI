@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   CHECK_PRESETS,
   parseChecks,
+  parseScanDepth,
   parseScanInterval,
   parseScanMode,
 } from "../src/commands/settings.js";
@@ -35,4 +36,10 @@ test("parseChecks rejects checks a repository scan cannot run", () => {
   assert.throws(() => parseChecks(["runtime"]), UsageError);
   assert.throws(() => parseChecks(["pentest"]), UsageError);
   assert.throws(() => parseChecks(["fuzzing"]), UsageError);
+});
+
+test("parseScanDepth takes only the depths the column allows", () => {
+  assert.equal(parseScanDepth("default"), "default");
+  assert.equal(parseScanDepth(" MAX "), "max");
+  assert.throws(() => parseScanDepth("deep"), UsageError);
 });

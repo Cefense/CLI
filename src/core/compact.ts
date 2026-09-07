@@ -1,4 +1,13 @@
-import type { Branch, CommitEntry, Finding, Fix, Project, WireSeverity } from "./types.js";
+import type {
+  AuditEvent,
+  Branch,
+  CommitEntry,
+  Finding,
+  Fix,
+  Project,
+  WireSeverity,
+} from "./types.js";
+import { providerOf } from "./providers.js";
 
 export const AGENT_SCHEMA_VERSION = 1;
 
@@ -57,6 +66,15 @@ export function compactFinding(
     code: finding.vulnerableCode,
     guidance: finding.remediation?.guidance ?? finding.remediation?.summary ?? null,
     matchedSources: finding.intelligenceSources.length || null,
+    introducedIn: finding.introducedIn
+      ? prune({
+          sha: finding.introducedIn.sha,
+          shortSha: finding.introducedIn.sha.slice(0, 7),
+          message: finding.introducedIn.message.split("\n")[0] ?? "",
+          author: finding.introducedIn.authorName,
+          committedAt: finding.introducedIn.committedAt,
+        })
+      : null,
     fix: fix ? compactFix(fix, options) : null,
   });
 }
@@ -64,12 +82,14 @@ export function compactFinding(
 export function compactProject(project: Project): Record<string, unknown> {
   return prune({
     repository: project.fullName,
+    provider: providerOf(project),
     githubRepoId: project.githubRepoId,
     private: project.private,
     defaultBranch: project.defaultBranch,
     url: project.htmlUrl,
     scanMode: project.scanMode ?? null,
     scanInterval: project.scanMode === "scheduled" ? (project.scanInterval ?? null) : null,
+    scanDepth: project.scanDepth ?? null,
     checks: project.coverages ?? [],
     scan: project.scan
       ? prune({
@@ -91,6 +111,7 @@ export function compactFindingDetail(
     ...base,
     state: finding.state,
     confidence: finding.confidence,
+    exploitPath: finding.exploitPath,
     symbol: finding.symbol,
     remediation: finding.remediation
       ? prune({
@@ -147,11 +168,26 @@ export function compactCommit(commit: CommitEntry): Record<string, unknown> {
     message: commit.message.split("\n")[0] ?? "",
     author: commit.authorLogin ?? commit.authorName,
     committedAt: commit.committedAt,
+    scanned: commit.scanned,
     scanId: commit.scanId,
     scanStatus: commit.scanStatus,
     findings: commit.findingCount,
-    introduced: commit.counts.introduced,
-    resolved: commit.counts.resolved,
-    suppressed: commit.counts.suppressed,
+    introduced: commit.counts?.introduced ?? null,
+    resolved: commit.counts?.resolved ?? null,
+    suppressed: commit.counts?.suppressed ?? null,
+  });
+}
+
+export function compactAuditEvent(event: AuditEvent): Record<string, unknown> {
+  return prune({
+    id: event.id,
+    at: event.at,
+    action: event.action,
+    category: event.category,
+    outcome: event.outcome,
+    actor: `${event.actor.kind}:${event.actor.name}`,
+    target: prune({ type: event.target.type, id: event.target.id, label: event.target.label }),
+    summary: event.summary,
+    changes: event.changes ?? [],
   });
 }

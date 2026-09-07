@@ -1,6 +1,8 @@
 import open from "open";
 import { openSession, type GlobalOptions } from "../core/session.js";
-import type { GithubRepo, GithubStatus, Project } from "../core/types.js";
+import type { GithubRepo, Project } from "../core/types.js";
+import { providerLabel, providerOf } from "../core/providers.js";
+import { connectionSummary, loadConnections, type Connection } from "./provider.js";
 import { readRepoDefault } from "../core/config.js";
 import { defaultScope } from "../core/repo.js";
 import { browse } from "../ui/browser.js";
@@ -13,7 +15,7 @@ import { observedCommand } from "./observed.js";
 import { branchesCommand } from "./branches.js";
 import { commitsCommand } from "./commits.js";
 import { watchScan } from "./scan.js";
-import { SCAN_INTERVALS, SCAN_MODES } from "./settings.js";
+import { SCAN_DEPTHS, SCAN_INTERVALS, SCAN_MODES } from "./settings.js";
 import { isAgentMode } from "../ui/mode.js";
 import { compactProject, prune } from "../core/compact.js";
 
@@ -38,7 +40,12 @@ function scanCell(project: Project): string {
   return relativeTime(scan.finishedAt ?? scan.createdAt);
 }
 
-function headerLines(github: GithubStatus | null, projects: Project[], email: string, apiUrl: string): string[] {
+function headerLines(
+  connections: Connection[],
+  projects: Project[],
+  email: string,
+  apiUrl: string,
+): string[] {
   const scanning = projects.filter(isActive).length;
   const summary = [
     `${projects.length} connected`,
@@ -51,7 +58,7 @@ function headerLines(github: GithubStatus | null, projects: Project[], email: st
     "",
     `  ${c.bold("Cefense")}   ${c.dim(`${email}  ·  ${apiUrl.replace(/^https?:\/\//, "")}`)}`,
     "",
-    `  ${c.dim(padEnd("GitHub", 10))}${github?.connected ? `connected as ${github.login}` : c.yellow("not connected")}`,
+    ...connectionSummary(connections),
     `  ${c.dim(padEnd("Repos", 10))}${summary}`,
     "",
   ];
@@ -64,7 +71,13 @@ function projectDetail(project: Project, width: number): string[] {
 
   push();
   push(
-    `${c.bold(project.fullName)}   ${c.dim(`${project.private ? "private" : "public"}  ·  ${project.defaultBranch ?? "default branch"}`)}`,
+    `${c.bold(project.fullName)}   ${c.dim(
+      [
+        providerLabel(providerOf(project)),
+        project.private ? "private" : "public",
+        project.defaultBranch ?? "default branch",
+      ].join("  ·  "),
+    )}`,
   );
   push();
 
@@ -92,6 +105,8 @@ function projectDetail(project: Project, width: number): string[] {
       ? `${mode?.label ?? "Manual"}   ${c.dim(interval?.label.toLowerCase() ?? "")}`
       : (mode?.label ?? "Manual"),
   ]);
+  const depth = SCAN_DEPTHS.find((entry) => entry.id === (project.scanDepth ?? "default"));
+  facts.push(["Depth", depth?.label ?? "Default"]);
   if ((project.coverages ?? []).length > 0) {
     facts.push(["Checks", c.dim(project.coverages.join(", "))]);
   }
@@ -123,22 +138,41 @@ export async function statusCommand(
 ): Promise<number> {
   const session = await openSession(globals, { auth: true });
 
-  const [me, github, listing, initial] = await Promise.all([
+  const [me, connections, initial] = await Promise.all([
     session.client.me(),
-    session.client.githubStatus().catch(() => null),
-    session.client.githubRepos().catch(() => null),
+    loadConnections(session),
     session.client.projects(),
   ]);
 
   let projects = initial.projects;
-  const available = (listing?.repos ?? []).filter((repo) => !repo.connected);
+
+  // Repositories worth offering are on every connected host, not only GitHub,
+  // so the listing is one call per connected account rather than one call.
+  const listings = await Promise.all(
+    connections
+      .filter((entry) => entry.status.connected)
+      .map(async (entry) => {
+        const repos = await session.client
+          .providerRepos(entry.provider)
+          .catch(() => null);
+        return (repos?.repos ?? []).map((repo) => ({ ...repo, provider: entry.provider }));
+      }),
+  );
+  const available = listings.flat().filter((repo) => !repo.connected);
 
   if (isAgentMode()) {
     out.agentEmit(
       {
         apiUrl: session.apiUrl,
         email: me.user.email,
-        github: github ? prune({ connected: github.connected, login: github.login }) : null,
+        providers: connections.map((entry) =>
+          prune({
+            provider: entry.provider,
+            configured: entry.status.configured,
+            connected: entry.status.connected,
+            login: entry.status.login ?? null,
+          }),
+        ),
         repositories: projects.map(compactProject),
         availableToConnect: available.length,
       },
@@ -148,12 +182,18 @@ export async function statusCommand(
   }
 
   if (out.isJsonMode()) {
-    out.json({ apiUrl: session.apiUrl, user: me.user, github, projects, available: available.length });
+    out.json({
+      apiUrl: session.apiUrl,
+      user: me.user,
+      providers: connections,
+      projects,
+      available: available.length,
+    });
     return 0;
   }
 
   if (out.isPiped()) {
-    out.lines(headerLines(github, projects, me.user.email, session.apiUrl));
+    out.lines(headerLines(connections, projects, me.user.email, session.apiUrl));
     if (projects.length > 0) {
       out.lines(
         renderTable(
@@ -192,14 +232,18 @@ export async function statusCommand(
   let followUp: { action: "findings" | "scan" | "branches" | "commits"; project: Project } | null = null;
 
   await browse(buildRows(projects), {
-    header: () => headerLines(github, projects, me.user.email, session.apiUrl),
+    header: () => headerLines(connections, projects, me.user.email, session.apiUrl),
     renderRow: (row, selected, width) => {
       if (row.kind === "divider") {
         return ["", `  ${c.dim(glyph.rule.repeat(Math.max(8, width - 4)))}`];
       }
       const marker = selected ? c.cyan(glyph.arrow) : " ";
       if (row.kind === "available") {
-        return [`${marker} ${c.dim(padEnd(row.repo.fullName, 34))}${c.dim("not connected")}`];
+        return [
+          `${marker} ${c.dim(padEnd(row.repo.fullName, 34))}${c.dim(
+            `not connected  ·  ${providerLabel(row.repo.provider ?? "github")}`,
+          )}`,
+        ];
       }
       const project = row.project;
       const isDefault = fallback?.githubRepoId === project.githubRepoId;

@@ -1,10 +1,15 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { matchProject, parseGithubRemote, parseRepoArgument } from "../src/core/repo.js";
+import { matchProject, parseGitRemote, parseGithubRemote, parseRepoArgument } from "../src/core/repo.js";
 import type { Project } from "../src/core/types.js";
 
 test("parseGithubRemote handles every remote form git writes", () => {
-  const expected = { owner: "cefense", name: "backend", fullName: "cefense/backend" };
+  const expected = {
+    owner: "cefense",
+    name: "backend",
+    fullName: "cefense/backend",
+    provider: "github",
+  };
   for (const url of [
     "git@github.com:cefense/backend.git",
     "git@github.com:cefense/backend",
@@ -20,6 +25,20 @@ test("parseGithubRemote handles every remote form git writes", () => {
 test("parseGithubRemote rejects remotes that are not GitHub", () => {
   assert.equal(parseGithubRemote("git@gitlab.com:cefense/backend.git"), null);
   assert.equal(parseGithubRemote(""), null);
+});
+
+test("parseGitRemote reads the host off the remote", () => {
+  assert.equal(parseGitRemote("git@gitlab.com:cefense/backend.git")?.provider, "gitlab");
+  assert.equal(parseGitRemote("https://bitbucket.org/cefense/backend")?.provider, "bitbucket");
+  assert.equal(parseGitRemote("https://github.com/cefense/backend")?.provider, "github");
+  assert.equal(parseGitRemote("https://example.com/cefense/backend"), null);
+});
+
+test("parseGitRemote keeps a GitLab subgroup path in the owner", () => {
+  const nested = parseGitRemote("git@gitlab.com:acme/platform/backend.git");
+  assert.equal(nested?.owner, "acme/platform");
+  assert.equal(nested?.name, "backend");
+  assert.equal(nested?.fullName, "acme/platform/backend");
 });
 
 test("parseRepoArgument accepts owner/name and full URLs", () => {

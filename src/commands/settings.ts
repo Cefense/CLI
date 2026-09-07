@@ -1,6 +1,6 @@
 import { openSession, type GlobalOptions, type Session } from "../core/session.js";
 import { UsageError } from "../core/errors.js";
-import type { Project, ScanInterval, ScanMode } from "../core/types.js";
+import type { Project, ScanDepth, ScanInterval, ScanMode } from "../core/types.js";
 import { resolveLinkedProject } from "./link.js";
 import * as out from "../ui/output.js";
 import { browse } from "../ui/browser.js";
@@ -40,6 +40,19 @@ export const SCAN_INTERVALS: Array<{ id: ScanInterval; label: string }> = [
   { id: "168h", label: "Every week" },
 ];
 
+export const SCAN_DEPTHS: Array<{ id: ScanDepth; label: string; detail: string }> = [
+  {
+    id: "default",
+    label: "Default",
+    detail: "The full pipeline on every scan: sweep, verify, correlate. Balanced depth and speed.",
+  },
+  {
+    id: "max",
+    label: "Max",
+    detail: "Keeps sending fresh passes until nothing new turns up. Slower, built for audits.",
+  },
+];
+
 export const CHECKS: Array<{ id: string; name: string; detail: string; available: boolean }> = [
   { id: "sast", name: "SAST", detail: "Static analysis of source", available: true },
   { id: "sca", name: "SCA", detail: "Dependency vulnerabilities", available: true },
@@ -67,6 +80,10 @@ function intervalLabel(interval: ScanInterval | undefined): string {
   return SCAN_INTERVALS.find((entry) => entry.id === interval)?.label ?? "Every day";
 }
 
+function depthLabel(depth: ScanDepth | undefined): string {
+  return SCAN_DEPTHS.find((entry) => entry.id === depth)?.label ?? "Default";
+}
+
 export function parseScanMode(value: string): ScanMode {
   const wanted = value.trim().toLowerCase();
   const match = SCAN_MODES.find((entry) => entry.id === wanted);
@@ -82,6 +99,19 @@ export function parseScanMode(value: string): ScanMode {
       `${match.label} scanning is not available yet.`,
       "Use manual, push, or scheduled.",
       "invalid_scan_mode",
+    );
+  }
+  return match.id;
+}
+
+export function parseScanDepth(value: string): ScanDepth {
+  const wanted = value.trim().toLowerCase();
+  const match = SCAN_DEPTHS.find((entry) => entry.id === wanted);
+  if (!match) {
+    throw new UsageError(
+      `${value} is not a scan depth.`,
+      `Use ${SCAN_DEPTHS.map((entry) => entry.id).join(", ")}.`,
+      "invalid_scan_depth",
     );
   }
   return match.id;
@@ -135,6 +165,7 @@ function settingsPayload(project: Project): Record<string, unknown> {
     repository: project.fullName,
     scanMode: project.scanMode ?? "manual",
     scanInterval: project.scanInterval ?? "24h",
+    scanDepth: project.scanDepth ?? "default",
     checks: project.coverages ?? [],
     lastScheduledAt: project.lastScheduledAt ?? null,
   };
@@ -143,7 +174,12 @@ function settingsPayload(project: Project): Record<string, unknown> {
 async function apply(
   session: Session,
   project: Project,
-  changes: { coverages?: string[]; scanMode?: ScanMode; scanInterval?: ScanInterval },
+  changes: {
+    coverages?: string[];
+    scanMode?: ScanMode;
+    scanInterval?: ScanInterval;
+    scanDepth?: ScanDepth;
+  },
 ): Promise<Project> {
   const result = await session.client.updateRepoSettings(project, changes);
   return { ...project, ...result.project, scan: project.scan };
@@ -153,6 +189,7 @@ type Row =
   | { kind: "section"; label: string }
   | { kind: "mode"; mode: (typeof SCAN_MODES)[number] }
   | { kind: "interval"; interval: (typeof SCAN_INTERVALS)[number] }
+  | { kind: "depth"; depth: (typeof SCAN_DEPTHS)[number] }
   | { kind: "check"; check: (typeof CHECKS)[number] };
 
 function buildRows(project: Project): Row[] {
@@ -162,6 +199,8 @@ function buildRows(project: Project): Row[] {
     rows.push({ kind: "section", label: "schedule" });
     for (const interval of SCAN_INTERVALS) rows.push({ kind: "interval", interval });
   }
+  rows.push({ kind: "section", label: "depth" });
+  for (const depth of SCAN_DEPTHS) rows.push({ kind: "depth", depth });
   rows.push({ kind: "section", label: "checks" });
   for (const check of CHECKS) rows.push({ kind: "check", check });
   return rows;
@@ -193,6 +232,13 @@ function renderRow(row: Row, project: Project, selected: boolean): string[] {
     return [`${marker} ${bullet} ${padEnd(label, 22)}${c.dim(row.interval.id)}`];
   }
 
+  if (row.kind === "depth") {
+    const on = (project.scanDepth ?? "default") === row.depth.id;
+    const bullet = on ? c.cyan(glyph.dot) : c.dim(glyph.ring);
+    const label = selected ? c.bold(row.depth.label) : row.depth.label;
+    return [`${marker} ${bullet} ${padEnd(label, 22)}${c.dim(row.depth.detail)}`];
+  }
+
   const on = (project.coverages ?? []).includes(row.check.id);
   const box = !row.check.available ? c.dim(glyph.track) : on ? c.green(glyph.check) : c.dim(glyph.ring);
   const name = row.check.available
@@ -211,6 +257,7 @@ function headerLines(project: Project): string[] {
   const summary = [
     mode?.label ?? "Manual",
     project.scanMode === "scheduled" ? intervalLabel(project.scanInterval).toLowerCase() : "",
+    `${depthLabel(project.scanDepth).toLowerCase()} depth`,
     `${(project.coverages ?? []).length} of ${AVAILABLE.length} checks`,
   ]
     .filter(Boolean)
@@ -241,6 +288,7 @@ function saver(session: Session, project: Project) {
           coverages: next.coverages ?? [],
           scanMode: (next.scanMode ?? "manual") as ScanMode,
           scanInterval: (next.scanInterval ?? "24h") as ScanInterval,
+          scanDepth: (next.scanDepth ?? "default") as ScanDepth,
         })
         .then((result) => ({ ...next, ...result.project, scan: next.scan })),
     );
@@ -261,9 +309,11 @@ async function settingsScreen(session: Session, initial: Project): Promise<void>
         ? row.mode.label
         : row.kind === "interval"
           ? row.interval.label
-          : row.kind === "check"
-            ? row.check.name
-            : "",
+          : row.kind === "depth"
+            ? row.depth.label
+            : row.kind === "check"
+              ? row.check.name
+              : "",
     emptyMessage: "Nothing matches that filter.",
     selectLabel: (row) => {
       if (!row || row.kind === "section") return null;
@@ -284,6 +334,9 @@ async function settingsScreen(session: Session, initial: Project): Promise<void>
       } else if (row.kind === "interval") {
         if ((project.scanInterval ?? "24h") === row.interval.id) return;
         next = { ...project, scanInterval: row.interval.id };
+      } else if (row.kind === "depth") {
+        if ((project.scanDepth ?? "default") === row.depth.id) return;
+        next = { ...project, scanDepth: row.depth.id };
       } else if (row.kind === "check") {
         if (!row.check.available) {
           context.setStatus(`${row.check.name}: ${row.check.detail}.`);
@@ -310,7 +363,9 @@ async function settingsScreen(session: Session, initial: Project): Promise<void>
             ? `Checks: ${(project.coverages ?? []).join(", ") || "none"}`
             : row.kind === "mode"
               ? `Scanning ${modeLabel(project.scanMode).toLowerCase()}`
-              : `Scanning ${intervalLabel(project.scanInterval).toLowerCase()}`,
+              : row.kind === "depth"
+                ? `Scan depth ${depthLabel(project.scanDepth).toLowerCase()}`
+                : `Scanning ${intervalLabel(project.scanInterval).toLowerCase()}`,
         );
       } catch (error) {
         project = initial;
@@ -331,6 +386,7 @@ export async function settingsShow(globals: GlobalOptions): Promise<number> {
   if (isAgentMode()) {
     out.agentEmit(settingsPayload(project), [
       `cf settings mode scheduled --every 6h --repo ${project.fullName} --agent`,
+      `cf settings depth max --repo ${project.fullName} --agent`,
       `cf settings checks sast,sca,secrets --repo ${project.fullName} --agent`,
     ]);
     return 0;
@@ -346,6 +402,7 @@ export async function settingsShow(globals: GlobalOptions): Promise<number> {
     out.line();
     out.hint("cf settings mode <manual|push|scheduled>");
     out.hint("cf settings every <1h|6h|12h|24h|168h>");
+    out.hint("cf settings depth <default|max>");
     out.hint("cf settings checks <sast,sca,secrets,iac,quality,sbom>");
     out.line();
   }
@@ -357,12 +414,14 @@ export async function settingsMode(
   value: string | undefined,
   options: { every?: string } = {},
 ): Promise<number> {
+  const requested = value ? parseScanMode(value) : null;
+  const every = options.every ? parseScanInterval(options.every) : null;
   const session = await openSession(globals, { auth: true });
   const { project } = await resolveLinkedProject(session, globals);
 
   let mode: ScanMode;
-  if (value) {
-    mode = parseScanMode(value);
+  if (requested) {
+    mode = requested;
   } else {
     mode = parseScanMode(
       await select({
@@ -377,7 +436,7 @@ export async function settingsMode(
     );
   }
 
-  let interval: ScanInterval | undefined = options.every ? parseScanInterval(options.every) : undefined;
+  let interval: ScanInterval | undefined = every ?? undefined;
   if (mode === "scheduled" && !interval && !value && !globals.yes) {
     interval = parseScanInterval(
       await select({
@@ -415,11 +474,12 @@ export async function settingsInterval(
   globals: GlobalOptions,
   value: string | undefined,
 ): Promise<number> {
+  const requested = value ? parseScanInterval(value) : null;
   const session = await openSession(globals, { auth: true });
   const { project } = await resolveLinkedProject(session, globals);
 
-  const interval = value
-    ? parseScanInterval(value)
+  const interval = requested
+    ? requested
     : parseScanInterval(
         await select({
           message: `How often should ${project.fullName} be scanned?`,
@@ -457,6 +517,7 @@ export async function settingsChecks(
   if (options.add && options.remove) {
     throw new UsageError("Pass either --add or --remove, not both.");
   }
+  const requested = values.length > 0 ? parseChecks(values) : null;
 
   const session = await openSession(globals, { auth: true });
   const { project } = await resolveLinkedProject(session, globals);
@@ -477,7 +538,7 @@ export async function settingsChecks(
       initialValues: AVAILABLE.filter((check) => current.has(check.id)).map((check) => check.id),
     });
   } else {
-    const named = parseChecks(values);
+    const named = requested ?? [];
     if (options.add) next = [...new Set([...current, ...named])];
     else if (options.remove) next = [...current].filter((id) => !named.includes(id));
     else next = named;
@@ -502,6 +563,51 @@ export async function settingsChecks(
     ordered.length > 0
       ? `Checks for ${c.bold(project.fullName)}: ${ordered.join(", ")}`
       : `${c.bold(project.fullName)} has no checks enabled`,
+  );
+  out.hint("The change applies from the next scan.");
+  out.line();
+  return 0;
+}
+
+export async function settingsDepth(
+  globals: GlobalOptions,
+  value: string | undefined,
+): Promise<number> {
+  const requested = value ? parseScanDepth(value) : null;
+  const session = await openSession(globals, { auth: true });
+  const { project } = await resolveLinkedProject(session, globals);
+
+  const depth = requested
+    ? requested
+    : parseScanDepth(
+        await select({
+          message: `How hard should ${project.fullName} be scanned?`,
+          initialValue: project.scanDepth ?? "default",
+          choices: SCAN_DEPTHS.map((entry) => ({
+            value: entry.id,
+            label: entry.label,
+            hint: entry.detail,
+          })),
+        }),
+      );
+
+  const updated = await apply(session, project, { scanDepth: depth });
+
+  if (isAgentMode()) {
+    out.agentEmit(settingsPayload(updated), [`cf scan --repo ${project.fullName} --wait --agent`]);
+    return 0;
+  }
+  if (out.isJsonMode()) {
+    out.json(settingsPayload(updated));
+    return 0;
+  }
+
+  out.line();
+  out.success(`${c.bold(project.fullName)} scans at ${depthLabel(depth).toLowerCase()} depth`);
+  out.hint(
+    depth === "max"
+      ? "Max keeps sending passes until nothing new turns up, so scans take longer."
+      : "Default is the balanced pipeline every scan runs.",
   );
   out.hint("The change applies from the next scan.");
   out.line();

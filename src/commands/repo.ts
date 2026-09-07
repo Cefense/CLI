@@ -1,11 +1,12 @@
-import open from "open";
 import { openSession, type GlobalOptions, type Session } from "../core/session.js";
 import { clearRepoDefault, readRepoDefault, writeRepoDefault } from "../core/config.js";
 import { CefenseError, UsageError } from "../core/errors.js";
 import { defaultScope, gitRemote, gitToplevel, matchProject, parseRepoArgument, resolveProject } from "../core/repo.js";
+import { parseProvider, providerLabel, providerOf, type Provider } from "../core/providers.js";
+import { ensureProviderConnected, loadConnections, providerDisconnect } from "./provider.js";
 import type { GithubRepo, Project } from "../core/types.js";
 import * as out from "../ui/output.js";
-import { confirm, confirmByTyping, multiselect, spinner } from "../ui/prompts.js";
+import { confirm, confirmByTyping, multiselect, select } from "../ui/prompts.js";
 import { renderTable } from "../ui/table.js";
 import { relativeTime, terminalWidth } from "../ui/format.js";
 import { c, glyph, scanStatusLabel } from "../ui/theme.js";
@@ -14,71 +15,66 @@ import { watchScan } from "./scan.js";
 import { isAgentMode } from "../ui/mode.js";
 import { compactProject } from "../core/compact.js";
 
-async function ensureGithubConnected(session: Session, assumeYes: boolean): Promise<void> {
-  const status = await session.client.githubStatus();
-  if (status.connected) return;
+/**
+ * Which host a connect is about.
+ *
+ * A repository can live on any of the three, so the host is taken from the
+ * flag, then from what the argument or the git remote says, then from the one
+ * account that is actually connected. Asking is the last resort, because in the
+ * common case exactly one host is connected and the answer is not in doubt.
+ */
+async function resolveProvider(
+  session: Session,
+  globals: GlobalOptions,
+  options: { provider?: string; target?: string },
+): Promise<Provider> {
+  if (options.provider) return parseProvider(options.provider);
 
-  if (!status.configured) {
-    throw new CefenseError("GitHub is not configured on this Cefense instance.", {
-      remedy: "Run cf status for the full picture.",
-    });
-  }
+  const fromTarget = options.target ? parseRepoArgument(options.target)?.provider : undefined;
+  if (fromTarget) return fromTarget;
 
-  const webUrl = session.config?.webUrl ?? session.apiUrl;
-  const target = `${webUrl}/app/repositories`;
+  const connections = await loadConnections(session);
+  const connected = connections.filter((entry) => entry.status.connected);
+  if (connected.length === 1) return connected[0]!.provider;
 
-  out.line();
-  out.warn("Your GitHub account is not connected to Cefense.");
-  out.line();
-  out.line(`    ${c.cyan(target)}`);
-  out.line();
+  const remote = gitRemote()?.provider;
+  if (remote && connected.some((entry) => entry.provider === remote)) return remote;
 
-  if (!assumeYes) {
-    const proceed = await confirm({
-      message: "Open that page in your browser now?",
-      initialValue: true,
-      assumeYes,
-    });
-    if (!proceed) {
-      throw new UsageError("GitHub must be connected before a repository can be added.");
-    }
-  }
+  if (connected.length === 0) return remote ?? "github";
+  if (globals.yes || isAgentMode() || out.isJsonMode()) return connected[0]!.provider;
 
-  void open(target).catch(() => undefined);
-
-  const progress = spinner();
-  progress.start("Waiting for the GitHub connection");
-  const deadline = Date.now() + 5 * 60_000;
-  for (;;) {
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    const next = await session.client.githubStatus().catch(() => null);
-    if (next?.connected) {
-      progress.stop(`GitHub connected as ${next.login}`);
-      return;
-    }
-    if (Date.now() > deadline) {
-      progress.stop("Gave up waiting for the GitHub connection.", "fail");
-      throw new CefenseError("GitHub was not connected in time.", {
-        remedy: `Finish the connection at ${target}, then run cf repo connect again.`,
-      });
-    }
-  }
+  return parseProvider(
+    await select({
+      message: "Which host is the repository on?",
+      choices: connected.map((entry) => ({
+        value: entry.provider,
+        label: providerLabel(entry.provider),
+        hint: entry.status.login ?? undefined,
+      })),
+    }),
+  );
 }
 
 export async function repoConnect(
   globals: GlobalOptions,
   target: string | undefined,
-  options: { watch?: boolean } = {},
+  options: { watch?: boolean; provider?: string } = {},
 ): Promise<number> {
   const session = await openSession(globals, { auth: true });
-  await ensureGithubConnected(session, Boolean(globals.yes));
+  const provider = await resolveProvider(session, globals, { provider: options.provider, target });
+  const host = providerLabel(provider);
+  await ensureProviderConnected(session, provider, { assumeYes: Boolean(globals.yes) });
 
-  const listing = await session.client.githubRepos();
-  if (listing.needsReconnect) {
-    throw new CefenseError("Your GitHub connection has expired.", {
-      remedy: `Reconnect at ${session.config?.webUrl ?? session.apiUrl}/app/repositories.`,
+  const raw = await session.client.providerRepos(provider);
+  if (raw.needsReconnect) {
+    throw new CefenseError(`Your ${host} connection has expired.`, {
+      remedy: `Reconnect with cf provider connect ${provider}.`,
+      code: "provider_reconnect_required",
     });
   }
+  // The listing routes do not echo the host back, so it is stamped on here and
+  // travels with the repository into the connect call.
+  const listing = { ...raw, repos: raw.repos.map((repo) => ({ ...repo, provider })) };
 
   let chosen: GithubRepo[] = [];
 
@@ -87,10 +83,10 @@ export async function repoConnect(
     const repo = listing.repos.find((entry) => entry.fullName.toLowerCase() === wanted);
     if (!repo) {
       throw new UsageError(
-        `${target} is not available to Cefense on GitHub.`,
+        `${target} is not available to Cefense on ${host}.`,
         listing.manageUrl
           ? `Check the spelling, or grant access at ${listing.manageUrl}.`
-          : "Check the spelling, or grant Cefense access to it on GitHub.",
+          : `Check the spelling, or grant Cefense access to it on ${host}.`,
       );
     }
     if (repo.connected) {
@@ -104,7 +100,7 @@ export async function repoConnect(
     const available = listing.repos.filter((repo) => !repo.connected);
     if (available.length === 0) {
       out.line();
-      out.info("Every repository Cefense can see is already connected.");
+      out.info(`Every ${host} repository Cefense can see is already connected.`);
       if (listing.manageUrl) out.hint(`Grant access to more at ${listing.manageUrl}`);
       out.line();
       return 0;
@@ -116,7 +112,7 @@ export async function repoConnect(
       : undefined;
 
     const picked = await multiselect({
-      message: `Connect a repository${listing.login ? `   ${listing.login}` : ""}`,
+      message: `Connect a ${host} repository${listing.login ? `   ${listing.login}` : ""}`,
       choices: available.map((repo) => ({
         value: repo.githubRepoId,
         label: repo.fullName,
@@ -145,10 +141,13 @@ export async function repoConnect(
       out.success(`Connected ${c.bold(repo.fullName)}`);
       connected.push({ project: result.project, scanId: result.scanId });
     } catch (error) {
-      if (error instanceof CefenseError && /token is unavailable|GitHub connection/i.test(error.message)) {
+      if (
+        error instanceof CefenseError &&
+        /token is unavailable|connection unavailable|connection expired/i.test(error.message)
+      ) {
         out.success(`Connected ${c.bold(repo.fullName)}`);
-        out.warn("The scan did not start: your GitHub connection has expired.");
-        out.hint(`Reconnect at ${session.config?.webUrl ?? session.apiUrl}/app/repositories`);
+        out.warn(`The scan did not start: your ${host} connection has expired.`);
+        out.hint(`Reconnect with cf provider connect ${provider}`);
         continue;
       }
       throw error;
@@ -224,6 +223,8 @@ export async function repoList(globals: GlobalOptions): Promise<number> {
 
   const scope = defaultScope();
   const fallback = readRepoDefault(scope);
+  // The host column only earns its width once more than one host is in play.
+  const hosts = new Set(projects.map((project) => providerOf(project)));
 
   out.line();
   out.lines(
@@ -238,6 +239,15 @@ export async function repoList(globals: GlobalOptions): Promise<number> {
           max: 1,
         },
         { header: "repository", value: (project) => project.fullName, min: 16 },
+        ...(hosts.size > 1
+          ? [
+              {
+                header: "host",
+                value: (project: Project) => providerLabel(providerOf(project)),
+                min: 7,
+              },
+            ]
+          : []),
         { header: "visibility", value: (project) => (project.private ? "private" : "public"), min: 7 },
         { header: "status", value: (project) => scanStatusLabel(project.scan?.status), min: 8 },
         {
@@ -339,42 +349,15 @@ export async function repoSetDefault(
 export async function repoDisconnect(
   globals: GlobalOptions,
   target: string | undefined,
-  options: { account?: boolean } = {},
+  options: { account?: boolean; provider?: string } = {},
 ): Promise<number> {
-  const session = await openSession(globals, { auth: true });
-
   if (options.account) {
-    const status = await session.client.githubStatus();
-    if (!status.connected) {
-      out.line();
-      out.info("No GitHub account is connected.");
-      out.line();
-      return 0;
-    }
-    out.line();
-    out.warn(`This disconnects the GitHub account ${c.bold(status.login ?? "")} from Cefense entirely.`);
-    out.hint("Connected repositories stop scanning until you reconnect.");
-    out.line();
-    const ok = await confirmByTyping({
-      message: `Type ${status.login} to confirm`,
-      expected: status.login ?? "",
-      assumeYes: globals.yes,
-    });
-    if (!ok) {
-      out.info("Left connected.");
-      out.line();
-      return 0;
-    }
-    await session.client.disconnectGithubAccount();
-    if (isAgentMode()) {
-      out.agentEmit({ disconnectedAccount: status.login ?? true });
-      return 0;
-    }
-    out.success("GitHub account disconnected");
-    out.line();
-    return 0;
+    // One implementation of "forget this account", so the confirmation and the
+    // warning do not drift between the two ways of reaching it.
+    return providerDisconnect(globals, options.provider ?? "github");
   }
 
+  const session = await openSession(globals, { auth: true });
   const { projects } = await session.client.projects();
   if (projects.length === 0) {
     out.line();

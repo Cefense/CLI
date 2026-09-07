@@ -87,11 +87,73 @@ async function awaitScan(
   return latest;
 }
 
+/**
+ * Connects a repository by URL and scans it in one step.
+ *
+ * GitHub only, because the route resolves the URL against GitHub's API. A
+ * GitLab or Bitbucket project is connected through its own account listing.
+ */
+async function scanUrl(
+  session: Session,
+  url: string,
+  options: { watch?: boolean; wait?: boolean },
+): Promise<number> {
+  const { project, scanId } = await session.client.scanPublicRepo(url);
+
+  if (isAgentMode()) {
+    if (!options.wait) {
+      out.agentEmit({ repository: project.fullName, scanId }, [
+        `cf observed --repo ${project.fullName} --agent`,
+      ]);
+      return 0;
+    }
+    const settled = await awaitScan(session, project.githubRepoId);
+    out.agentEmit(
+      {
+        repository: project.fullName,
+        scanId,
+        status: settled?.status ?? "running",
+        findings: settled?.findingCount ?? null,
+        error: settled?.error ?? null,
+      },
+      [`cf observed --repo ${project.fullName} --severity critical,high --agent`],
+    );
+    return settled?.status === "failed" ? 4 : 0;
+  }
+
+  if (out.isJsonMode()) {
+    out.json({ repository: project.fullName, scanId });
+    return 0;
+  }
+
+  out.line();
+  out.success(`Connected ${c.bold(project.fullName)}`);
+  if (options.watch === false) {
+    out.hint(`scan ${scanId}`);
+    out.line();
+    return 0;
+  }
+  const scan = await watchScan(session.client, project.githubRepoId, project.fullName);
+  out.line();
+  if (scan?.status === "completed") {
+    out.info("Next: review the findings");
+    out.line(`    ${c.dim(`cf observed --repo ${project.fullName}`)}`);
+    out.line();
+  }
+  return scan?.status === "failed" ? 4 : 0;
+}
+
 export async function scanCommand(
   globals: GlobalOptions,
-  options: { watch?: boolean; wait?: boolean; branch?: string } = {},
+  options: { watch?: boolean; wait?: boolean; branch?: string; url?: string } = {},
 ): Promise<number> {
   const session = await openSession(globals, { auth: true });
+  if (options.url) {
+    return scanUrl(session, options.url, {
+      watch: options.watch,
+      wait: options.wait,
+    });
+  }
   const { project } = await resolveLinkedProject(session, globals);
 
   const ref = options.branch?.trim() || null;

@@ -13,7 +13,16 @@ import { statusCommand } from "./commands/status.js";
 import { scanCommand } from "./commands/scan.js";
 import { branchesCommand } from "./commands/branches.js";
 import { commitsCommand } from "./commands/commits.js";
-import { settingsChecks, settingsInterval, settingsMode, settingsShow } from "./commands/settings.js";
+import {
+  settingsChecks,
+  settingsDepth,
+  settingsInterval,
+  settingsMode,
+  settingsShow,
+} from "./commands/settings.js";
+import { providerConnect, providerDisconnect, providerList } from "./commands/provider.js";
+import { auditCommand } from "./commands/audit.js";
+import { triageCommand } from "./commands/triage.js";
 import { sbomCommand } from "./commands/sbom.js";
 import { observedCommand, observedShow } from "./commands/observed.js";
 import { fixCommand } from "./commands/fix.js";
@@ -129,11 +138,15 @@ const repo = program.command("repo").description("manage connected repositories"
 
 withGlobals(repo.command("connect"))
   .argument("[repository]", "owner/name to connect without prompting")
-  .description("connect a GitHub repository and start its first scan")
+  .description("connect a repository and start its first scan")
+  .option("--provider <host>", "github, gitlab, or bitbucket")
   .option("--no-watch", "queue the scan without following its progress")
   .action(
     run((globals, command) =>
-      repoConnect(globals, command.args[0], { watch: command.opts().watch !== false }),
+      repoConnect(globals, command.args[0], {
+        watch: command.opts().watch !== false,
+        provider: command.opts().provider,
+      }),
     ),
   );
 
@@ -153,13 +166,35 @@ withGlobals(repo.command("set-default"))
 
 withGlobals(repo.command("disconnect"))
   .argument("[repository]", "owner/name to disconnect")
-  .description("disconnect a repository, or the whole GitHub account")
-  .option("--account", "disconnect the GitHub account instead of one repository")
+  .description("disconnect a repository, or a whole code host account")
+  .option("--account", "disconnect the code host account instead of one repository")
+  .option("--provider <host>", "with --account: github, gitlab, or bitbucket")
   .action(
     run((globals, command) =>
-      repoDisconnect(globals, command.args[0], { account: Boolean(command.opts().account) }),
+      repoDisconnect(globals, command.args[0], {
+        account: Boolean(command.opts().account),
+        provider: command.opts().provider,
+      }),
     ),
   );
+
+const provider = program
+  .command("provider")
+  .description("connect the code hosts your repositories live on");
+
+withGlobals(provider.command("list", { isDefault: true }))
+  .description("show GitHub, GitLab, and Bitbucket, and which are connected")
+  .action(run((globals) => providerList(globals)));
+
+withGlobals(provider.command("connect"))
+  .argument("[host]", "github, gitlab, or bitbucket")
+  .description("connect a code host account")
+  .action(run((globals, command) => providerConnect(globals, command.args[0])));
+
+withGlobals(provider.command("disconnect"))
+  .argument("[host]", "github, gitlab, or bitbucket")
+  .description("disconnect a code host account")
+  .action(run((globals, command) => providerDisconnect(globals, command.args[0])));
 
 withGlobals(program.command("status"))
   .description("the workspace dashboard: repositories, scans, findings")
@@ -169,12 +204,14 @@ withGlobals(program.command("status"))
 withGlobals(program.command("scan"))
   .description("rescan a repository")
   .option("--branch <name>", "scan a branch other than the default")
+  .option("--url <repository-url>", "connect a GitHub repository by URL and scan it")
   .option("--no-watch", "queue the scan without following its progress")
   .option("--wait", "block until the scan finishes")
   .action(
     run((globals, command) =>
       scanCommand(globals, {
         branch: command.opts().branch,
+        url: command.opts().url,
         watch: command.opts().watch !== false,
         wait: Boolean(command.opts().wait),
       }),
@@ -186,9 +223,45 @@ withGlobals(program.command("branches"))
   .action(run((globals) => branchesCommand(globals)));
 
 withGlobals(program.command("commits"))
-  .description("the scanned commit history, and what each one introduced")
-  .option("--limit <n>", "maximum commits to fetch", (value) => Number.parseInt(value, 10))
-  .action(run((globals, command) => commitsCommand(globals, { limit: command.opts().limit })));
+  .description("the commit history, and what each scanned commit introduced")
+  .option("--branch <name>", "read the history of a branch other than the default")
+  .option("--limit <n>", "show at most this many commits", (value) => Number.parseInt(value, 10))
+  .action(
+    run((globals, command) =>
+      commitsCommand(globals, {
+        limit: command.opts().limit,
+        branch: command.opts().branch,
+      }),
+    ),
+  );
+
+withGlobals(program.command("triage"))
+  .argument("<finding-id>", "the finding to record a decision about")
+  .argument("<decision>", "open, false-positive, or accepted-risk")
+  .description("record whether a finding is real, and whether you accept it")
+  .option("--note <text>", "why, kept with the decision")
+  .action(
+    run((globals, command) =>
+      triageCommand(globals, command.args[0] as string, command.args[1] as string, {
+        note: command.opts().note,
+      }),
+    ),
+  );
+
+withGlobals(program.command("audit"))
+  .description("everything that has happened on this account, newest first")
+  .option("--limit <n>", "maximum events to fetch", (value) => Number.parseInt(value, 10))
+  .option("--before <timestamp>", "only events older than this ISO timestamp")
+  .option("--category <list>", "scan,finding,fix,repository,settings,export,account,integration")
+  .action(
+    run((globals, command) =>
+      auditCommand(globals, {
+        limit: command.opts().limit,
+        before: command.opts().before,
+        category: command.opts().category,
+      }),
+    ),
+  );
 
 function findingsOptions(command: Command): Command {
   return withGlobals(command)
@@ -303,6 +376,11 @@ withGlobals(settings.command("every"))
   .argument("[interval]", "1h, 6h, 12h, 24h, or 168h")
   .description("scan on a schedule, this often")
   .action(run((globals, command) => settingsInterval(globals, command.args[0])));
+
+withGlobals(settings.command("depth"))
+  .argument("[depth]", "default or max")
+  .description("how hard each scan looks")
+  .action(run((globals, command) => settingsDepth(globals, command.args[0])));
 
 withGlobals(settings.command("checks"))
   .argument("[checks...]", "sast, sca, secrets, iac, quality, sbom, or a preset")

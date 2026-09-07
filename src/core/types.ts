@@ -1,3 +1,7 @@
+import type { Provider } from "./providers.js";
+
+export type { Provider };
+
 export interface CliConfigResponse {
   apiVersion: number;
   minimumCliVersion: string;
@@ -45,24 +49,35 @@ export interface HealthResponse {
   githubConfigured: boolean;
   githubAppConfigured: boolean;
   githubWebhookConfigured: boolean;
+  clerkWebhookConfigured?: boolean;
   stripeConfigured: boolean;
   adminConfigured: boolean;
   scannerConfigured: boolean;
+  cacheConfigured?: boolean;
   embeddingsConfigured: boolean;
-  chromaConfigured: boolean;
   scannerPipelineConfigured: boolean;
   scanRunner: string;
 }
 
-export interface GithubStatus {
+/**
+ * A code host account, as every provider's status route reports it.
+ *
+ * GitHub is the only one with an App to install, so `appConfigured` and
+ * `manageUrl` are absent on the others rather than false.
+ */
+export interface ProviderStatus {
   configured: boolean;
-  appConfigured: boolean;
   connected: boolean;
   login?: string | null;
+  appConfigured?: boolean;
   manageUrl?: string | null;
+  host?: string | null;
 }
 
+export type GithubStatus = ProviderStatus;
+
 export interface GithubRepo {
+  provider?: Provider;
   githubRepoId: string;
   fullName: string;
   name: string;
@@ -70,6 +85,7 @@ export interface GithubRepo {
   private: boolean;
   defaultBranch: string | null;
   htmlUrl: string | null;
+  description?: string | null;
   language?: string | null;
   updatedAt?: string | null;
   stars?: number | null;
@@ -81,6 +97,7 @@ export interface GithubReposResponse {
   needsReconnect?: boolean;
   login?: string | null;
   manageUrl?: string | null;
+  host?: string | null;
   installations?: Array<{ installationId: string; accountLogin: string }>;
   repos: GithubRepo[];
 }
@@ -90,6 +107,12 @@ export type ScanStatus = "queued" | "running" | "completed" | "failed";
 export type ScanMode = "manual" | "push" | "pull-request" | "scheduled";
 
 export type ScanInterval = "1h" | "6h" | "12h" | "24h" | "168h";
+
+/**
+ * How hard a scan looks. The product calls this scan mode; the wire name is
+ * `scanDepth` because `scanMode` already means what triggers a scan.
+ */
+export type ScanDepth = "default" | "max";
 
 export type SbomFormat = "cyclonedx" | "spdx";
 
@@ -107,6 +130,7 @@ export interface ScanSummary {
 
 export interface Project {
   id: string;
+  provider?: Provider;
   githubRepoId: string;
   fullName: string;
   name: string;
@@ -117,7 +141,9 @@ export interface Project {
   coverages: string[];
   scanMode?: ScanMode;
   scanInterval?: ScanInterval;
+  scanDepth?: ScanDepth;
   lastScheduledAt?: string | null;
+  agentLastSeenAt?: string | null;
   profile: {
     languages?: string[];
     frameworks?: string[];
@@ -125,6 +151,11 @@ export interface Project {
   } | null;
   connectedAt: string;
   scan: ScanSummary | null;
+}
+
+export interface ProjectsResponse {
+  projects: Project[];
+  agentLastSeenAt?: string | null;
 }
 
 export interface Branch {
@@ -141,6 +172,13 @@ export interface BranchesResponse {
   branches: Branch[];
 }
 
+/**
+ * A commit on the branch being read.
+ *
+ * The history comes from the host, not from Cefense's scans, so most entries
+ * describe a commit nothing has scanned: everything below `committedAt` is null
+ * until a scan of that exact commit exists.
+ */
 export interface CommitEntry {
   sha: string;
   message: string;
@@ -148,18 +186,21 @@ export interface CommitEntry {
   authorLogin: string | null;
   authorAvatarUrl: string | null;
   committedAt: string;
-  scanId: string;
-  scanStatus: ScanStatus;
-  findingCount: number;
+  scanned: boolean;
+  scanId: string | null;
+  scanStatus: ScanStatus | null;
+  findingCount: number | null;
   counts: {
     introduced: number;
     resolved: number;
     suppressed: number;
-  };
+  } | null;
 }
 
 export interface CommitsResponse {
   commits: CommitEntry[];
+  branch: string | null;
+  historyAvailable: boolean;
 }
 
 export type WireSeverity = "critical" | "high" | "medium" | "low";
@@ -173,6 +214,15 @@ export interface IntelligenceSource {
   matchType: string;
   confidence: number;
   rationale: string;
+}
+
+/** The commit a finding was first seen in, when reconciliation recorded one. */
+export interface FindingOrigin {
+  sha: string;
+  message: string;
+  authorName: string;
+  authorAvatarUrl: string | null;
+  committedAt: string;
 }
 
 export interface EvidenceStep {
@@ -199,6 +249,7 @@ export interface Finding {
   type: string | null;
   state: string;
   confidence: number | null;
+  exploitPath: string | null;
   symbol: string | null;
   dataflow: {
     sourceKind: string;
@@ -222,7 +273,16 @@ export interface Finding {
   }>;
   fingerprint: string | null;
   createdAt: string;
+  introducedIn?: FindingOrigin | null;
   intelligenceSources: IntelligenceSource[];
+}
+
+/** A user's decision about a finding, kept per repository and per fingerprint. */
+export type TriageStatus = "open" | "false_positive" | "accepted_risk";
+
+export interface TriageResponse {
+  ok: boolean;
+  status: TriageStatus;
 }
 
 export interface FindingChain {
@@ -363,4 +423,30 @@ export interface ReferralsResponse {
     proof: boolean;
     redeemedAt: string;
   }>;
+}
+
+export interface AuditEvent {
+  id: string;
+  at: string;
+  action: string;
+  category:
+    | "scan"
+    | "finding"
+    | "fix"
+    | "repository"
+    | "settings"
+    | "export"
+    | "account"
+    | "integration";
+  outcome: "success" | "warning" | "failure";
+  actor: { kind: string; id: string; name: string };
+  target: { type: string; id: string; label: string };
+  summary: string;
+  changes?: Array<{ field: string; from: string; to: string }>;
+  source?: Record<string, string>;
+  metadata?: Record<string, string>;
+}
+
+export interface AuditResponse {
+  events: AuditEvent[];
 }

@@ -1,6 +1,7 @@
 import open from "open";
 import { openSession, type GlobalOptions } from "../core/session.js";
-import type { CommitEntry, Project } from "../core/types.js";
+import type { CommitEntry, CommitsResponse, Project } from "../core/types.js";
+import { commitUrl, providerLabel, providerOf } from "../core/providers.js";
 import { resolveLinkedProject } from "./link.js";
 import { observedCommand } from "./observed.js";
 import { browse } from "../ui/browser.js";
@@ -13,23 +14,27 @@ import { compactCommit } from "../core/compact.js";
 
 export interface CommitsOptions {
   limit?: number;
+  branch?: string;
 }
 
 function subject(commit: CommitEntry): string {
   return commit.message.split("\n")[0]?.trim() || "(no commit message)";
 }
 
+/**
+ * What a commit's scan changed.
+ *
+ * The history is the repository's, not Cefense's, so most commits have never
+ * been scanned. Those say so rather than reading as a scan that found nothing.
+ */
 function delta(commit: CommitEntry): string {
+  if (!commit.counts) return c.dim("not scanned");
   const parts = [
     commit.counts.introduced > 0 ? c.red(`+${commit.counts.introduced}`) : "",
     commit.counts.resolved > 0 ? c.green(`-${commit.counts.resolved}`) : "",
     commit.counts.suppressed > 0 ? c.dim(`~${commit.counts.suppressed}`) : "",
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(" ") : c.dim("no change");
-}
-
-function commitUrl(project: Project, commit: CommitEntry): string | null {
-  return project.htmlUrl ? `${project.htmlUrl}/commit/${commit.sha}` : null;
 }
 
 function commitDetail(project: Project, commit: CommitEntry, width: number): string[] {
@@ -59,20 +64,24 @@ function commitDetail(project: Project, commit: CommitEntry, width: number): str
   push();
   push(c.dim("SCAN"));
   push();
-  const facts: Array<[string, string]> = [
-    ["Status", scanStatusLabel(commit.scanStatus)],
-    ["Findings", String(commit.findingCount)],
-    ["Introduced", commit.counts.introduced > 0 ? c.red(String(commit.counts.introduced)) : "0"],
-    ["Resolved", commit.counts.resolved > 0 ? c.green(String(commit.counts.resolved)) : "0"],
-    ["Suppressed", String(commit.counts.suppressed)],
-    ["Scan id", c.dim(commit.scanId)],
-  ];
-  for (const row of keyValue(facts, 11)) push(row);
+  if (!commit.scanId) {
+    push(c.dim("This commit has never been scanned."));
+  } else {
+    const counts = commit.counts;
+    const facts: Array<[string, string]> = [
+      ["Status", scanStatusLabel(commit.scanStatus)],
+      ["Findings", commit.findingCount === null ? "-" : String(commit.findingCount)],
+      ["Introduced", counts && counts.introduced > 0 ? c.red(String(counts.introduced)) : "0"],
+      ["Resolved", counts && counts.resolved > 0 ? c.green(String(counts.resolved)) : "0"],
+      ["Suppressed", String(counts?.suppressed ?? 0)],
+      ["Scan id", c.dim(commit.scanId)],
+    ];
+    for (const row of keyValue(facts, 11)) push(row);
+    push();
+    push(c.dim("Press f to read the findings this scan recorded."));
+  }
 
-  push();
-  push(c.dim("Press f to read the findings this scan recorded."));
-
-  const url = commitUrl(project, commit);
+  const url = commitUrl(project, commit.sha);
   if (url) {
     push();
     push(c.dim(url));
@@ -87,18 +96,29 @@ export async function commitsCommand(
 ): Promise<number> {
   const session = await openSession(globals, { auth: true });
   const { project } = await resolveLinkedProject(session, globals);
+  const host = providerLabel(providerOf(project));
 
-  let commits = (await session.client.commits(project.githubRepoId, { limit: options.limit })).commits;
+  // The route returns one page of the host's history, so a limit is a cut of
+  // what came back rather than something the host is asked for.
+  const cap = (listing: CommitsResponse): CommitEntry[] =>
+    options.limit ? listing.commits.slice(0, options.limit) : listing.commits;
+
+  const query = options.branch ? { branch: options.branch } : {};
+  let listing = await session.client.commits(project.githubRepoId, query);
+  let commits = cap(listing);
 
   if (isAgentMode()) {
+    const scanned = commits.find((commit) => commit.scanId);
     out.agentEmit(
       {
         repository: project.fullName,
+        branch: listing.branch,
+        historyAvailable: listing.historyAvailable,
         commits: commits.map(compactCommit),
       },
-      commits[0]
+      scanned
         ? [
-            `cf observed --repo ${project.fullName} --scan ${commits[0].scanId} --agent`,
+            `cf observed --repo ${project.fullName} --scan ${scanned.scanId} --agent`,
             `cf scan --repo ${project.fullName} --wait --agent`,
           ]
         : [`cf scan --repo ${project.fullName} --wait --agent`],
@@ -107,14 +127,18 @@ export async function commitsCommand(
   }
 
   if (out.isJsonMode()) {
-    out.json({ repository: project.fullName, commits });
+    out.json({ repository: project.fullName, ...listing, commits });
     return 0;
   }
 
   if (commits.length === 0) {
     out.line();
-    out.info(`No scan of ${c.bold(project.fullName)} has a commit recorded yet.`);
-    out.hint("Run cf scan, then look again.");
+    if (!listing.historyAvailable) {
+      out.info(`Cefense cannot read the commit history of ${c.bold(project.fullName)}.`);
+      out.hint(`Reconnect ${host} with cf provider connect ${providerOf(project)}.`);
+    } else {
+      out.info(`${c.bold(project.fullName)} has no commits on ${listing.branch ?? "its default branch"}.`);
+    }
     out.line();
     return 0;
   }
@@ -127,7 +151,12 @@ export async function commitsCommand(
           { header: "commit", value: (commit) => commit.sha.slice(0, 7), min: 7, max: 7 },
           { header: "subject", value: subject, min: 20 },
           { header: "author", value: (commit) => commit.authorLogin ?? commit.authorName, min: 8 },
-          { header: "findings", value: (commit) => String(commit.findingCount), align: "right", min: 5 },
+          {
+            header: "findings",
+            value: (commit) => (commit.findingCount === null ? "-" : String(commit.findingCount)),
+            align: "right",
+            min: 5,
+          },
           { header: "delta", value: delta, min: 9 },
           { header: "when", value: (commit) => relativeTime(commit.committedAt), min: 9 },
         ],
@@ -142,11 +171,13 @@ export async function commitsCommand(
 
   await browse(commits, {
     header: (visible) => {
-      const introduced = visible.reduce((sum, commit) => sum + commit.counts.introduced, 0);
-      const resolved = visible.reduce((sum, commit) => sum + commit.counts.resolved, 0);
+      const introduced = visible.reduce((sum, commit) => sum + (commit.counts?.introduced ?? 0), 0);
+      const resolved = visible.reduce((sum, commit) => sum + (commit.counts?.resolved ?? 0), 0);
+      const scanned = visible.filter((commit) => commit.scanned).length;
+      const name = listing.branch ? `${project.fullName}${c.cyan(`#${listing.branch}`)}` : project.fullName;
       return [
         "",
-        `  ${c.bold(project.fullName)}   ${c.dim(`${visible.length} scanned ${visible.length === 1 ? "commit" : "commits"}`)}`,
+        `  ${c.bold(name)}   ${c.dim(`${visible.length} ${visible.length === 1 ? "commit" : "commits"}, ${scanned} scanned`)}`,
         `  ${c.red(`${introduced} introduced`)}${c.dim("  ·  ")}${c.green(`${resolved} resolved`)}`,
         "",
       ];
@@ -162,25 +193,26 @@ export async function commitsCommand(
     filterText: (commit) => `${commit.sha} ${commit.message} ${commit.authorLogin ?? commit.authorName}`,
     emptyMessage: "No commit matches that filter.",
     refresh: async () => {
-      commits = (await session.client.commits(project.githubRepoId, { limit: options.limit })).commits;
+      listing = await session.client.commits(project.githubRepoId, query);
+      commits = cap(listing);
       return commits;
     },
     actions: [
       {
         key: "f",
-        label: "findings",
+        label: (commit) => (commit?.scanId ? "findings" : null),
         run: (commit, context) => {
-          if (!commit) return;
+          if (!commit?.scanId) return;
           followUp = commit;
           context.close();
         },
       },
       {
         key: "o",
-        label: "github",
+        label: host.toLowerCase(),
         run: (commit) => {
           if (!commit) return;
-          const url = commitUrl(project, commit);
+          const url = commitUrl(project, commit.sha);
           if (url) void open(url).catch(() => undefined);
         },
       },
@@ -188,7 +220,7 @@ export async function commitsCommand(
   });
 
   const pending = followUp as CommitEntry | null;
-  if (pending) {
+  if (pending?.scanId) {
     return observedCommand({ ...globals, repo: project.fullName }, { scanId: pending.scanId });
   }
   return 0;

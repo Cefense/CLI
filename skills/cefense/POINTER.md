@@ -13,17 +13,20 @@ cf fix publish <finding-id> --yes --agent
 cf fix merge <finding-id> --yes --agent
 ```
 
-It also reads branches, the scanned commit history, scan settings, and the component inventory:
+It also reads branches, the commit history, scan settings, the account's activity log, and the component inventory:
 
 ```sh
 cf branches --repo <owner/name> --agent
 cf scan --repo <owner/name> --branch <name> --wait --agent
-cf commits --repo <owner/name> --agent
+cf commits --repo <owner/name> --branch <name> --agent
 cf settings --repo <owner/name> --agent
+cf audit --agent
 cf sbom --repo <owner/name> --format cyclonedx --agent
 ```
 
-Every command takes `--agent` and prints one line of JSON on stdout. Branch on `error.code`, never on `error.message`. `cf fix publish` opens a real pull request and `cf fix merge` lands it on the default branch, so ask the user before running either, and treat merging as a separate ask from opening. `cf settings` writes the user's scanning policy, so ask before changing it too.
+Repositories live on GitHub, GitLab, or Bitbucket, and every command above works the same on all three. `cf triage <finding-id> false-positive` records the user's decision about a finding.
+
+Every command takes `--agent` and prints one line of JSON on stdout. Branch on `error.code`, never on `error.message`. `cf fix publish` opens a real pull request and `cf fix merge` lands it on the default branch, so ask the user before running either, and treat merging as a separate ask from opening. `cf settings` writes the user's scanning policy and `cf triage` records their judgement about a finding under their name, so ask before either.
 
 Read `{{reference}}` before using any of this. It is the full guide: filters, the fix lifecycle, error codes, and how to read a finding.
 

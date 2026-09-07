@@ -3,11 +3,13 @@ import { readRepoDefault } from "./config.js";
 import { UsageError } from "./errors.js";
 import type { CefenseClient } from "./client.js";
 import type { Project } from "./types.js";
+import { providerHost, PROVIDERS, type Provider } from "./providers.js";
 
 export interface RepoLocation {
   owner: string;
   name: string;
   fullName: string;
+  provider?: Provider;
 }
 
 function git(args: string[], cwd: string): string | null {
@@ -27,21 +29,53 @@ export function gitToplevel(cwd = process.cwd()): string | null {
   return git(["rev-parse", "--show-toplevel"], cwd);
 }
 
-export function parseGithubRemote(url: string): RepoLocation | null {
+function escapeHost(host: string): string {
+  return host.replace(/\./g, "\\.");
+}
+
+/**
+ * Reads owner and name out of any remote form git writes, for one host.
+ *
+ * GitLab subgroups nest (`group/subgroup/project`), so everything between the
+ * host and the last segment is the owner rather than only the first segment.
+ */
+function parseRemoteFor(provider: Provider, url: string): RepoLocation | null {
+  const host = escapeHost(providerHost(provider));
   const cleaned = url.trim().replace(/\.git$/i, "");
   const patterns = [
-    /^git@github\.com:([^/]+)\/(.+)$/i,
-    /^ssh:\/\/git@github\.com\/([^/]+)\/(.+)$/i,
-    /^https?:\/\/(?:[^@]+@)?github\.com\/([^/]+)\/([^/]+)/i,
-    /^github\.com\/([^/]+)\/([^/]+)/i,
+    new RegExp(`^git@${host}:(.+)$`, "i"),
+    new RegExp(`^ssh://git@${host}/(.+)$`, "i"),
+    new RegExp(`^https?://(?:[^@]+@)?${host}/(.+)$`, "i"),
+    new RegExp(`^${host}/(.+)$`, "i"),
   ];
   for (const pattern of patterns) {
     const match = cleaned.match(pattern);
-    if (match?.[1] && match[2]) {
-      const owner = match[1];
-      const name = match[2].split("/")[0]!;
-      return { owner, name, fullName: `${owner}/${name}` };
-    }
+    const path = match?.[1];
+    if (!path) continue;
+    const segments = path.split("/").filter(Boolean);
+    if (segments.length < 2) continue;
+    const name = segments[segments.length - 1]!;
+    const owner = segments.slice(0, -1).join("/");
+    return { owner, name, fullName: `${owner}/${name}`, provider };
+  }
+  return null;
+}
+
+/** GitHub remotes only. Kept narrow because callers use it to mean "on GitHub". */
+export function parseGithubRemote(url: string): RepoLocation | null {
+  const location = parseRemoteFor("github", url);
+  if (!location) return null;
+  // A GitHub path is always owner/name, so a deeper one is not a repository.
+  return location.owner.includes("/") ? null : location;
+}
+
+/** A remote on any host Cefense connects to. */
+export function parseGitRemote(url: string): RepoLocation | null {
+  for (const provider of PROVIDERS) {
+    const location = parseRemoteFor(provider, url);
+    if (!location) continue;
+    if (provider === "github" && location.owner.includes("/")) continue;
+    return location;
   }
   return null;
 }
@@ -51,7 +85,7 @@ export function gitRemote(cwd = process.cwd()): RepoLocation | null {
     git(["remote", "get-url", "origin"], cwd) ??
     git(["remote", "get-url", "upstream"], cwd) ??
     null;
-  return url ? parseGithubRemote(url) : null;
+  return url ? parseGitRemote(url) : null;
 }
 
 export function defaultScope(cwd = process.cwd()): string {
@@ -59,7 +93,7 @@ export function defaultScope(cwd = process.cwd()): string {
 }
 
 export function parseRepoArgument(value: string): RepoLocation | null {
-  const fromUrl = parseGithubRemote(value);
+  const fromUrl = parseGitRemote(value);
   if (fromUrl) return fromUrl;
   const parts = value.trim().replace(/^\/+|\/+$/g, "").split("/");
   if (parts.length === 2 && parts[0] && parts[1]) {

@@ -1,6 +1,7 @@
 import open from "open";
 import { openSession, type GlobalOptions } from "../core/session.js";
 import type { Branch, BranchesResponse, Project } from "../core/types.js";
+import { providerLabel, providerOf, treeUrl } from "../core/providers.js";
 import { resolveLinkedProject } from "./link.js";
 import { watchScan } from "./scan.js";
 import { observedCommand } from "./observed.js";
@@ -13,7 +14,7 @@ import { isAgentMode } from "../ui/mode.js";
 import { compactBranch } from "../core/compact.js";
 
 function branchUrl(project: Project, branch: Branch): string | null {
-  return project.htmlUrl ? `${project.htmlUrl}/tree/${branch.name}` : null;
+  return treeUrl(project, branch.name);
 }
 
 function branchDetail(project: Project, branch: Branch, defaultBranch: string | null): string[] {
@@ -55,6 +56,7 @@ function branchDetail(project: Project, branch: Branch, defaultBranch: string | 
 export async function branchesCommand(globals: GlobalOptions): Promise<number> {
   const session = await openSession(globals, { auth: true });
   const { project } = await resolveLinkedProject(session, globals);
+  const host = providerLabel(providerOf(project));
 
   let listing: BranchesResponse = await session.client.branches(project.githubRepoId);
 
@@ -80,7 +82,7 @@ export async function branchesCommand(globals: GlobalOptions): Promise<number> {
 
   if (listing.branches.length === 0) {
     out.line();
-    out.info(`${c.bold(project.fullName)} has no branches Cefense can see.`);
+    out.info(`${c.bold(project.fullName)} has no branches Cefense can see on ${host}.`);
     out.line();
     return 0;
   }
@@ -156,7 +158,7 @@ export async function branchesCommand(globals: GlobalOptions): Promise<number> {
       },
       {
         key: "o",
-        label: "github",
+        label: host.toLowerCase(),
         run: (branch) => {
           if (!branch) return;
           const url = branchUrl(project, branch);

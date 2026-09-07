@@ -5,6 +5,7 @@ import { USER_AGENT } from "../version.js";
 import { isAgentMode } from "../ui/mode.js";
 import type {
   Article,
+  AuditResponse,
   ArticleDetail,
   ArticlesResponse,
   BillingCatalog,
@@ -24,12 +25,25 @@ import type {
   MeResponse,
   ProfileResponse,
   Project,
+  ProjectsResponse,
+  Provider,
+  ProviderStatus,
   ReferralsResponse,
   SbomFormat,
+  ScanDepth,
   ScanInterval,
   ScanMode,
   StoredCredentials,
+  TriageResponse,
+  TriageStatus,
 } from "./types.js";
+
+export interface RepoSettings {
+  coverages?: string[];
+  scanMode?: ScanMode;
+  scanInterval?: ScanInterval;
+  scanDepth?: ScanDepth;
+}
 
 const RETRYABLE = new Set([429, 502, 503, 504]);
 const MAX_ATTEMPTS = 3;
@@ -196,10 +210,17 @@ export class CefenseClient {
       });
     }
     if (response.status === 409) {
+      // The host names itself in the message, so the remedy can point at the
+      // right account instead of always telling a GitLab user to fix GitHub.
+      const host = /gitlab/i.test(message ?? "")
+        ? "GitLab"
+        : /bitbucket/i.test(message ?? "")
+          ? "Bitbucket"
+          : /github/i.test(message ?? "")
+            ? "GitHub"
+            : null;
       return new CefenseError(message ?? "The request conflicted with the current state.", {
-        remedy: /github/i.test(message ?? "")
-          ? `Reconnect GitHub at ${webUrl}/app/repositories.`
-          : null,
+        remedy: host ? `Reconnect ${host} with cf provider connect ${host.toLowerCase()}.` : null,
       });
     }
     if (response.status === 503) {
@@ -218,24 +239,63 @@ export class CefenseClient {
     return this.request<MeResponse>("GET", "/api/me");
   }
 
+  /**
+   * Account state for one code host.
+   *
+   * Every provider answers the same three routes under its own prefix, so the
+   * host is a path segment rather than three near-identical methods.
+   */
+  providerStatus(provider: Provider): Promise<ProviderStatus> {
+    return this.request<ProviderStatus>("GET", `/api/${provider}/status`);
+  }
+
+  providerRepos(provider: Provider): Promise<GithubReposResponse> {
+    return this.request<GithubReposResponse>("GET", `/api/${provider}/repos`);
+  }
+
+  /** Starts an authorization, returning the URL the user has to visit. */
+  startProviderConnect(
+    provider: Provider,
+    options: { reauthorize?: boolean } = {},
+  ): Promise<{ authorizeUrl: string }> {
+    return this.request("POST", `/api/${provider}/connect`, {
+      body: provider === "github" && options.reauthorize ? { mode: "reauthorize" } : {},
+    });
+  }
+
+  disconnectProviderAccount(provider: Provider): Promise<{ ok: boolean }> {
+    return this.request("POST", `/api/${provider}/account/disconnect`);
+  }
+
   githubStatus(): Promise<GithubStatus> {
-    return this.request<GithubStatus>("GET", "/api/github/status");
+    return this.providerStatus("github");
   }
 
   githubRepos(): Promise<GithubReposResponse> {
-    return this.request<GithubReposResponse>("GET", "/api/github/repos");
+    return this.providerRepos("github");
   }
 
-  projects(): Promise<{ projects: Project[] }> {
-    return this.request<{ projects: Project[] }>("GET", "/api/github/projects");
+  projects(): Promise<ProjectsResponse> {
+    return this.request<ProjectsResponse>("GET", "/api/github/projects");
+  }
+
+  /**
+   * Connects a repository by URL and scans it in one step.
+   *
+   * GitHub only: the route resolves the URL against GitHub's API, so a GitLab
+   * or Bitbucket project has to be connected through its own account listing.
+   */
+  scanPublicRepo(url: string): Promise<{ project: Project; scanId: string }> {
+    return this.request("POST", "/api/github/scan-public-repo", { body: { url } });
   }
 
   connectRepo(
     repo: GithubRepo,
-    settings: { coverages?: string[]; scanMode?: ScanMode; scanInterval?: ScanInterval } = {},
+    settings: RepoSettings = {},
   ): Promise<{ project: Project; scanId: string }> {
     return this.request("POST", "/api/github/repos/connect", {
       body: {
+        provider: repo.provider ?? "github",
         githubRepoId: repo.githubRepoId,
         fullName: repo.fullName,
         name: repo.name,
@@ -246,6 +306,7 @@ export class CefenseClient {
         ...(settings.coverages ? { coverages: settings.coverages } : {}),
         ...(settings.scanMode ? { scanMode: settings.scanMode } : {}),
         ...(settings.scanInterval ? { scanInterval: settings.scanInterval } : {}),
+        ...(settings.scanDepth ? { scanDepth: settings.scanDepth } : {}),
       },
     });
   }
@@ -257,10 +318,11 @@ export class CefenseClient {
    */
   updateRepoSettings(
     project: Project,
-    settings: { coverages?: string[]; scanMode?: ScanMode; scanInterval?: ScanInterval },
+    settings: RepoSettings,
   ): Promise<{ project: Project; scanId: string | null }> {
     return this.request("POST", "/api/github/repos/connect", {
       body: {
+        provider: project.provider ?? "github",
         githubRepoId: project.githubRepoId,
         fullName: project.fullName,
         name: project.name,
@@ -271,6 +333,7 @@ export class CefenseClient {
         coverages: settings.coverages ?? project.coverages ?? [],
         ...(settings.scanMode ? { scanMode: settings.scanMode } : {}),
         ...(settings.scanInterval ? { scanInterval: settings.scanInterval } : {}),
+        ...(settings.scanDepth ? { scanDepth: settings.scanDepth } : {}),
       },
     });
   }
@@ -296,12 +359,32 @@ export class CefenseClient {
     );
   }
 
-  commits(githubRepoId: string, query: { limit?: number } = {}): Promise<CommitsResponse> {
+  commits(githubRepoId: string, query: { branch?: string } = {}): Promise<CommitsResponse> {
     return this.request<CommitsResponse>(
       "GET",
       `/api/github/projects/${encodeURIComponent(githubRepoId)}/commits`,
       { query },
     );
+  }
+
+  /**
+   * Records a decision about a finding.
+   *
+   * Keyed by the finding's fingerprint on the server, so the decision survives
+   * the rescan that replaces this scan's rows.
+   */
+  triageFinding(
+    findingId: string,
+    status: TriageStatus,
+    note?: string,
+  ): Promise<TriageResponse> {
+    return this.request("POST", `/api/github/findings/${encodeURIComponent(findingId)}/triage`, {
+      body: note ? { status, note } : { status },
+    });
+  }
+
+  auditEvents(query: { limit?: number; before?: string } = {}): Promise<AuditResponse> {
+    return this.request<AuditResponse>("GET", "/api/audit", { query });
   }
 
   sbomForRepository(githubRepoId: string, format: SbomFormat): Promise<string> {
