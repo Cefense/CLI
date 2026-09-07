@@ -24,6 +24,10 @@ export function fixLabel(fix: Fix | null): string {
       return c.cyan(`${glyph.pulse} publishing`);
     case "opened":
       return c.green(fix.prNumber ? `${glyph.check} PR #${fix.prNumber}` : `${glyph.check} PR open`);
+    case "merged":
+      return c.green(fix.prNumber ? `${glyph.check} PR #${fix.prNumber} merged` : `${glyph.check} merged`);
+    case "closed":
+      return c.yellow(fix.prNumber ? `${glyph.ring} PR #${fix.prNumber} closed` : `${glyph.ring} PR closed`);
     case "failed":
       return c.red(`${glyph.cross} fix failed`);
     default:
@@ -125,7 +129,7 @@ export function fixActions<T>(
         if (!found) return null;
         const status = found.fix?.status;
         if (status === "generating" || status === "publishing") return null;
-        if (status === "opened") return null;
+        if (status === "opened" || status === "merged") return null;
         if (status === "failed") return "retry fix";
         if (status === "ready") return "regenerate";
         return "generate fix";

@@ -85,9 +85,6 @@ export function progressBar(done: number, total: number, width = 24): string {
   return filled + track;
 }
 
-export function pluralise(count: number, singular: string, plural?: string): string {
-  return count === 1 ? singular : (plural ?? `${singular}s`);
-}
 
 export function money(amount: number | null, currency: string | null): string {
   if (amount === null || !currency) return "";

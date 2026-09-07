@@ -73,10 +73,6 @@ export const glyph = {
   pulseOff: "\u25B1",
 };
 
-export function severityBadge(severity: WireSeverity | string): string {
-  const label = displaySeverity(severity);
-  return severityColor(severity)(`${glyph.dot} ${label.toLowerCase().padEnd(8)}`);
-}
 
 export function scanStatusLabel(status: string | null | undefined): string {
   switch (status) {

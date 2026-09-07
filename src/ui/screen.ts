@@ -123,9 +123,6 @@ export function exitFullScreen(): void {
   write(ansi.showCursor + ansi.altScreenOff);
 }
 
-export function isFullScreen(): boolean {
-  return active;
-}
 
 export function paint(lines: string[]): void {
   const rows = process.stdout.rows ?? lines.length;

@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { credentialsFilePath, ensureDataDir, removeCredentialsFile } from "./config.js";
 import type { StoredCredentials } from "./types.js";
 
@@ -61,7 +61,9 @@ function readFileStore(): FileStore {
 function writeFileStore(store: FileStore): void {
   ensureDataDir();
   const path = credentialsFilePath();
-  writeFileSync(path, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
+  const temp = `${path}.${process.pid}.tmp`;
+  writeFileSync(temp, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
+  renameSync(temp, path);
   try {
     chmodSync(path, 0o600);
   } catch {

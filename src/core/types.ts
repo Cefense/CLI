@@ -50,8 +50,6 @@ export interface HealthResponse {
   githubAppConfigured: boolean;
   githubWebhookConfigured: boolean;
   clerkWebhookConfigured?: boolean;
-  stripeConfigured: boolean;
-  adminConfigured: boolean;
   scannerConfigured: boolean;
   cacheConfigured?: boolean;
   embeddingsConfigured: boolean;
@@ -68,6 +66,7 @@ export interface HealthResponse {
 export interface ProviderStatus {
   configured: boolean;
   connected: boolean;
+  needsReconnect?: boolean;
   login?: string | null;
   appConfigured?: boolean;
   manageUrl?: string | null;
@@ -316,7 +315,7 @@ export interface MergeResult {
 export interface Fix {
   id: string;
   findingId: string;
-  status: "generating" | "ready" | "failed" | "skipped" | "publishing" | "opened";
+  status: "generating" | "ready" | "failed" | "skipped" | "publishing" | "opened" | "merged" | "closed";
   strategy: "model" | "dependency";
   filePath: string;
   baseSha: string;
@@ -364,33 +363,6 @@ export interface ArticleDetail extends Article {
   knowledge?: unknown;
 }
 
-export type BillingFeature = "observed" | "match" | "fix" | "proof";
-
-export interface BillingMe {
-  role: "user" | "admin";
-  entitlements: Record<BillingFeature, boolean>;
-  billingConfigured: boolean;
-  subscriptions: Array<{
-    feature: BillingFeature;
-    status: string;
-    currentPeriodEnd: string | null;
-    cancelAtPeriodEnd: boolean;
-  }>;
-}
-
-export interface BillingCatalog {
-  configured: boolean;
-  features: Array<{
-    feature: BillingFeature;
-    name: string;
-    description: string;
-    available: boolean;
-    currency: string | null;
-    unitAmount: number | null;
-    interval: string;
-  }>;
-}
-
 export interface CefenseProfile {
   email: string;
   fullName: string | null;
@@ -409,20 +381,6 @@ export interface ProfileResponse {
   profile: CefenseProfile;
   latestScan: unknown;
   onboardingComplete: boolean;
-}
-
-export interface ReferralsResponse {
-  access: { role: string; entitlements: Record<BillingFeature, boolean> };
-  redemptions: Array<{
-    id: string;
-    code: string;
-    label: string | null;
-    observed: boolean;
-    match: boolean;
-    fix: boolean;
-    proof: boolean;
-    redeemedAt: string;
-  }>;
 }
 
 export interface AuditEvent {

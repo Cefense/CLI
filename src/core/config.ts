@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { CliConfigResponse } from "./types.js";
@@ -41,7 +41,10 @@ function readJson<T>(name: string): T | null {
 
 function writeJson(name: string, value: unknown, mode = 0o600): void {
   ensureDataDir();
-  writeFileSync(filePath(name), `${JSON.stringify(value, null, 2)}\n`, { mode });
+  const target = filePath(name);
+  const temp = `${target}.${process.pid}.tmp`;
+  writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`, { mode });
+  renameSync(temp, target);
 }
 
 export function readPreferences(): CliPreferences {

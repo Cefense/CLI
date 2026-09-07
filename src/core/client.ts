@@ -8,9 +8,6 @@ import type {
   AuditResponse,
   ArticleDetail,
   ArticlesResponse,
-  BillingCatalog,
-  BillingFeature,
-  BillingMe,
   BranchesResponse,
   CefenseProfile,
   CliConfigResponse,
@@ -28,7 +25,6 @@ import type {
   ProjectsResponse,
   Provider,
   ProviderStatus,
-  ReferralsResponse,
   SbomFormat,
   ScanDepth,
   ScanInterval,
@@ -460,30 +456,6 @@ export class CefenseClient {
 
   saveProfile(body: Partial<CefenseProfile>): Promise<{ profile: CefenseProfile }> {
     return this.request("POST", "/api/profile", { body });
-  }
-
-  billing(): Promise<BillingMe> {
-    return this.request<BillingMe>("GET", "/api/billing/me");
-  }
-
-  billingCatalog(): Promise<BillingCatalog> {
-    return this.request<BillingCatalog>("GET", "/api/billing/catalog", { allowUnauthenticated: true });
-  }
-
-  checkout(feature: BillingFeature): Promise<{ url: string }> {
-    return this.request("POST", "/api/billing/checkout", { body: { feature } });
-  }
-
-  billingPortal(): Promise<{ url: string }> {
-    return this.request("POST", "/api/billing/portal");
-  }
-
-  referrals(): Promise<ReferralsResponse> {
-    return this.request<ReferralsResponse>("GET", "/api/referrals/me");
-  }
-
-  redeem(code: string): Promise<unknown> {
-    return this.request("POST", "/api/referrals/redeem", { body: { code } });
   }
 }
 

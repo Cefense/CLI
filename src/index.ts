@@ -24,7 +24,7 @@ import { providerConnect, providerDisconnect, providerList } from "./commands/pr
 import { auditCommand } from "./commands/audit.js";
 import { triageCommand } from "./commands/triage.js";
 import { sbomCommand } from "./commands/sbom.js";
-import { observedCommand, observedShow } from "./commands/observed.js";
+import { observedCommand, observedShow, requireLimit } from "./commands/observed.js";
 import { fixCommand } from "./commands/fix.js";
 import { fixGenerate, fixMerge, fixPublish, fixShow } from "./commands/fixcmds.js";
 import { skillInstall, skillList, skillShow, skillUninstall } from "./commands/skill.js";
@@ -225,7 +225,7 @@ withGlobals(program.command("branches"))
 withGlobals(program.command("commits"))
   .description("the commit history, and what each scanned commit introduced")
   .option("--branch <name>", "read the history of a branch other than the default")
-  .option("--limit <n>", "show at most this many commits", (value) => Number.parseInt(value, 10))
+  .option("--limit <n>", "show at most this many commits", requireLimit)
   .action(
     run((globals, command) =>
       commitsCommand(globals, {
@@ -250,7 +250,7 @@ withGlobals(program.command("triage"))
 
 withGlobals(program.command("audit"))
   .description("everything that has happened on this account, newest first")
-  .option("--limit <n>", "maximum events to fetch", (value) => Number.parseInt(value, 10))
+  .option("--limit <n>", "maximum events to fetch", requireLimit)
   .option("--before <timestamp>", "only events older than this ISO timestamp")
   .option("--category <list>", "scan,finding,fix,repository,settings,export,account,integration")
   .action(
@@ -269,7 +269,7 @@ function findingsOptions(command: Command): Command {
     .addOption(new Option("--category <list>", "code,dependency,secret,misconfig,os-package"))
     .option("--branch <name>", "read the findings of a branch's last scan")
     .option("--scan <id>", "read the findings of one scan")
-    .option("--limit <n>", "maximum findings to fetch", (value) => Number.parseInt(value, 10))
+    .option("--limit <n>", "maximum findings to fetch", requireLimit)
     .option("--exit-code", "exit 1 when a critical or high finding is present");
 }
 
@@ -452,11 +452,18 @@ withGlobals(skill.command("uninstall"))
     ),
   );
 
-process.on("uncaughtException", (error) => {
+function crash(error: unknown): void {
   exitFullScreen();
   if (isAgentMode()) out.agentError(error);
   else out.renderError(error);
-  process.exit(4);
-});
+  // The error envelope is queued on stdout, which is asynchronous on a pipe;
+  // exiting immediately truncated it and callers saw exit 4 with no output.
+  // An empty write's callback runs only after everything queued has flushed.
+  process.exitCode = 4;
+  process.stdout.write("", () => process.exit(4));
+}
+
+process.on("uncaughtException", crash);
+process.on("unhandledRejection", crash);
 
 await program.parseAsync(process.argv);

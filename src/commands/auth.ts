@@ -23,12 +23,23 @@ export async function authLogin(
   const existing = await loadCredentials(apiUrl);
 
   if (existing.backend === "environment") {
+    if (isAgentMode()) {
+      out.agentEmit({ authenticated: true, credentialBackend: "environment" }, ["cf status --agent"]);
+      return 0;
+    }
     out.warn("CEFENSE_TOKEN is set, so the CLI is already authenticated from the environment.");
     out.hint("Unset it to sign in interactively.");
     return 0;
   }
 
   if (existing.credentials && !options.force) {
+    if (isAgentMode()) {
+      out.agentEmit(
+        { authenticated: true, email: existing.credentials.email ?? null },
+        ["cf status --agent"],
+      );
+      return 0;
+    }
     out.line();
     out.success(`Already signed in to ${c.bold(apiUrl)}${existing.credentials.email ? ` as ${existing.credentials.email}` : ""}.`);
     out.hint("Run cf auth login --force to sign in again.");
@@ -197,10 +208,9 @@ export async function authStatus(globals: GlobalOptions): Promise<number> {
     return 3;
   }
 
-  const [me, github, billing] = await Promise.all([
+  const [me, github] = await Promise.all([
     session.client.me(),
     session.client.githubStatus().catch(() => null),
-    session.client.billing().catch(() => null),
   ]);
 
   if (isAgentMode()) {
@@ -225,7 +235,6 @@ export async function authStatus(globals: GlobalOptions): Promise<number> {
       user: me.user,
       credentialBackend: session.backend,
       github,
-      billing,
     });
     return 0;
   }
@@ -250,13 +259,6 @@ export async function authStatus(globals: GlobalOptions): Promise<number> {
   }
   out.lines(keyValue(rows).map((row) => `  ${row}`));
 
-  if (billing) {
-    out.section("Entitlements");
-    const entries = Object.entries(billing.entitlements).map(([feature, granted]) =>
-      granted ? c.green(`${glyph.check} ${feature}`) : c.dim(`${glyph.ring} ${feature}`),
-    );
-    out.line(`  ${entries.join("   ")}`);
-  }
   out.line();
   return 0;
 }

@@ -90,6 +90,12 @@ export async function repoConnect(
       );
     }
     if (repo.connected) {
+      if (isAgentMode()) {
+        out.agentEmit({ repository: repo.fullName, alreadyConnected: true }, [
+          `cf observed --repo ${repo.fullName} --agent`,
+        ]);
+        return 0;
+      }
       out.line();
       out.info(`${c.bold(repo.fullName)} is already connected.`);
       out.line();
@@ -99,6 +105,10 @@ export async function repoConnect(
   } else {
     const available = listing.repos.filter((repo) => !repo.connected);
     if (available.length === 0) {
+      if (isAgentMode()) {
+        out.agentEmit({ availableToConnect: 0, alreadyConnected: true }, ["cf repo list --agent"]);
+        return 0;
+      }
       out.line();
       out.info(`Every ${host} repository Cefense can see is already connected.`);
       if (listing.manageUrl) out.hint(`Grant access to more at ${listing.manageUrl}`);

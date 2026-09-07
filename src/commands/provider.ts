@@ -20,6 +20,7 @@ import { prune } from "../core/compact.js";
 export interface Connection {
   provider: Provider;
   status: ProviderStatus;
+  unreachable?: boolean;
 }
 
 /**
@@ -36,20 +37,49 @@ function connectUrl(session: Session): string {
 
 export async function loadConnections(session: Session): Promise<Connection[]> {
   const statuses = await Promise.all(
-    PROVIDERS.map(async (provider) => ({
-      provider,
-      status: await session.client
-        .providerStatus(provider)
-        .catch(() => ({ configured: false, connected: false, login: null }) as ProviderStatus),
-    })),
+    PROVIDERS.map(async (provider): Promise<Connection> => {
+      try {
+        return { provider, status: await session.client.providerStatus(provider) };
+      } catch {
+        return {
+          provider,
+          status: { configured: false, connected: false, login: null } as ProviderStatus,
+          unreachable: true,
+        };
+      }
+    }),
   );
   return statuses;
 }
 
-function statusCell(status: ProviderStatus): string {
-  if (status.connected) return c.green(`${glyph.check} connected`);
-  if (!status.configured) return c.dim(`${glyph.track} not available here`);
-  return c.yellow(`${glyph.ring} not connected`);
+export type ConnectionState =
+  | "unavailable"
+  | "reconnect"
+  | "connected"
+  | "unconfigured"
+  | "not_connected";
+
+export function connectionState(entry: Connection): ConnectionState {
+  if (entry.unreachable) return "unavailable";
+  if (entry.status.connected && entry.status.needsReconnect) return "reconnect";
+  if (entry.status.connected) return "connected";
+  if (!entry.status.configured) return "unconfigured";
+  return "not_connected";
+}
+
+function statusCell(entry: Connection): string {
+  switch (connectionState(entry)) {
+    case "unavailable":
+      return c.yellow(`${glyph.warn} status unavailable`);
+    case "reconnect":
+      return c.yellow(`${glyph.warn} reconnect needed`);
+    case "connected":
+      return c.green(`${glyph.check} connected`);
+    case "unconfigured":
+      return c.dim(`${glyph.track} not available here`);
+    case "not_connected":
+      return c.yellow(`${glyph.ring} not connected`);
+  }
 }
 
 function compactConnection(entry: Connection): Record<string, unknown> {
@@ -57,8 +87,10 @@ function compactConnection(entry: Connection): Record<string, unknown> {
     provider: entry.provider,
     configured: entry.status.configured,
     connected: entry.status.connected,
+    needsReconnect: entry.status.needsReconnect || undefined,
     login: entry.status.login ?? null,
     host: entry.status.host ?? providerHost(entry.provider),
+    statusUnavailable: entry.unreachable || undefined,
   });
 }
 
@@ -86,7 +118,7 @@ export async function providerList(globals: GlobalOptions): Promise<number> {
       connections,
       [
         { header: "host", value: (entry) => providerLabel(entry.provider), min: 10 },
-        { header: "state", value: (entry) => statusCell(entry.status), min: 16 },
+        { header: "state", value: (entry) => statusCell(entry), min: 16 },
         { header: "account", value: (entry) => entry.status.login ?? "-", min: 10 },
         {
           header: "server",
@@ -98,7 +130,9 @@ export async function providerList(globals: GlobalOptions): Promise<number> {
     ).map((row) => `  ${row}`),
   );
   out.line();
-  const missing = connections.filter((entry) => entry.status.configured && !entry.status.connected);
+  const missing = connections.filter((entry) =>
+    ["not_connected", "reconnect"].includes(connectionState(entry)),
+  );
   if (missing.length > 0) {
     out.hint(`cf provider connect ${missing[0]!.provider}`);
     out.line();
@@ -119,9 +153,10 @@ export async function ensureProviderConnected(
 ): Promise<ProviderStatus> {
   const label = providerLabel(provider);
   const status = await session.client.providerStatus(provider);
-  if (status.connected) return status;
+  const expired = status.connected && Boolean(status.needsReconnect);
+  if (status.connected && !expired) return status;
 
-  if (!status.configured) {
+  if (!status.configured && !status.connected) {
     throw new CefenseError(`${label} is not configured on this Cefense instance.`, {
       remedy: "Run cf status for the full picture.",
       code: "provider_unavailable",
@@ -131,14 +166,23 @@ export async function ensureProviderConnected(
   const target = connectUrl(session);
 
   if (isAgentMode() || out.isJsonMode()) {
-    throw new CefenseError(`No ${label} account is connected to Cefense.`, {
-      remedy: `Connect one at ${target}.`,
-      code: "provider_not_connected",
-    });
+    throw new CefenseError(
+      expired
+        ? `The ${label} connection has expired.`
+        : `No ${label} account is connected to Cefense.`,
+      {
+        remedy: expired ? `Reconnect it at ${target}.` : `Connect one at ${target}.`,
+        code: expired ? "provider_reconnect_required" : "provider_not_connected",
+      },
+    );
   }
 
   out.line();
-  out.warn(`Your ${label} account is not connected to Cefense.`);
+  if (expired) {
+    out.warn(`Your ${label} connection has expired and needs to be reconnected.`);
+  } else {
+    out.warn(`Your ${label} account is not connected to Cefense.`);
+  }
   out.line();
   out.line(`    ${c.cyan(target)}`);
   out.line();
@@ -164,7 +208,7 @@ export async function ensureProviderConnected(
   for (;;) {
     await new Promise((resolve) => setTimeout(resolve, 2000));
     const next = await session.client.providerStatus(provider).catch(() => null);
-    if (next?.connected) {
+    if (next?.connected && !next.needsReconnect) {
       progress.stop(`${label} connected as ${next.login}`);
       return next;
     }
@@ -261,14 +305,19 @@ export async function providerDisconnect(
 
 /** One line per host, for the status header. */
 export function connectionSummary(connections: Connection[]): string[] {
+  const cell = (entry: Connection): string => {
+    switch (connectionState(entry)) {
+      case "unavailable":
+        return c.yellow("status unavailable");
+      case "reconnect":
+        return c.yellow(`reconnect needed${entry.status.login ? ` (${entry.status.login})` : ""}`);
+      case "connected":
+        return `connected as ${entry.status.login}`;
+      default:
+        return c.yellow("not connected");
+    }
+  };
   return connections
-    .filter((entry) => entry.status.configured || entry.status.connected)
-    .map(
-      (entry) =>
-        `  ${c.dim(padEnd(providerLabel(entry.provider), 10))}${
-          entry.status.connected
-            ? `connected as ${entry.status.login}`
-            : c.yellow("not connected")
-        }`,
-    );
+    .filter((entry) => connectionState(entry) !== "unconfigured")
+    .map((entry) => `  ${c.dim(padEnd(providerLabel(entry.provider), 10))}${cell(entry)}`);
 }

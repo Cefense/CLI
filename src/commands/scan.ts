@@ -75,11 +75,21 @@ async function awaitScan(
   attempts = 300,
 ): Promise<ScanSummary | null> {
   let latest: ScanSummary | null = null;
+  // A transient poll failure is tolerated, but a run of consecutive failures
+  // is not a scan in progress: an expired session or a dead API used to poll
+  // silently for the full ten minutes and then exit 0 as "still running".
+  let consecutiveFailures = 0;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, POLL_MS));
-    const { projects } = await session.client
-      .projects()
-      .catch(() => ({ projects: [] as Project[] }));
+    let projects: Project[];
+    try {
+      projects = (await session.client.projects()).projects;
+      consecutiveFailures = 0;
+    } catch (caught) {
+      consecutiveFailures += 1;
+      if (consecutiveFailures >= 5) throw caught;
+      continue;
+    }
     const project = projects.find((entry) => entry.githubRepoId === githubRepoId);
     latest = project?.scan ?? latest;
     if (latest && terminal(latest)) return latest;
@@ -214,14 +224,3 @@ export async function scanCommand(
   return scan?.status === "failed" ? 4 : 0;
 }
 
-export function projectScanSummary(project: Project): string {
-  const scan = project.scan;
-  if (!scan) return c.dim("never scanned");
-  if (scan.status === "running" || scan.status === "queued") {
-    const done = scan.filesScanned ?? 0;
-    const total = scan.fileCount ?? 0;
-    return total > 0 ? `${scan.stage ?? "running"} ${done}/${total}` : (scan.stage ?? "queued");
-  }
-  if (scan.status === "failed") return c.red(scan.error ?? "failed");
-  return "";
-}
