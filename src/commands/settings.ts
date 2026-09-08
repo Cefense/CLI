@@ -3,7 +3,7 @@ import { UsageError } from "../core/errors.js";
 import type { Project, ScanDepth, ScanInterval, ScanMode } from "../core/types.js";
 import { resolveLinkedProject } from "./link.js";
 import * as out from "../ui/output.js";
-import { browse } from "../ui/browser.js";
+import { nextSteps } from "../ui/list.js";
 import { padEnd } from "../ui/format.js";
 import { c, glyph } from "../ui/theme.js";
 import { isInteractive } from "../ui/screen.js";
@@ -185,73 +185,6 @@ async function apply(
   return { ...project, ...result.project, scan: project.scan };
 }
 
-type Row =
-  | { kind: "section"; label: string }
-  | { kind: "mode"; mode: (typeof SCAN_MODES)[number] }
-  | { kind: "interval"; interval: (typeof SCAN_INTERVALS)[number] }
-  | { kind: "depth"; depth: (typeof SCAN_DEPTHS)[number] }
-  | { kind: "check"; check: (typeof CHECKS)[number] };
-
-function buildRows(project: Project): Row[] {
-  const rows: Row[] = [{ kind: "section", label: "trigger" }];
-  for (const mode of SCAN_MODES) rows.push({ kind: "mode", mode });
-  if (project.scanMode === "scheduled") {
-    rows.push({ kind: "section", label: "schedule" });
-    for (const interval of SCAN_INTERVALS) rows.push({ kind: "interval", interval });
-  }
-  rows.push({ kind: "section", label: "depth" });
-  for (const depth of SCAN_DEPTHS) rows.push({ kind: "depth", depth });
-  rows.push({ kind: "section", label: "checks" });
-  for (const check of CHECKS) rows.push({ kind: "check", check });
-  return rows;
-}
-
-function renderRow(row: Row, project: Project, selected: boolean): string[] {
-  if (row.kind === "section") {
-    return ["", `  ${c.dim(row.label.toUpperCase())}`, ""];
-  }
-
-  const marker = selected ? c.cyan(glyph.arrow) : " ";
-
-  if (row.kind === "mode") {
-    const on = (project.scanMode ?? "manual") === row.mode.id;
-    const bullet = !row.mode.ready
-      ? c.dim(glyph.track)
-      : on
-        ? c.cyan(glyph.dot)
-        : c.dim(glyph.ring);
-    const label = row.mode.ready ? (selected ? c.bold(row.mode.label) : row.mode.label) : c.dim(row.mode.label);
-    const detail = row.mode.ready ? row.mode.detail : `${row.mode.detail} Not available yet.`;
-    return [`${marker} ${bullet} ${padEnd(label, 22)}${c.dim(detail)}`];
-  }
-
-  if (row.kind === "interval") {
-    const on = (project.scanInterval ?? "24h") === row.interval.id;
-    const bullet = on ? c.cyan(glyph.dot) : c.dim(glyph.ring);
-    const label = selected ? c.bold(row.interval.label) : row.interval.label;
-    return [`${marker} ${bullet} ${padEnd(label, 22)}${c.dim(row.interval.id)}`];
-  }
-
-  if (row.kind === "depth") {
-    const on = (project.scanDepth ?? "default") === row.depth.id;
-    const bullet = on ? c.cyan(glyph.dot) : c.dim(glyph.ring);
-    const label = selected ? c.bold(row.depth.label) : row.depth.label;
-    return [`${marker} ${bullet} ${padEnd(label, 22)}${c.dim(row.depth.detail)}`];
-  }
-
-  const on = (project.coverages ?? []).includes(row.check.id);
-  const box = !row.check.available ? c.dim(glyph.track) : on ? c.green(glyph.check) : c.dim(glyph.ring);
-  const name = row.check.available
-    ? on
-      ? selected
-        ? c.bold(row.check.name)
-        : row.check.name
-      : c.dim(row.check.name)
-    : c.dim(row.check.name);
-  const detail = row.check.available ? row.check.detail : `${row.check.detail}, not available`;
-  return [`${marker} ${box} ${padEnd(name, 22)}${c.dim(detail)}`];
-}
-
 function headerLines(project: Project): string[] {
   const mode = SCAN_MODES.find((entry) => entry.id === (project.scanMode ?? "manual"));
   const summary = [
@@ -272,111 +205,62 @@ function headerLines(project: Project): string[] {
   ];
 }
 
-/**
- * The screen edits in place, so every keystroke is a write.
- *
- * Saves are chained rather than fired in parallel: each one sends the whole
- * desired state, so the last request to land is the one that is right, and two
- * quick presses cannot leave the row set and the row's server state disagreeing.
- */
-function saver(session: Session, project: Project) {
-  let chain: Promise<unknown> = Promise.resolve();
-  return (next: Project): Promise<Project> => {
-    const run = chain.then(() =>
-      session.client
-        .updateRepoSettings(project, {
-          coverages: next.coverages ?? [],
-          scanMode: (next.scanMode ?? "manual") as ScanMode,
-          scanInterval: (next.scanInterval ?? "24h") as ScanInterval,
-          scanDepth: (next.scanDepth ?? "default") as ScanDepth,
-        })
-        .then((result) => ({ ...next, ...result.project, scan: next.scan })),
-    );
-    chain = run.catch(() => undefined);
-    return run;
-  };
+function optionRows(
+  entries: Array<{ id: string; label: string; detail?: string; ready?: boolean }>,
+  current: string,
+): string[] {
+  return entries.map((entry) => {
+    const usable = entry.ready !== false;
+    const bullet = !usable ? c.dim(glyph.track) : entry.id === current ? c.cyan(glyph.dot) : c.dim(glyph.ring);
+    const label = usable ? entry.label : c.dim(entry.label);
+    const detail = usable ? (entry.detail ?? "") : `${entry.detail ?? ""} Not available yet.`;
+    return `  ${bullet} ${padEnd(label, 22)}${c.dim(detail)}`;
+  });
 }
 
-async function settingsScreen(session: Session, initial: Project): Promise<void> {
-  let project = initial;
-  const save = saver(session, initial);
+function printSettings(project: Project): void {
+  out.lines(headerLines(project));
 
-  await browse(buildRows(project), {
-    header: () => headerLines(project),
-    renderRow: (row, selected) => renderRow(row, project, selected),
-    filterText: (row) =>
-      row.kind === "mode"
-        ? row.mode.label
-        : row.kind === "interval"
-          ? row.interval.label
-          : row.kind === "depth"
-            ? row.depth.label
-            : row.kind === "check"
-              ? row.check.name
-              : "",
-    emptyMessage: "Nothing matches that filter.",
-    selectLabel: (row) => {
-      if (!row || row.kind === "section") return null;
-      if (row.kind === "check") return row.check.available ? "toggle" : null;
-      if (row.kind === "mode") return row.mode.ready ? "choose" : null;
-      return "choose";
-    },
-    onSelect: async (row, context) => {
-      let next: Project | null = null;
+  out.line(`  ${c.dim("TRIGGER")}`);
+  out.lines(optionRows(SCAN_MODES, project.scanMode ?? "manual"));
 
-      if (row.kind === "mode") {
-        if (!row.mode.ready) {
-          context.setStatus(`${row.mode.label} scanning is not available yet.`);
-          return;
-        }
-        if ((project.scanMode ?? "manual") === row.mode.id) return;
-        next = { ...project, scanMode: row.mode.id };
-      } else if (row.kind === "interval") {
-        if ((project.scanInterval ?? "24h") === row.interval.id) return;
-        next = { ...project, scanInterval: row.interval.id };
-      } else if (row.kind === "depth") {
-        if ((project.scanDepth ?? "default") === row.depth.id) return;
-        next = { ...project, scanDepth: row.depth.id };
-      } else if (row.kind === "check") {
-        if (!row.check.available) {
-          context.setStatus(`${row.check.name}: ${row.check.detail}.`);
-          return;
-        }
-        const active = new Set(project.coverages ?? []);
-        if (active.has(row.check.id)) active.delete(row.check.id);
-        else active.add(row.check.id);
-        next = {
-          ...project,
-          coverages: CHECKS.filter((check) => active.has(check.id)).map((check) => check.id),
-        };
-      }
+  if (project.scanMode === "scheduled") {
+    out.line();
+    out.line(`  ${c.dim("SCHEDULE")}`);
+    out.lines(
+      optionRows(
+        SCAN_INTERVALS.map((entry) => ({ ...entry, detail: entry.id })),
+        project.scanInterval ?? "24h",
+      ),
+    );
+  }
 
-      if (!next) return;
+  out.line();
+  out.line(`  ${c.dim("DEPTH")}`);
+  out.lines(optionRows(SCAN_DEPTHS, project.scanDepth ?? "default"));
 
-      project = next;
-      await context.refresh();
-      context.setStatus("Saving");
-      try {
-        project = await save(next);
-        context.setStatus(
-          row.kind === "check"
-            ? `Checks: ${(project.coverages ?? []).join(", ") || "none"}`
-            : row.kind === "mode"
-              ? `Scanning ${modeLabel(project.scanMode).toLowerCase()}`
-              : row.kind === "depth"
-                ? `Scan depth ${depthLabel(project.scanDepth).toLowerCase()}`
-                : `Scanning ${intervalLabel(project.scanInterval).toLowerCase()}`,
-        );
-      } catch (error) {
-        project = initial;
-        await context.refresh();
-        context.setStatus(error instanceof Error ? error.message : String(error));
-        return;
-      }
-      await context.refresh();
-    },
-    refresh: async () => buildRows(project),
-  });
+  const active = new Set(project.coverages ?? []);
+  out.line();
+  out.line(`  ${c.dim("CHECKS")}`);
+  out.lines(
+    CHECKS.map((check) => {
+      const box = !check.available
+        ? c.dim(glyph.track)
+        : active.has(check.id)
+          ? c.green(glyph.check)
+          : c.dim(glyph.ring);
+      const name = check.available && active.has(check.id) ? check.name : c.dim(check.name);
+      const detail = check.available ? check.detail : `${check.detail}, not available`;
+      return `  ${box} ${padEnd(name, 22)}${c.dim(detail)}`;
+    }),
+  );
+
+  nextSteps([
+    { command: "cf settings mode push", purpose: "change what triggers a scan" },
+    { command: "cf settings depth max", purpose: "change how hard each scan looks" },
+    { command: "cf settings checks sast,sca,secrets", purpose: "change which analyses run" },
+  ]);
+  out.line();
 }
 
 export async function settingsShow(globals: GlobalOptions): Promise<number> {
@@ -396,16 +280,7 @@ export async function settingsShow(globals: GlobalOptions): Promise<number> {
     return 0;
   }
 
-  await settingsScreen(session, project);
-
-  if (!isInteractive()) {
-    out.line();
-    out.hint("cf settings mode <manual|push|scheduled>");
-    out.hint("cf settings every <1h|6h|12h|24h|168h>");
-    out.hint("cf settings depth <default|max>");
-    out.hint("cf settings checks <sast,sca,secrets,iac,quality,sbom>");
-    out.line();
-  }
+  printSettings(project);
   return 0;
 }
 

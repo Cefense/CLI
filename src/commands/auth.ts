@@ -1,4 +1,11 @@
-import { deleteCredentials, keychainName, listStoredOrigins, loadCredentials, saveCredentials } from "../core/credentials.js";
+import {
+  deleteCredentials,
+  keychainName,
+  listStoredOrigins,
+  loadCredentials,
+  loadCredentialsOrNone,
+  saveCredentials,
+} from "../core/credentials.js";
 import { assertVersionSupported, fetchDiscovery } from "../core/discovery.js";
 import { exchangeCode, requestAuthorizationCode, revokeToken } from "../core/oauth.js";
 import { resolveApiUrl } from "../core/config.js";
@@ -19,8 +26,8 @@ export async function authLogin(
   globals: GlobalOptions,
   options: { force?: boolean } = {},
 ): Promise<number> {
-  const apiUrl = resolveApiUrl(globals.apiUrl);
-  const existing = await loadCredentials(apiUrl);
+  const apiUrl = resolveApiUrl();
+  const existing = await loadCredentialsOrNone(apiUrl);
 
   if (existing.backend === "environment") {
     if (isAgentMode()) {
@@ -133,13 +140,16 @@ export async function authLogout(
   options: { all?: boolean } = {},
 ): Promise<number> {
   const targets = options.all
-    ? [...new Set([resolveApiUrl(globals.apiUrl), ...(await listStoredOrigins())])]
-    : [resolveApiUrl(globals.apiUrl)];
+    ? [...new Set([resolveApiUrl(), ...(await listStoredOrigins())])]
+    : [resolveApiUrl()];
 
   let signedOut = 0;
   for (const apiUrl of targets) {
-    const { credentials, backend } = await loadCredentials(apiUrl);
-    if (!credentials) continue;
+    const { credentials, backend } = await loadCredentialsOrNone(apiUrl);
+    if (!credentials) {
+      await deleteCredentials(apiUrl).catch(() => undefined);
+      continue;
+    }
     if (backend === "environment") {
       out.warn(`${apiUrl} is authenticated through CEFENSE_TOKEN, which the CLI cannot clear.`);
       out.hint("Unset CEFENSE_TOKEN in your shell.");

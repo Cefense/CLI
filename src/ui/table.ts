@@ -41,19 +41,25 @@ export function renderTable<T>(
     }
   }
 
+  const cell = (value: string, index: number) => {
+    const width = widths[index]!;
+    const clipped = truncate(value, width);
+    return columns[index]!.align === "right" ? padStart(clipped, width) : padEnd(clipped, width);
+  };
+
   const line = (values: string[]) =>
     values
-      .map((value, index) => {
-        const width = widths[index]!;
-        const clipped = truncate(value, width);
-        return columns[index]!.align === "right" ? padStart(clipped, width) : padEnd(clipped, width);
-      })
+      .map((value, index) => cell(value, index))
       .join(" ".repeat(gap))
       .trimEnd();
 
   const output: string[] = [];
   if (options.header !== false) {
-    output.push(c.dim(line(columns.map((column) => column.header.toUpperCase()))));
+    output.push(
+      columns
+        .map((column, index) => c.dim(c.underline(cell(column.header.toUpperCase(), index))))
+        .join(" ".repeat(gap)),
+    );
   }
   for (const row of cells) output.push(line(row));
   return output;

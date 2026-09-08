@@ -1,11 +1,19 @@
 #!/usr/bin/env node
+
+const ignoreEpipe = (error: NodeJS.ErrnoException) => {
+  if (error.code === "EPIPE") process.exit(0);
+  throw error;
+};
+process.stdout.on("error", ignoreEpipe);
+process.stderr.on("error", ignoreEpipe);
 import { Command, Option } from "commander";
 import { CancelledError, EXIT_INTERRUPTED, isCefenseError } from "./core/errors.js";
 import type { GlobalOptions } from "./core/session.js";
 import { setColorEnabled } from "./ui/theme.js";
-import { exitFullScreen } from "./ui/screen.js";
 import { isAgentMode, setAgentMode } from "./ui/mode.js";
 import * as out from "./ui/output.js";
+import { setPagerEnabled } from "./ui/pager.js";
+import { setColumnFilter } from "./ui/list.js";
 import { VERSION } from "./version.js";
 import { authLogin, authLogout, authStatus } from "./commands/auth.js";
 import { repoConnect, repoDisconnect, repoList, repoSetDefault } from "./commands/repo.js";
@@ -28,18 +36,21 @@ import { observedCommand, observedShow, requireLimit } from "./commands/observed
 import { fixCommand } from "./commands/fix.js";
 import { fixGenerate, fixMerge, fixPublish, fixShow } from "./commands/fixcmds.js";
 import { skillInstall, skillList, skillShow, skillUninstall } from "./commands/skill.js";
+import { completionScript, SHELLS } from "./commands/completion.js";
 
 const program = new Command();
 
 function withGlobals(command: Command): Command {
   return command
-    .option("--api-url <url>", "Cefense instance to talk to")
     .option("--repo <owner/name>", "repository to act on")
     .option("--json", "emit JSON instead of a rendered view")
     .option("--agent", "machine mode: compact JSON envelope, structured errors, never interactive")
     .option("--no-color", "disable colour")
     .option("--verbose", "show more detail on failure")
     .option("-y, --yes", "skip confirmation prompts")
+    .option("--columns <list>", "only show these columns, comma separated")
+    .option("--web", "open the result in a browser instead of printing it")
+    .option("--no-pager", "never page long output")
     .option("--no-link", "do not remember this directory's repository");
 }
 
@@ -52,8 +63,10 @@ function globalsFrom(command: Command): GlobalOptions {
   const agent = Boolean(pick<boolean>("agent"));
 
   const globals: GlobalOptions = {
-    apiUrl: pick<string>("apiUrl"),
     repo: pick<string>("repo"),
+    columns: pick<string>("columns"),
+    web: Boolean(pick<boolean>("web")),
+    pager: agent ? false : own.pager !== false && root.pager !== false,
     json: agent || Boolean(pick<boolean>("json")),
     agent,
     color: agent || own.color === false || root.color === false ? false : true,
@@ -67,6 +80,8 @@ function globalsFrom(command: Command): GlobalOptions {
   setColorEnabled(globals.color !== false && !noColorEnv && Boolean(process.stdout.isTTY || process.env.FORCE_COLOR));
   out.setJsonMode(Boolean(globals.json));
   out.setCommandName(commandPath(command));
+  setPagerEnabled(globals.pager !== false);
+  setColumnFilter(globals.columns);
   return globals;
 }
 
@@ -87,7 +102,6 @@ function run(handler: (globals: GlobalOptions, command: Command) => Promise<numb
     try {
       process.exitCode = await handler(globals, command);
     } catch (error) {
-      exitFullScreen();
       if (globals.agent) {
         out.agentError(error);
         process.exitCode = isCefenseError(error) ? error.exitCode : 4;
@@ -452,8 +466,21 @@ withGlobals(skill.command("uninstall"))
     ),
   );
 
+withGlobals(program.command("completion"))
+  .argument("<shell>", `one of ${SHELLS.join(", ")}`)
+  .description("print a shell completion script")
+  .addHelpText(
+    "after",
+    `\nExamples:\n  cf completion zsh > "\${fpath[1]}/_cf"\n  cf completion bash > /etc/bash_completion.d/cf\n  cf completion fish > ~/.config/fish/completions/cf.fish`,
+  )
+  .action(
+    run(async (_globals, command) => {
+      process.stdout.write(completionScript(program, String(command.args[0]), ["cf", "cefense"]));
+      return 0;
+    }),
+  );
+
 function crash(error: unknown): void {
-  exitFullScreen();
   if (isAgentMode()) out.agentError(error);
   else out.renderError(error);
   // The error envelope is queued on stdout, which is asynchronous on a pipe;

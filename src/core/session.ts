@@ -1,13 +1,15 @@
 import { CefenseClient } from "./client.js";
 import { assertVersionSupported, fetchDiscovery } from "./discovery.js";
-import { loadCredentials, type CredentialBackend } from "./credentials.js";
+import { assertIssuerMatches, loadCredentials, type CredentialBackend } from "./credentials.js";
 import { resolveApiUrl } from "./config.js";
 import { AuthRequiredError, CefenseError } from "./errors.js";
 import type { CliConfigResponse, StoredCredentials } from "./types.js";
 
 export interface GlobalOptions {
-  apiUrl?: string;
   repo?: string;
+  columns?: string;
+  web?: boolean;
+  pager?: boolean;
   json?: boolean;
   agent?: boolean;
   color?: boolean;
@@ -28,7 +30,7 @@ export async function openSession(
   options: GlobalOptions = {},
   requirements: { auth?: boolean; discovery?: boolean } = {},
 ): Promise<Session> {
-  const apiUrl = resolveApiUrl(options.apiUrl);
+  const apiUrl = resolveApiUrl();
   const { credentials, backend } = await loadCredentials(apiUrl);
 
   let config: CliConfigResponse | null = null;
@@ -41,6 +43,8 @@ export async function openSession(
       config = null;
     }
   }
+
+  if (config) assertIssuerMatches(credentials, config);
 
   if (requirements.auth && !credentials) {
     throw new AuthRequiredError(`You are not signed in to ${apiUrl}.`);

@@ -4,25 +4,14 @@ import { providerLabel, providerOf } from "../core/providers.js";
 import { connectionSummary, loadConnections, type Connection } from "./provider.js";
 import { readRepoDefault } from "../core/config.js";
 import { defaultScope } from "../core/repo.js";
-import { browse } from "../ui/browser.js";
+import { printList } from "../ui/list.js";
 import * as out from "../ui/output.js";
-import { keyValue, renderTable } from "../ui/table.js";
-import { elapsed, padEnd, progressBar, relativeTime, terminalWidth } from "../ui/format.js";
-import { c, glyph, scanStatusLabel } from "../ui/theme.js";
-import { confirmByTyping } from "../ui/prompts.js";
-import { observedCommand } from "./observed.js";
-import { branchesCommand } from "./branches.js";
-import { commitsCommand } from "./commits.js";
-import { watchScan } from "./scan.js";
-import { SCAN_DEPTHS, SCAN_INTERVALS, SCAN_MODES } from "./settings.js";
+import { padEnd, relativeTime } from "../ui/format.js";
+import { c, scanStatusLabel } from "../ui/theme.js";
+import { spinner } from "../ui/prompts.js";
 import { isAgentMode } from "../ui/mode.js";
 import { compactProject, prune } from "../core/compact.js";
-import { CODE_HOSTS, openExternal } from "../ui/open.js";
-
-type Row =
-  | { kind: "project"; project: Project }
-  | { kind: "available"; repo: GithubRepo }
-  | { kind: "divider" };
+import { openIfRequested } from "../ui/open.js";
 
 function isActive(project: Project): boolean {
   return project.scan?.status === "queued" || project.scan?.status === "running";
@@ -47,89 +36,13 @@ function headerLines(
   apiUrl: string,
 ): string[] {
   const scanning = projects.filter(isActive).length;
-  const summary = [
-    `${projects.length} connected`,
-    scanning > 0 ? c.cyan(`${scanning} scanning`) : "",
-  ]
-    .filter(Boolean)
-    .join(c.dim("  ·  "));
-
   return [
     "",
-    `  ${c.bold("Cefense")}   ${c.dim(`${email}  ·  ${apiUrl.replace(/^https?:\/\//, "")}`)}`,
+    `Signed in to ${new URL(apiUrl).host} as ${c.bold(email)}`,
+    scanning > 0 ? c.cyan(`${scanning} ${scanning === 1 ? "scan" : "scans"} running`) : "",
     "",
     ...connectionSummary(connections),
-    `  ${c.dim(padEnd("Repos", 10))}${summary}`,
-    "",
-  ];
-}
-
-function projectDetail(project: Project, width: number): string[] {
-  const lines: string[] = [];
-  const push = (value = "") => lines.push(value ? `  ${value}` : "");
-  const scan = project.scan;
-
-  push();
-  push(
-    `${c.bold(project.fullName)}   ${c.dim(
-      [
-        providerLabel(providerOf(project)),
-        project.private ? "private" : "public",
-        project.defaultBranch ?? "default branch",
-      ].join("  ·  "),
-    )}`,
-  );
-  push();
-
-  const facts: Array<[string, string]> = [
-    ["Scan", scan ? `${scanStatusLabel(scan.status)}   ${c.dim(relativeTime(scan.createdAt))}` : c.dim("never scanned")],
-  ];
-  if (scan) {
-    if (scan.stage) facts.push(["Stage", scan.stage]);
-    if (scan.fileCount) {
-      const done = scan.filesScanned ?? 0;
-      facts.push([
-        "Files",
-        `${progressBar(done, scan.fileCount, Math.min(24, width - 30))}  ${done} / ${scan.fileCount}`,
-      ]);
-    }
-    facts.push(["Findings", String(scan.findingCount)]);
-    if (scan.finishedAt) facts.push(["Duration", elapsed(scan.createdAt, scan.finishedAt)]);
-    if (scan.error) facts.push(["Error", c.red(scan.error)]);
-  }
-  const mode = SCAN_MODES.find((entry) => entry.id === (project.scanMode ?? "manual"));
-  const interval = SCAN_INTERVALS.find((entry) => entry.id === (project.scanInterval ?? "24h"));
-  facts.push([
-    "Mode",
-    project.scanMode === "scheduled"
-      ? `${mode?.label ?? "Manual"}   ${c.dim(interval?.label.toLowerCase() ?? "")}`
-      : (mode?.label ?? "Manual"),
-  ]);
-  const depth = SCAN_DEPTHS.find((entry) => entry.id === (project.scanDepth ?? "default"));
-  facts.push(["Depth", depth?.label ?? "Default"]);
-  if ((project.coverages ?? []).length > 0) {
-    facts.push(["Checks", c.dim(project.coverages.join(", "))]);
-  }
-  facts.push(["Connected", relativeTime(project.connectedAt)]);
-
-  for (const row of keyValue(facts, 10)) push(row);
-
-  const languages = project.profile?.languages ?? [];
-  const frameworks = project.profile?.frameworks ?? [];
-  if (languages.length > 0 || frameworks.length > 0) {
-    push();
-    push(c.dim("DETECTED STACK"));
-    push();
-    if (languages.length > 0) push(`${c.dim(padEnd("Languages", 12))}${languages.join(", ")}`);
-    if (frameworks.length > 0) push(`${c.dim(padEnd("Frameworks", 12))}${frameworks.join(", ")}`);
-  }
-
-  if (project.htmlUrl) {
-    push();
-    push(c.dim(project.htmlUrl));
-  }
-  push();
-  return lines;
+  ].filter((entry, index) => entry !== "" || index !== 2);
 }
 
 export async function statusCommand(
@@ -194,185 +107,74 @@ export async function statusCommand(
     return 0;
   }
 
-  if (out.isPiped()) {
-    out.lines(headerLines(connections, projects, me.user.email, session.apiUrl));
-    if (projects.length > 0) {
-      out.lines(
-        renderTable(
-          projects,
-          [
-            { header: "repository", value: (project) => project.fullName, min: 16 },
-            { header: "status", value: (project) => scanStatusLabel(project.scan?.status), min: 8 },
-            {
-              header: "findings",
-              value: (project) => (project.scan ? String(project.scan.findingCount) : "-"),
-              align: "right",
-              min: 5,
-            },
-            { header: "last scan", value: scanCell, min: 10 },
-          ],
-          { width: terminalWidth() - 4 },
-        ).map((row) => `  ${row}`),
-      );
-    }
-    out.line();
-    return 0;
-  }
-
   const scope = defaultScope();
   const fallback = readRepoDefault(scope);
 
-  const buildRows = (list: Project[]): Row[] => {
-    const rows: Row[] = list.map((project) => ({ kind: "project" as const, project }));
-    if (available.length > 0) {
-      rows.push({ kind: "divider" });
-      for (const repo of available.slice(0, 8)) rows.push({ kind: "available" as const, repo });
+  if (await openIfRequested(globals.web, session.apiUrl, { what: "the dashboard" })) return 0;
+
+  if (options.watch && projects.some(isActive)) {
+    const progress = spinner();
+    progress.start("Scanning");
+    for (let attempt = 0; attempt < 300 && projects.some(isActive); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      projects = (await session.client.projects()).projects;
+      const active = projects.filter(isActive).map((project) => `${project.fullName} ${scanCell(project)}`);
+      if (active.length > 0) progress.message(active.join("   "));
     }
-    return rows;
-  };
+    progress.stop("Scans settled.");
+  }
 
-  let followUp: { action: "findings" | "scan" | "branches" | "commits"; project: Project } | null = null;
+  if (!out.isPiped()) out.lines(headerLines(connections, projects, me.user.email, session.apiUrl));
 
-  await browse(buildRows(projects), {
-    header: () => headerLines(connections, projects, me.user.email, session.apiUrl),
-    renderRow: (row, selected, width) => {
-      if (row.kind === "divider") {
-        return ["", `  ${c.dim(glyph.rule.repeat(Math.max(8, width - 4)))}`];
-      }
-      const marker = selected ? c.cyan(glyph.arrow) : " ";
-      if (row.kind === "available") {
-        return [
-          `${marker} ${c.dim(padEnd(row.repo.fullName, 34))}${c.dim(
-            `not connected  ·  ${providerLabel(row.repo.provider ?? "github")}`,
-          )}`,
-        ];
-      }
-      const project = row.project;
-      const isDefault = fallback?.githubRepoId === project.githubRepoId;
-      const name = selected ? c.bold(project.fullName) : project.fullName;
-      const findings = project.scan ? String(project.scan.findingCount) : "-";
-      return [
-        `${marker} ${padEnd(name + (isDefault ? c.cyan(" *") : ""), 34)}${padEnd(scanStatusLabel(project.scan?.status), 12)}${padEnd(findings, 10)}${c.dim(scanCell(project))}`,
-      ];
-    },
-    renderDetail: (row, width) =>
-      row.kind === "project"
-        ? projectDetail(row.project, width)
-        : row.kind === "available"
-          ? ["", `  ${c.bold(row.repo.fullName)} is not connected.`, "", `  ${c.dim("Press c to connect it.")}`, ""]
-          : [""],
-    filterText: (row) =>
-      row.kind === "project" ? row.project.fullName : row.kind === "available" ? row.repo.fullName : "",
-    emptyMessage: "No repositories are connected. Run cf repo connect.",
-    refresh: async () => {
-      const next = await session.client.projects();
-      projects = next.projects;
-      return buildRows(projects);
-    },
-    refreshIntervalMs: 2000,
-    shouldKeepRefreshing: () => options.watch === true || projects.some(isActive),
-    actions: [
+  const first = projects[0];
+
+  printList({
+    noun: "repository",
+    scope: new URL(session.apiUrl).host,
+    rows: projects,
+    columns: [
       {
-        key: "f",
-        label: "findings",
-        run: (row, context) => {
-          if (row?.kind !== "project") return;
-          followUp = { action: "findings", project: row.project };
-          context.close();
-        },
+        header: "repository",
+        value: (project) =>
+          fallback?.githubRepoId === project.githubRepoId
+            ? `${project.fullName} ${c.cyan("*")}`
+            : project.fullName,
+        min: 16,
+        max: 44,
       },
+      { header: "status", value: (project) => scanStatusLabel(project.scan?.status), min: 8 },
       {
-        key: "r",
-        label: "rescan",
-        run: async (row, context) => {
-          if (row?.kind !== "project") return;
-          followUp = { action: "scan", project: row.project };
-          context.close();
-        },
+        header: "findings",
+        value: (project) => (project.scan ? String(project.scan.findingCount) : c.dim("-")),
+        align: "right",
+        min: 5,
       },
-      {
-        key: "b",
-        label: "branches",
-        run: (row, context) => {
-          if (row?.kind !== "project") return;
-          followUp = { action: "branches", project: row.project };
-          context.close();
-        },
-      },
-      {
-        key: "h",
-        label: "history",
-        run: (row, context) => {
-          if (row?.kind !== "project") return;
-          followUp = { action: "commits", project: row.project };
-          context.close();
-        },
-      },
-      {
-        key: "o",
-        label: "open",
-        run: (row) => {
-          const url =
-            row?.kind === "project" ? row.project.htmlUrl : row?.kind === "available" ? row.repo.htmlUrl : null;
-          void openExternal(url, { hosts: CODE_HOSTS });
-        },
-      },
-      {
-        key: "d",
-        label: "disconnect",
-        run: async (row, context) => {
-          if (row?.kind !== "project") return;
-          const project = row.project;
-          const confirmed = await context.suspend(async () => {
-            out.line();
-            out.warn(`Disconnecting ${c.bold(project.fullName)} removes its scan history from Cefense.`);
-            out.line();
-            return confirmByTyping({
-              message: `Type ${project.fullName} to confirm`,
-              expected: project.fullName,
-            });
-          });
-          if (!confirmed) {
-            context.setStatus("Left connected.");
-            return;
-          }
-          await session.client.disconnectRepo(project.githubRepoId);
-          await context.refresh();
-          context.setStatus(`Disconnected ${project.fullName}`);
-        },
-      },
-      {
-        key: "c",
-        label: "connect",
-        run: async (row, context) => {
-          if (row?.kind !== "available") return;
-          const repo = row.repo;
-          await session.client.connectRepo(repo);
-          await context.refresh();
-          context.setStatus(`Connected ${repo.fullName}. A first scan has started.`);
-        },
-      },
+      { header: "last scan", value: scanCell, min: 10 },
     ],
+    pipeColumns: [
+      { header: "repository", value: (project) => project.fullName },
+      { header: "status", value: (project) => project.scan?.status ?? "never" },
+      { header: "findings", value: (project) => (project.scan ? String(project.scan.findingCount) : "") },
+      { header: "last scan", value: (project) => project.scan?.finishedAt ?? "" },
+    ],
+    empty: "No repositories are connected.",
+    emptyHint: "Run cf repo connect to add one.",
+    footnote: [
+      fallback ? `${c.cyan("*")} default for this directory` : "",
+      available.length > 0
+        ? `${available.length} more ${available.length === 1 ? "repository" : "repositories"} available to connect.`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("   "),
+    next: first
+      ? [
+          { command: "cf observed", purpose: "read the findings" },
+          { command: "cf scan", purpose: "rescan" },
+          { command: "cf repo connect", purpose: "connect another repository" },
+        ]
+      : [{ command: "cf repo connect", purpose: "connect a repository" }],
   });
 
-  const pending = followUp as {
-    action: "findings" | "scan" | "branches" | "commits";
-    project: Project;
-  } | null;
-  if (pending?.action === "findings") {
-    return observedCommand({ ...globals, repo: pending.project.fullName }, {});
-  }
-  if (pending?.action === "branches") {
-    return branchesCommand({ ...globals, repo: pending.project.fullName });
-  }
-  if (pending?.action === "commits") {
-    return commitsCommand({ ...globals, repo: pending.project.fullName });
-  }
-  if (pending?.action === "scan") {
-    await session.client.startScan(pending.project.githubRepoId);
-    out.line();
-    await watchScan(session.client, pending.project.githubRepoId, pending.project.fullName);
-    out.line();
-  }
   return 0;
 }

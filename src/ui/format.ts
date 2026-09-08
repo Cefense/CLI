@@ -55,8 +55,8 @@ export function visibleLength(value: string): number {
 export function truncate(value: string, width: number): string {
   const plain = stripAnsi(value);
   if (plain.length <= width) return value;
-  if (width <= 1) return plain.slice(0, Math.max(0, width));
-  return plain.slice(0, width - 1) + glyph.ellipsis;
+  if (width <= 3) return plain.slice(0, Math.max(0, width));
+  return plain.slice(0, width - 3) + "...";
 }
 
 export function padEnd(value: string, width: number): string {
@@ -151,4 +151,8 @@ export function wrapText(value: string, width: number, indent = ""): string[] {
     if (current) lines.push(indent + current);
   }
   return lines;
+}
+
+export function shortId(id: string, length = 8): string {
+  return id.replace(/-/g, "").slice(0, length);
 }

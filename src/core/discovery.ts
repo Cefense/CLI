@@ -38,7 +38,7 @@ export async function fetchDiscovery(
     });
   } catch (cause) {
     throw new CefenseError(`Could not reach the Cefense API at ${apiUrl}.`, {
-      remedy: "Check your connection, or point somewhere else with --api-url.",
+      remedy: "Check your connection, or set CEFENSE_API_URL to point somewhere else.",
       cause,
     });
   }
@@ -85,6 +85,10 @@ function endpointHost(apiUrl: string, field: string, value: string | undefined):
   return url.host;
 }
 
+function sameSite(host: string, expected: string): boolean {
+  return host === expected || host.endsWith(`.${expected}`);
+}
+
 export function assertDiscoveryTrustworthy(apiUrl: string, config: CliConfigResponse): void {
   const expected = new URL(apiUrl).host;
   const { auth } = config;
@@ -109,11 +113,11 @@ export function assertDiscoveryTrustworthy(apiUrl: string, config: CliConfigResp
   for (const [field, value] of fields) {
     if (field === "revocation endpoint" && !value) continue;
     const host = endpointHost(apiUrl, field, value);
-    if (host !== expected) {
+    if (!sameSite(host, expected)) {
       throw new CefenseError(
         `The ${field} advertised by ${apiUrl} points at ${host}.`,
         {
-          remedy: `Sign-in only happens against ${expected}. Nothing was sent to ${host}.`,
+          remedy: `Sign-in only happens against ${expected} or a subdomain of it. Nothing was sent to ${host}.`,
           code: "untrusted_discovery",
         },
       );

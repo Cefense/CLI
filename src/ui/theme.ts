@@ -57,6 +57,7 @@ export function severityColor(severity: WireSeverity | string): Style {
 
 export const glyph = {
   dot: "●",
+  sep: "•",
   ring: "○",
   check: "✓",
   cross: "✗",

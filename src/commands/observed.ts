@@ -3,17 +3,16 @@ import { UsageError } from "../core/errors.js";
 import type { Finding, Fix, Project } from "../core/types.js";
 import type { Session } from "../core/session.js";
 import { blobUrl, providerLabel, providerOf } from "../core/providers.js";
-import { browse } from "../ui/browser.js";
+import { printGrouped } from "../ui/list.js";
 import { resolveBranch, resolveLinkedProject } from "./link.js";
-import { fixActions, fixLabel, renderFixSection } from "./fixactions.js";
-import { applyTriage, TRIAGE_LABELS } from "./triage.js";
+import { fixLabel, renderFixSection } from "./fixactions.js";
 import * as out from "../ui/output.js";
-import { select } from "../ui/prompts.js";
-import { relativeTime, terminalWidth, wrapText } from "../ui/format.js";
+import { relativeTime, shortId, terminalWidth, wrapText } from "../ui/format.js";
 import { c, displaySeverity, glyph, severityColor, severityRank } from "../ui/theme.js";
 import { isAgentMode } from "../ui/mode.js";
 import { compactFinding, compactFindingDetail } from "../core/compact.js";
-import { CODE_HOSTS, openExternal } from "../ui/open.js";
+import { CODE_HOSTS, openIfRequested } from "../ui/open.js";
+import { page } from "../ui/pager.js";
 
 export interface ObservedOptions {
   severity?: string;
@@ -80,136 +79,103 @@ function sourceUrlFor(project: Project, finding: Finding, ref?: string | null): 
   });
 }
 
-function renderRow(row: Row, selected: boolean, width: number): string[] {
-  const finding = row.finding;
-  const marker = selected ? c.cyan(glyph.arrow) : " ";
-  const severity = severityColor(finding.severity)(
-    `${glyph.dot} ${displaySeverity(finding.severity).toLowerCase().padEnd(8)}`,
-  );
-  const title = selected ? c.bold(finding.title) : finding.title;
-  const sources = finding.intelligenceSources.length;
-  const meta = [
-    c.dim(locationOf(finding)),
-    finding.ruleId ? c.dim(finding.ruleId) : "",
-    sources > 0 ? c.magenta(`${glyph.star} ${sources} ${sources === 1 ? "source" : "sources"}`) : "",
-    row.fix ? fixLabel(row.fix) : "",
-    c.dim(relativeTime(finding.createdAt)),
-  ]
-    .filter(Boolean)
-    .join("   ");
-  void width;
-  return [`${marker} ${severity} ${title}`, `    ${meta}`, ""];
-}
-
 function renderDetail(project: Project, row: Row, width: number, ref?: string | null): string[] {
   const finding = row.finding;
-  const body = Math.min(96, width - 4);
+  const wrap = Math.min(96, width - 2);
   const lines: string[] = [];
-  const push = (value = "") => lines.push(value ? `  ${value}` : "");
+  const head = (value = "") => lines.push(value);
+  const body = (value = "") => lines.push(value ? `  ${value}` : "");
+  const dotted = (parts: Array<string | null | undefined>) =>
+    parts.filter(Boolean).join(c.dim(` ${glyph.sep} `));
 
-  push();
-  push(`${c.bold(finding.title)}   ${severityColor(finding.severity)(displaySeverity(finding.severity))}`);
-  push();
-
-  const facts = [
-    locationOf(finding),
-    finding.ruleId ?? "",
-    finding.confidence !== null ? `confidence ${finding.confidence.toFixed(2)}` : "",
-    finding.symbol ? `in ${finding.symbol}` : "",
-  ].filter(Boolean);
-  push(c.dim(facts.join("      ")));
-
-  const refs = [
-    finding.cveId ? c.yellow(finding.cveId) : "",
-    finding.cwe ? c.yellow(finding.cwe) : "",
-    finding.category ?? "",
-    finding.state && finding.state !== "CANDIDATE" ? finding.state.toLowerCase() : "",
-  ].filter(Boolean);
-  if (refs.length > 0) push(c.dim(refs.join("      ")));
-
-  if (finding.introducedIn) {
-    const origin = finding.introducedIn;
-    push();
-    push(
-      c.dim(
-        `introduced in ${origin.sha.slice(0, 7)} by ${origin.authorName}, ${relativeTime(origin.committedAt)}`,
-      ),
-    );
-  }
+  head(`${c.bold(finding.title)} ${c.dim(shortId(finding.id))}`);
+  head(
+    dotted([
+      severityColor(finding.severity)(displaySeverity(finding.severity)),
+      locationOf(finding),
+      finding.ruleId,
+      finding.confidence !== null ? `confidence ${finding.confidence.toFixed(2)}` : null,
+      finding.symbol ? `in ${finding.symbol}` : null,
+    ]),
+  );
+  const refs = dotted([
+    finding.cveId ? c.yellow(finding.cveId) : null,
+    finding.cwe ? c.yellow(finding.cwe) : null,
+    finding.category,
+    finding.state && finding.state !== "CANDIDATE" ? finding.state.toLowerCase() : null,
+    finding.introducedIn
+      ? `introduced in ${finding.introducedIn.sha.slice(0, 7)} by ${finding.introducedIn.authorName}, ${relativeTime(finding.introducedIn.committedAt)}`
+      : null,
+  ]);
+  if (refs) head(c.dim(refs));
 
   if (finding.description) {
-    push();
-    for (const wrapped of wrapText(finding.description, body)) push(wrapped);
+    head();
+    for (const wrapped of wrapText(finding.description, wrap)) body(wrapped);
   }
 
   if (finding.vulnerableCode?.trim()) {
-    push();
-    push(c.dim("CODE"));
-    push();
+    head();
+    head(c.bold("Code"));
     const start = finding.startLine ?? 1;
     finding.vulnerableCode
       .split("\n")
       .slice(0, 20)
       .forEach((codeLine, index) => {
-        push(`${c.dim(String(start + index).padStart(5))} ${c.dim("|")} ${codeLine}`);
+        body(`${c.dim(String(start + index).padStart(4))} ${c.dim("|")} ${codeLine}`);
       });
   }
 
   if (finding.exploitPath) {
-    push();
-    push(c.dim("EXPLOIT PATH"));
-    push();
-    for (const wrapped of wrapText(finding.exploitPath, body)) push(wrapped);
+    head();
+    head(c.bold("Exploit path"));
+    for (const wrapped of wrapText(finding.exploitPath, wrap)) body(wrapped);
   }
 
   if (finding.dataflow) {
-    push();
-    push(c.dim("DATA FLOW"));
-    push();
-    push(`${c.dim("source")}  ${finding.dataflow.sourceKind}`);
+    head();
+    head(c.bold("Data flow"));
+    body(`${c.dim("source")}  ${finding.dataflow.sourceKind}`);
     for (const step of finding.dataflow.steps ?? []) {
       const where = step.location ? c.dim(`${step.location.file}:${step.location.startLine}`) : "";
-      push(`   ${c.dim(glyph.arrow)} ${step.label}   ${c.dim(step.role)}   ${where}`);
+      body(`  ${c.dim(glyph.arrow)} ${step.label}   ${c.dim(step.role)}   ${where}`);
     }
-    push(`${c.dim("sink")}    ${finding.dataflow.sinkKind}`);
+    body(`${c.dim("sink")}    ${finding.dataflow.sinkKind}`);
     if (finding.dataflow.ineffectiveSanitizers?.length) {
-      push();
-      push(c.yellow(`ineffective: ${finding.dataflow.ineffectiveSanitizers.join(", ")}`));
+      body(c.yellow(`ineffective: ${finding.dataflow.ineffectiveSanitizers.join(", ")}`));
     }
   }
 
   if (finding.intelligenceSources.length > 0) {
-    push();
-    push(c.dim("RESEARCH"));
-    push();
+    head();
+    head(c.bold("Research"));
     for (const source of finding.intelligenceSources) {
-      push(
-        `${c.magenta(glyph.star)} ${c.bold(source.source)}   ${source.title ?? "untitled"}   ${c.dim(`${source.confidence}%`)}`,
+      body(
+        dotted([c.magenta(source.source), source.title ?? "untitled", c.dim(`${source.confidence}%`)]),
       );
-      for (const wrapped of wrapText(source.rationale, body - 2, "  ")) push(c.dim(wrapped));
-      push(c.dim(`  ${source.sourceUrl}`));
-      push();
+      for (const wrapped of wrapText(source.rationale, wrap - 2, "  ")) body(c.dim(wrapped));
+      body(c.dim(`  ${source.sourceUrl}`));
     }
   }
 
   if (finding.remediation?.summary || finding.remediation?.guidance) {
-    push();
-    push(c.dim("REMEDIATION"));
-    push();
-    for (const wrapped of wrapText(finding.remediation.summary ?? "", body)) push(wrapped);
+    head();
+    head(c.bold("Remediation"));
+    for (const wrapped of wrapText(finding.remediation.summary ?? "", wrap)) body(wrapped);
     if (finding.remediation.guidance && finding.remediation.guidance !== finding.remediation.summary) {
-      push();
-      for (const wrapped of wrapText(finding.remediation.guidance, body)) push(c.dim(wrapped));
+      body();
+      for (const wrapped of wrapText(finding.remediation.guidance, wrap)) body(c.dim(wrapped));
     }
   }
 
-  for (const fixLine of renderFixSection(row.fix, width)) lines.push(fixLine);
+  for (const fixLine of renderFixSection(row.fix, width, finding.id)) lines.push(fixLine);
 
   const link = sourceUrlFor(project, finding, ref);
   if (link) {
-    push(c.dim(link));
-    push();
+    head();
+    head(`View this finding on ${providerLabel(providerOf(project))}: ${c.cyan(link)}`);
   }
+  head();
   return lines;
 }
 
@@ -284,124 +250,51 @@ export async function observedCommand(
     return options.exitCode && worst ? 1 : 0;
   }
 
-  if (out.isPiped()) {
-    for (const row of rows) {
-      out.line(
-        [
-          displaySeverity(row.finding.severity).toLowerCase(),
-          locationOf(row.finding),
-          row.finding.ruleId ?? "",
-          row.fix?.status ?? "no-fix",
-          row.finding.title,
-        ].join("\t"),
-      );
-    }
-    return options.exitCode && worst ? 1 : 0;
-  }
-
-  if (rows.length === 0) {
-    out.line();
-    if (!first.scanId) {
-      out.info(`${c.bold(project.fullName)} has not been scanned yet.`);
-      out.hint("Run cf scan.");
-    } else if (options.onlyMatched) {
-      out.info(`No findings in ${c.bold(project.fullName)} are joined to research yet.`);
-    } else {
-      out.success(`No findings in ${c.bold(project.fullName)}.`);
-    }
-    out.line();
+  if (await openIfRequested(globals.web, project.htmlUrl, { hosts: CODE_HOSTS, what: "this repository" })) {
     return 0;
   }
 
-  const counts = new Map<string, number>();
-  for (const row of rows) {
-    const label = displaySeverity(row.finding.severity);
-    counts.set(label, (counts.get(label) ?? 0) + 1);
-  }
-  const matchedCount = rows.filter((row) => row.finding.intelligenceSources.length > 0).length;
+  const head = rows[0];
+  const marker = head ? shortId(head.finding.id) : "<finding-id>";
 
-  await browse(rows, {
-    header: (visible) => {
-      const summary = [...counts.entries()]
-        .map(([label, count]) => severityColor(label.toLowerCase())(`${count} ${label.toLowerCase()}`))
-        .join(c.dim("  ·  "));
-      const counted = options.onlyMatched
-        ? `${matchedCount} of ${first.total} joined to research`
-        : `${visible.length} of ${first.total} ${first.total === 1 ? "finding" : "findings"}`;
-      const name = scope.label ? `${project.fullName}${c.cyan(`#${scope.label}`)}` : project.fullName;
-      return ["", `  ${c.bold(name)}   ${c.dim(counted)}`, `  ${summary}`, ""];
-    },
-    renderRow,
-    renderDetail: (row, width) => renderDetail(project, row, width, scope.label),
-    filterText: (row) =>
-      `${row.finding.title} ${row.finding.filePath} ${row.finding.ruleId ?? ""} ${row.finding.cwe ?? ""} ${row.finding.cveId ?? ""}`,
-    emptyMessage: "Nothing matches that filter.",
-    refresh: async () => (await load()).rows,
-    actions: [
-      ...fixActions<Row>(session, project, (row) =>
-        row ? { findingId: row.finding.id, fix: row.fix } : null,
-      ),
-      {
-        key: "o",
-        label: providerLabel(providerOf(project)).toLowerCase(),
-        run: (row) => {
-          if (!row) return;
-          const url = sourceUrlFor(project, row.finding, scope.label);
-          void openExternal(url, { hosts: CODE_HOSTS });
-        },
-      },
-      {
-        key: "t",
-        label: (row) => (row?.finding.fingerprint ? "triage" : null),
-        run: async (row, context) => {
-          if (!row) return;
-          if (!row.finding.fingerprint) {
-            context.setStatus("This finding has no fingerprint, so a decision would not survive a rescan.");
-            return;
-          }
-          const decision = await context.suspend(async () => {
-            out.line();
-            out.info(row.finding.title);
-            out.line();
-            return select({
-              message: "How should this finding be recorded?",
-              initialValue: "false_positive",
-              choices: [
-                {
-                  value: "false_positive",
-                  label: TRIAGE_LABELS.false_positive,
-                  hint: "it is not real",
-                },
-                {
-                  value: "accepted_risk",
-                  label: TRIAGE_LABELS.accepted_risk,
-                  hint: "it is real and you are living with it",
-                },
-                { value: "open", label: TRIAGE_LABELS.open, hint: "undo a previous decision" },
-              ],
-            });
-          });
-          context.setStatus("Recording.");
-          const applied = await applyTriage(
-            session,
-            row.finding.id,
-            decision as "open" | "false_positive" | "accepted_risk",
-          );
-          context.setStatus(`Marked ${TRIAGE_LABELS[applied].toLowerCase()}`);
-        },
-      },
-      {
-        key: "a",
-        label: (row) => {
-          const count = row?.finding.intelligenceSources.length ?? 0;
-          return count > 0 ? (count === 1 ? "research" : `research (${count})`) : null;
-        },
-        run: (row) => {
-          const source = row?.finding.intelligenceSources[0];
-          if (source) void openExternal(source.sourceUrl);
-        },
-      },
+  const empty = !first.scanId
+    ? `${project.fullName} has not been scanned yet.`
+    : options.onlyMatched
+      ? `No findings in ${project.fullName} are joined to research yet.`
+      : `No findings in ${project.fullName}.`;
+
+  printGrouped<Row>({
+    noun: options.onlyMatched ? "matched finding" : "finding",
+    scope: scope.label ? `${project.fullName}#${scope.label}` : project.fullName,
+    total: first.total,
+    groups: WIRE_SEVERITIES.map((severity) => ({
+      label: displaySeverity(severity),
+      tint: severityColor(severity),
+      rows: rows.filter((row) => row.finding.severity === severity),
+    })),
+    columns: [
+      { header: "id", value: (row) => c.dim(shortId(row.finding.id)), min: 8, max: 8 },
+      { header: "location", value: (row) => locationOf(row.finding), min: 16, max: 38 },
+      { header: "title", value: (row) => row.finding.title, min: 28 },
+      { header: "fix", value: (row) => (row.fix ? fixLabel(row.fix) : c.dim("-")), min: 1 },
     ],
+    pipeColumns: [
+      { header: "severity", value: (row) => displaySeverity(row.finding.severity).toLowerCase() },
+      { header: "location", value: (row) => locationOf(row.finding) },
+      { header: "rule", value: (row) => row.finding.ruleId ?? "" },
+      { header: "fix", value: (row) => row.fix?.status ?? "no-fix" },
+      { header: "title", value: (row) => row.finding.title },
+    ],
+    empty,
+    emptyHint: first.scanId ? null : `Run cf scan --repo ${project.fullName}.`,
+    footnote: first.hasMore ? `Use --limit ${Math.min(1000, first.total)} to see them all.` : null,
+    next: head
+      ? [
+          { command: `cf observed show ${marker}`, purpose: "read one in full" },
+          { command: `cf fix generate ${marker}`, purpose: "write a patch for it" },
+          { command: `cf triage ${marker} false-positive`, purpose: "record a decision" },
+        ]
+      : [],
   });
 
   return options.exitCode && worst ? 1 : 0;
@@ -425,6 +318,8 @@ const SEVERITY_ALIASES: Record<string, string> = {
 };
 
 const CATEGORIES = ["code", "dependency", "secret", "misconfig", "os-package"];
+
+const WIRE_SEVERITIES = ["critical", "high", "medium", "low"] as const;
 
 function splitList(value: string | undefined): string[] {
   if (!value) return [];
@@ -466,6 +361,46 @@ export function normaliseCategory(value: string | undefined): string | undefined
   return [...new Set(parts)].join(",");
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function resolveFindingId(
+  session: Session,
+  project: Project,
+  candidate: string,
+  options: { branch?: string; scanId?: string } = {},
+): Promise<string> {
+  if (UUID.test(candidate)) return candidate;
+
+  const needle = candidate.replace(/-/g, "").toLowerCase();
+  if (needle.length < 4) {
+    throw new UsageError(
+      `${candidate} is too short to identify a finding.`,
+      "Use at least four characters of the id shown by cf observed.",
+      "finding_id_ambiguous",
+    );
+  }
+
+  const scope = await resolveScope(session, project, options);
+  const response = await session.client.findings(project.githubRepoId, { scanId: scope.scanId });
+  const matches = response.findings.filter((finding) =>
+    finding.id.replace(/-/g, "").toLowerCase().startsWith(needle),
+  );
+
+  if (matches.length === 1) return matches[0]!.id;
+  if (matches.length === 0) {
+    throw new UsageError(
+      `${candidate} is not a finding in the scan being read of ${project.fullName}.`,
+      `Run cf observed --repo ${project.fullName} to list finding ids.`,
+      "finding_not_found",
+    );
+  }
+  throw new UsageError(
+    `${candidate} matches ${matches.length} findings in ${project.fullName}.`,
+    `Use more characters: ${matches.slice(0, 3).map((finding) => shortId(finding.id)).join(", ")}.`,
+    "finding_id_ambiguous",
+  );
+}
+
 export async function observedShow(
   globals: GlobalOptions,
   findingId: string,
@@ -475,8 +410,9 @@ export async function observedShow(
   const { project } = await resolveLinkedProject(session, globals);
   const scope = await resolveScope(session, project, options);
 
+  const resolved = await resolveFindingId(session, project, findingId, options);
   const response = await session.client.findings(project.githubRepoId, { scanId: scope.scanId });
-  const finding = response.findings.find((entry) => entry.id === findingId);
+  const finding = response.findings.find((entry) => entry.id === resolved);
   if (!finding) {
     throw new UsageError(
       `${findingId} is not a finding in the scan being read of ${project.fullName}.`,
@@ -486,7 +422,7 @@ export async function observedShow(
   }
 
   const { fix } = await session.client
-    .fixForFinding(findingId)
+    .fixForFinding(resolved)
     .catch(() => ({ fix: null as Fix | null }));
 
   if (isAgentMode()) {
@@ -506,6 +442,15 @@ export async function observedShow(
     return 0;
   }
 
-  out.lines(renderDetail(project, { finding, fix }, terminalWidth(), scope.label));
+  if (
+    await openIfRequested(globals.web, sourceUrlFor(project, finding, scope.label), {
+      hosts: CODE_HOSTS,
+      what: "this finding",
+    })
+  ) {
+    return 0;
+  }
+
+  page(renderDetail(project, { finding, fix }, terminalWidth(), scope.label));
   return 0;
 }

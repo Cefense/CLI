@@ -319,5 +319,5 @@ export function connectionSummary(connections: Connection[]): string[] {
   };
   return connections
     .filter((entry) => connectionState(entry) !== "unconfigured")
-    .map((entry) => `  ${c.dim(padEnd(providerLabel(entry.provider), 10))}${cell(entry)}`);
+    .map((entry) => `${c.dim(padEnd(providerLabel(entry.provider), 11))}${cell(entry)}`);
 }

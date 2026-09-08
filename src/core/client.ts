@@ -165,7 +165,7 @@ export class CefenseClient {
           continue;
         }
         throw new CefenseError(`Could not reach ${url.origin}.`, {
-          remedy: "Check your connection, or point somewhere else with --api-url.",
+          remedy: "Check your connection, or set CEFENSE_API_URL to point somewhere else.",
           cause,
         });
       }

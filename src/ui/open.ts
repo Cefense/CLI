@@ -1,5 +1,6 @@
 import open from "open";
 import { PROVIDERS, providerHost } from "../core/providers.js";
+import { UsageError } from "../core/errors.js";
 
 export const CODE_HOSTS: readonly string[] = PROVIDERS.map(providerHost);
 
@@ -44,4 +45,23 @@ export async function openExternal(
   } catch {
     return false;
   }
+}
+
+export async function openIfRequested(
+  wanted: boolean | undefined,
+  url: string | null | undefined,
+  options: { hosts?: readonly string[]; what?: string } = {},
+): Promise<boolean> {
+  if (!wanted) return false;
+  const safe = safeExternalUrl(url, options);
+  if (!safe) {
+    throw new UsageError(
+      `There is no web page for ${options.what ?? "that"}.`,
+      "Drop --web to print it here instead.",
+      "no_web_url",
+    );
+  }
+  await openExternal(safe, options);
+  process.stdout.write(`Opening ${safe}\n`);
+  return true;
 }

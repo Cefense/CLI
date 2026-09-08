@@ -61,8 +61,8 @@ export function normaliseApiUrl(value: string): string {
   return new URL(withScheme).origin;
 }
 
-export function resolveApiUrl(flag?: string): string {
-  const candidate = flag ?? process.env.CEFENSE_API_URL ?? readPreferences().apiUrl ?? DEFAULT_API_URL;
+export function resolveApiUrl(): string {
+  const candidate = process.env.CEFENSE_API_URL ?? readPreferences().apiUrl ?? DEFAULT_API_URL;
   return normaliseApiUrl(candidate);
 }
 

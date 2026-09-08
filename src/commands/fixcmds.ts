@@ -9,6 +9,9 @@ import { isInteractive } from "../ui/screen.js";
 import { c, glyph } from "../ui/theme.js";
 import { renderDiff } from "./fixactions.js";
 import { resolveLinkedProject } from "./link.js";
+import { resolveFindingId } from "./observed.js";
+import { CODE_HOSTS, openIfRequested } from "../ui/open.js";
+import { shortId } from "../ui/format.js";
 
 const SETTLED = new Set(["ready", "failed", "skipped", "opened"]);
 
@@ -52,8 +55,18 @@ function renderFix(fix: Fix): void {
   }
 }
 
+async function resolveFinding(
+  session: Session,
+  globals: GlobalOptions,
+  candidate: string,
+): Promise<string> {
+  const { project } = await resolveLinkedProject(session, globals);
+  return resolveFindingId(session, project, candidate);
+}
+
 export async function fixShow(globals: GlobalOptions, findingId: string): Promise<number> {
   const session = await openSession(globals, { auth: true });
+  findingId = await resolveFinding(session, globals, findingId);
   const { fix } = await session.client.fixForFinding(findingId);
 
   if (isAgentMode()) {
@@ -76,8 +89,12 @@ export async function fixShow(globals: GlobalOptions, findingId: string): Promis
   if (!fix) {
     out.line();
     out.info("No fix has been generated for that finding.");
-    out.hint(`cf fix generate ${findingId}`);
+    out.hint(`cf fix generate ${shortId(findingId)}`);
     out.line();
+    return 0;
+  }
+
+  if (await openIfRequested(globals.web, fix.prUrl, { hosts: CODE_HOSTS, what: "this fix" })) {
     return 0;
   }
 
@@ -91,6 +108,7 @@ export async function fixGenerate(
   options: { wait?: boolean } = {},
 ): Promise<number> {
   const session = await openSession(globals, { auth: true });
+  findingId = await resolveFinding(session, globals, findingId);
 
   const existing = await session.client
     .fixForFinding(findingId)
@@ -151,6 +169,7 @@ export async function fixGenerate(
 
 export async function fixPublish(globals: GlobalOptions, findingId: string): Promise<number> {
   const session = await openSession(globals, { auth: true });
+  findingId = await resolveFinding(session, globals, findingId);
   const { fix } = await session.client.fixForFinding(findingId);
 
   if (!fix) {
@@ -274,6 +293,7 @@ export async function fixMerge(
   options: { method?: string; deleteBranch?: boolean } = {},
 ): Promise<number> {
   const session = await openSession(globals, { auth: true });
+  if (findingId) findingId = await resolveFinding(session, globals, findingId);
 
   if (!findingId) {
     if (!isInteractive()) {

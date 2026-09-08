@@ -1,17 +1,6 @@
-import type { Session } from "../core/session.js";
-import { messageOf } from "../core/errors.js";
-import type { Fix, Project } from "../core/types.js";
-import type { BrowserAction, BrowserContext } from "../ui/browser.js";
-import { confirmByTyping } from "../ui/prompts.js";
-import { wrapText } from "../ui/format.js";
-import * as out from "../ui/output.js";
+import type { Fix } from "../core/types.js";
+import { shortId, wrapText } from "../ui/format.js";
 import { c, glyph } from "../ui/theme.js";
-import { CODE_HOSTS, openExternal } from "../ui/open.js";
-
-export interface FixTarget {
-  findingId: string;
-  fix: Fix | null;
-}
 
 export function fixLabel(fix: Fix | null): string {
   if (!fix) return c.dim("no fix yet");
@@ -45,36 +34,33 @@ export function renderDiff(diff: string): string[] {
   });
 }
 
-export function renderFixSection(fix: Fix | null, width: number): string[] {
+export function renderFixSection(fix: Fix | null, width: number, findingId?: string): string[] {
   const lines: string[] = [];
+  const head = (value = "") => lines.push(value);
   const push = (value = "") => lines.push(value ? `  ${value}` : "");
-  const body = Math.min(96, width - 4);
+  const body = Math.min(96, width - 2);
+  const marker = findingId ? shortId(findingId) : "<finding-id>";
 
-  push();
-  push(c.dim("FIX"));
-  push();
+  head();
+  head(c.bold("Fix"));
 
   if (!fix) {
-    push(c.dim(`No patch has been generated. Press ${c.bold("g")} to generate one.`));
-    push();
+    push(c.dim("No patch has been generated."));
+    push(c.dim(`cf fix generate ${marker}`));
     return lines;
   }
 
-  push(
-    c.dim(
-      [fix.filePath, `base ${fix.baseSha.slice(0, 7)}`].join("      "),
-    ),
-  );
+  push(c.dim(`${fix.filePath} ${glyph.sep} base ${fix.baseSha.slice(0, 7)}`));
   push();
 
   if (fix.status === "failed") {
     push(c.red(fix.error ?? "Generation failed."));
-    push();
+    push(c.dim(`cf fix generate ${marker}`));
     return lines;
   }
   if (fix.status === "generating" || fix.status === "publishing") {
     push(c.cyan(`${fix.status}, this can take a minute.`));
-    push();
+    push(c.dim(`cf fix show ${marker}`));
     return lines;
   }
 
@@ -89,159 +75,7 @@ export function renderFixSection(fix: Fix | null, width: number): string[] {
   if (fix.prUrl) {
     push(`${c.dim("pull request")}  ${c.cyan(fix.prUrl)}`);
   } else {
-    push(c.dim(`Press ${c.bold("p")} to open a pull request with this patch.`));
+    push(c.dim(`cf fix publish ${marker}   open a pull request with this patch`));
   }
-  push();
   return lines;
-}
-
-async function pollUntilSettled<T>(
-  session: Session,
-  findingId: string,
-  context: BrowserContext<T>,
-): Promise<void> {
-  for (let attempt = 0; attempt < 90; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    const { fix } = await session.client.fixForFinding(findingId).catch(() => ({ fix: null }));
-    await context.refresh();
-    if (!fix) continue;
-    if (fix.status === "generating" || fix.status === "publishing") continue;
-    context.setStatus(
-      fix.status === "failed"
-        ? `Generation failed: ${fix.error ?? "no reason given"}`
-        : "Fix ready. Press p to open a pull request.",
-    );
-    return;
-  }
-  context.setStatus("Still working. Come back in a moment.");
-}
-
-export function fixActions<T>(
-  session: Session,
-  project: Project,
-  target: (item: T | null) => FixTarget | null,
-): BrowserAction<T>[] {
-  return [
-    {
-      key: "g",
-      label: (item) => {
-        const found = target(item);
-        if (!found) return null;
-        const status = found.fix?.status;
-        if (status === "generating" || status === "publishing") return null;
-        if (status === "opened" || status === "merged") return null;
-        if (status === "failed") return "retry fix";
-        if (status === "ready") return "regenerate";
-        return "generate fix";
-      },
-      run: async (item, context) => {
-        const found = target(item);
-        if (!found) return;
-        if (found.fix?.status === "generating") {
-          context.setStatus("Already generating.");
-          return;
-        }
-        context.setStatus("Requesting a fix.");
-        await session.client.generateFix(found.findingId);
-        await context.refresh();
-        context.setStatus("Generating. This can take a minute.");
-        await pollUntilSettled(session, found.findingId, context);
-      },
-    },
-    {
-      key: "p",
-      label: (item) => {
-        const status = target(item)?.fix?.status;
-        if (status === "opened") return "view pull request";
-        if (status === "ready") return "open pull request";
-        return null;
-      },
-      run: async (item, context) => {
-        const found = target(item);
-        if (!found) return;
-
-        if (found.fix?.status === "opened" && found.fix.prUrl) {
-          const prUrl = found.fix.prUrl;
-          void openExternal(prUrl, { hosts: CODE_HOSTS }).then((opened) => {
-            context.setStatus(opened ? `Opened ${prUrl}` : `That pull request URL was refused: ${prUrl}`);
-          });
-          return;
-        }
-        if (found.fix?.status !== "ready") {
-          context.setStatus("Generate a fix first with g, then publish it with p.");
-          return;
-        }
-
-        const patch = found.fix;
-        const confirmed = await context.suspend(async () => {
-          out.line();
-          out.warn(`This opens a real pull request on ${c.bold(project.fullName)}.`);
-          out.hint(`Branch from ${patch.baseSha.slice(0, 7)}, patching ${patch.filePath}.`);
-          out.line();
-          return confirmByTyping({
-            message: `Type ${project.name} to confirm`,
-            expected: project.name,
-          });
-        });
-        if (!confirmed) {
-          context.setStatus("Nothing was published.");
-          return;
-        }
-
-        context.setStatus("Opening a pull request.");
-        const result = await session.client.publishFix(found.findingId);
-        await context.refresh();
-        context.setStatus(
-          result.fix.prUrl ? `Opened ${result.fix.prUrl}` : "Published, but no URL was returned.",
-        );
-      },
-    },
-    {
-      key: "m",
-      label: (item) => {
-        const fix = target(item)?.fix;
-        if (fix?.status !== "opened" || !fix.prNumber) return null;
-        return "merge pull request";
-      },
-      run: async (item, context) => {
-        const found = target(item);
-        const fix = found?.fix;
-        if (!found || fix?.status !== "opened" || !fix.prNumber) return;
-
-        const confirmed = await context.suspend(async () => {
-          out.line();
-          out.warn(
-            `This merges pull request #${fix.prNumber} into ${c.bold(project.defaultBranch ?? "the default branch")} of ${c.bold(project.fullName)}.`,
-          );
-          out.hint(`Squash merge of ${fix.filePath}, then delete the branch.`);
-          if (fix.prUrl) out.hint(fix.prUrl);
-          out.line();
-          return confirmByTyping({
-            message: `Type ${project.name} to confirm`,
-            expected: project.name,
-          });
-        });
-        if (!confirmed) {
-          context.setStatus("Nothing was merged.");
-          return;
-        }
-
-        context.setStatus(`Merging #${fix.prNumber}.`);
-        try {
-          const result = await session.client.mergeFix(found.findingId, {
-            method: "squash",
-            deleteBranch: true,
-          });
-          await context.refresh();
-          context.setStatus(
-            result.alreadyMerged
-              ? `#${fix.prNumber} was already merged.`
-              : `Merged #${fix.prNumber}${result.branchDeleted ? " and deleted the branch" : ""}. Rescan with r to confirm.`,
-          );
-        } catch (error) {
-          context.setStatus(messageOf(error));
-        }
-      },
-    },
-  ];
 }

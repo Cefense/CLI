@@ -66,37 +66,37 @@ export function json(value: unknown): void {
 
 export function heading(title: string, subtitle?: string): void {
   line();
-  line(`  ${c.bold(title)}${subtitle ? `   ${c.dim(subtitle)}` : ""}`);
+  line(`${c.bold(title)}${subtitle ? `   ${c.dim(subtitle)}` : ""}`);
   line();
 }
 
 export function section(title: string): void {
   line();
-  line(`  ${c.dim(title.toUpperCase())}`);
+  line(c.bold(title));
 }
 
-export function rule(width = terminalWidth() - 4): void {
-  line(`  ${c.dim(glyph.rule.repeat(Math.max(4, width)))}`);
+export function rule(width = terminalWidth()): void {
+  line(c.dim(glyph.rule.repeat(Math.max(4, width))));
 }
 
 export function success(message: string): void {
-  line(`  ${c.green(glyph.check)} ${message}`);
+  line(`${c.green(glyph.check)} ${message}`);
 }
 
 export function warn(message: string): void {
-  line(`  ${c.yellow(glyph.warn)} ${message}`);
+  line(`${c.yellow(glyph.warn)} ${message}`);
 }
 
 export function info(message: string): void {
-  line(`  ${message}`);
+  line(message);
 }
 
 export function bullet(message: string): void {
-  line(`  ${c.dim(glyph.arrow)} ${message}`);
+  line(`${c.dim(glyph.arrow)} ${message}`);
 }
 
 export function hint(message: string): void {
-  line(`    ${c.dim(message)}`);
+  line(c.dim(message));
 }
 
 export function renderError(error: unknown): void {
@@ -104,13 +104,12 @@ export function renderError(error: unknown): void {
   const stream = process.stderr;
   const emit = (value: string) => stream.write(`${sanitizeForTerminal(value)}\n`);
   if (error instanceof CefenseError) {
-    emit(`\n  ${c.red(glyph.cross)} ${error.message}`);
-    if (error.remedy) emit(`    ${c.dim(error.remedy)}`);
-    emit("");
+    emit(`${c.red(glyph.cross)} ${error.message}`);
+    if (error.remedy) emit(c.dim(error.remedy));
     return;
   }
   const message = error instanceof Error ? error.message : String(error);
-  emit(`\n  ${c.red(glyph.cross)} ${message}\n`);
+  emit(`${c.red(glyph.cross)} ${message}`);
 }
 
 export function isPiped(): boolean {

@@ -1,4 +1,6 @@
 import { openSession, type GlobalOptions, type Session } from "../core/session.js";
+import { resolveLinkedProject } from "./link.js";
+import { resolveFindingId } from "./observed.js";
 import { CefenseError, UsageError } from "../core/errors.js";
 import type { TriageStatus } from "../core/types.js";
 import * as out from "../ui/output.js";
@@ -80,6 +82,8 @@ export async function triageCommand(
 ): Promise<number> {
   const status = parseTriageStatus(decision);
   const session = await openSession(globals, { auth: true });
+  const { project } = await resolveLinkedProject(session, globals);
+  findingId = await resolveFindingId(session, project, findingId);
   const applied = await applyTriage(session, findingId, status, options.note);
 
   if (isAgentMode()) {

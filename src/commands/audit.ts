@@ -1,10 +1,9 @@
 import { openSession, type GlobalOptions } from "../core/session.js";
 import { UsageError } from "../core/errors.js";
 import type { AuditEvent } from "../core/types.js";
-import { browse } from "../ui/browser.js";
+import { printList } from "../ui/list.js";
 import * as out from "../ui/output.js";
-import { keyValue, renderTable } from "../ui/table.js";
-import { absoluteDate, padEnd, relativeTime, terminalWidth, truncate, wrapText } from "../ui/format.js";
+import { relativeTime } from "../ui/format.js";
 import { c, glyph } from "../ui/theme.js";
 import { isAgentMode } from "../ui/mode.js";
 import { compactAuditEvent } from "../core/compact.js";
@@ -67,56 +66,6 @@ function actor(event: AuditEvent): string {
   return event.actor.kind === "user" ? event.actor.name : `${event.actor.name} (${event.actor.kind})`;
 }
 
-function eventDetail(event: AuditEvent, width: number): string[] {
-  const lines: string[] = [];
-  const push = (value = "") => lines.push(value ? `  ${value}` : "");
-  const body = Math.min(96, width - 4);
-
-  push();
-  push(`${c.bold(event.action)}   ${outcomeMark(event)} ${c.dim(event.outcome)}`);
-  push();
-  if (event.summary) {
-    for (const wrapped of wrapText(event.summary, body)) push(wrapped);
-    push();
-  }
-
-  const facts: Array<[string, string]> = [
-    ["When", `${absoluteDate(event.at)}   ${c.dim(relativeTime(event.at))}`],
-    ["Category", event.category],
-    ["Actor", actor(event)],
-    ["Target", `${event.target.label || event.target.id}   ${c.dim(event.target.type)}`],
-  ];
-  for (const row of keyValue(facts, 10)) push(row);
-
-  if (event.changes?.length) {
-    push();
-    push(c.dim("CHANGES"));
-    push();
-    for (const change of event.changes) {
-      push(`${c.dim(padEnd(change.field, 14))}${c.red(change.from || "empty")} ${c.dim(glyph.arrow)} ${c.green(change.to || "empty")}`);
-    }
-  }
-
-  const metadata = Object.entries(event.metadata ?? {});
-  if (metadata.length > 0) {
-    push();
-    push(c.dim("DETAIL"));
-    push();
-    for (const row of keyValue(metadata, 14)) push(row);
-  }
-
-  const source = Object.entries(event.source ?? {});
-  if (source.length > 0) {
-    push();
-    push(c.dim("SOURCE"));
-    push();
-    for (const row of keyValue(source, 14)) push(row);
-  }
-
-  push();
-  return lines;
-}
-
 export async function auditCommand(
   globals: GlobalOptions,
   options: AuditOptions = {},
@@ -146,59 +95,32 @@ export async function auditCommand(
     return 0;
   }
 
-  if (events.length === 0) {
-    out.line();
-    out.info(
+  printList({
+    noun: "event",
+    scope: categories.length > 0 ? categories.join(", ") : "this account",
+    rows: events,
+    columns: [
+      { header: "when", value: (event) => c.dim(relativeTime(event.at)), min: 8, max: 12 },
+      { header: "", value: (event) => outcomeMark(event), min: 1, max: 1 },
+      { header: "category", value: (event) => c.dim(event.category), min: 8, max: 12 },
+      { header: "event", value: (event) => event.summary || event.action, min: 24 },
+      { header: "actor", value: (event) => c.dim(actor(event)), min: 8, max: 22 },
+    ],
+    pipeColumns: [
+      { header: "when", value: (event) => event.at },
+      { header: "category", value: (event) => event.category },
+      { header: "action", value: (event) => event.action },
+      { header: "actor", value: actor },
+      { header: "target", value: (event) => event.target.label || event.target.id },
+    ],
+    empty:
       categories.length > 0
         ? `No ${categories.join(", ")} activity is recorded.`
         : "No activity is recorded on this account yet.",
-    );
-    out.line();
-    return 0;
-  }
-
-  if (out.isPiped()) {
-    out.lines(
-      renderTable(
-        events,
-        [
-          { header: "when", value: (event) => relativeTime(event.at), min: 9 },
-          { header: "category", value: (event) => event.category, min: 10 },
-          { header: "action", value: (event) => event.action, min: 16 },
-          { header: "actor", value: actor, min: 10 },
-          { header: "target", value: (event) => event.target.label || event.target.id, min: 12 },
-        ],
-        { width: terminalWidth() - 4 },
-      ).map((row) => `  ${row}`),
-    );
-    out.line();
-    return 0;
-  }
-
-  await browse(events, {
-    header: (visible) => [
-      "",
-      `  ${c.bold("Activity")}   ${c.dim(`${visible.length} ${visible.length === 1 ? "event" : "events"}`)}`,
-      `  ${c.dim(categories.length > 0 ? categories.join(", ") : "everything on this account")}`,
-      "",
+    next: [
+      { command: "cf audit --category fix", purpose: "narrow to one category" },
+      { command: "cf audit --limit 100", purpose: "fetch more events" },
     ],
-    renderRow: (event, selected, width) => {
-      const marker = selected ? c.cyan(glyph.arrow) : " ";
-      const summary = event.summary || event.action;
-      const room = Math.max(20, width - 52);
-      const title = truncate(summary, room);
-      return [
-        `${marker} ${outcomeMark(event)} ${padEnd(selected ? c.bold(title) : title, room)}  ${padEnd(c.dim(event.category), 14)}${c.dim(relativeTime(event.at))}`,
-      ];
-    },
-    renderDetail: eventDetail,
-    filterText: (event) =>
-      `${event.action} ${event.category} ${event.summary} ${event.target.label} ${event.actor.name}`,
-    emptyMessage: "No event matches that filter.",
-    refresh: async () => {
-      events = select((await session.client.auditEvents(query)).events);
-      return events;
-    },
   });
 
   return 0;

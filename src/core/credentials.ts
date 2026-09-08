@@ -7,7 +7,7 @@ import {
   removeCredentialsFile,
 } from "./config.js";
 import { CefenseError } from "./errors.js";
-import type { StoredCredentials } from "./types.js";
+import type { CliConfigResponse, StoredCredentials } from "./types.js";
 
 const SERVICE = "cefense-cli";
 
@@ -19,7 +19,7 @@ export function assertCredentialOrigin(apiUrl: string): string {
     url = new URL(apiUrl);
   } catch {
     throw new CefenseError(`${apiUrl} is not a URL Cefense can send a token to.`, {
-      remedy: "Pass a full https URL to --api-url.",
+      remedy: "Set CEFENSE_API_URL to a full https URL.",
       code: "insecure_api_url",
     });
   }
@@ -27,7 +27,7 @@ export function assertCredentialOrigin(apiUrl: string): string {
   if (url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname)) return url.origin;
   throw new CefenseError(`Cefense will not send your token to ${url.origin}.`, {
     remedy:
-      "Credentials are only sent over https, or over http to localhost. Point --api-url or CEFENSE_API_URL at an https origin.",
+      "Credentials are only sent over https, or over http to localhost. Point CEFENSE_API_URL at an https origin.",
     code: "insecure_api_url",
   });
 }
@@ -128,7 +128,7 @@ export function credentialsFromEnvironment(apiUrl: string): StoredCredentials | 
   const issued = environmentTokenOrigin();
   if (issued !== target) {
     throw new CefenseError(`CEFENSE_TOKEN was issued for ${issued}, not ${target}.`, {
-      remedy: `Set CEFENSE_TOKEN_ORIGIN to ${target} if the token really belongs there, or drop the --api-url override.`,
+      remedy: `Set CEFENSE_TOKEN_ORIGIN to ${target} if the token really belongs there, or unset CEFENSE_API_URL.`,
       code: "token_origin_mismatch",
     });
   }
@@ -143,19 +143,33 @@ export function credentialsFromEnvironment(apiUrl: string): StoredCredentials | 
   };
 }
 
-function boundToOrigin(credentials: StoredCredentials, origin: string): StoredCredentials {
-  const issuer = credentials.issuer ? originOf(credentials.issuer) : null;
-  if (issuer && issuer !== origin) {
-    throw new CefenseError(`The stored token was issued by ${issuer}, not ${origin}.`, {
-      remedy: `Run cf auth login --api-url ${origin} to sign in to this instance.`,
-      code: "token_origin_mismatch",
-    });
+export function assertIssuerMatches(
+  credentials: StoredCredentials | null,
+  config: CliConfigResponse,
+): void {
+  if (!credentials?.issuer) return;
+  const stored = originOf(credentials.issuer);
+  const expected = originOf(config.auth.issuer);
+  if (!stored || !expected || stored === expected) return;
+  throw new CefenseError(
+    `The stored token was issued by ${stored}, but this instance now signs in with ${expected}.`,
+    {
+      remedy: "Run cf auth login --force to sign in again.",
+      code: "token_issuer_changed",
+    },
+  );
+}
+
+export async function loadCredentialsOrNone(apiUrl: string): Promise<CredentialState> {
+  try {
+    return await loadCredentials(apiUrl);
+  } catch {
+    return { credentials: null, backend: "none" };
   }
-  return credentials;
 }
 
 export async function loadCredentials(apiUrl: string): Promise<CredentialState> {
-  const origin = assertCredentialOrigin(apiUrl);
+  assertCredentialOrigin(apiUrl);
 
   const fromEnvironment = credentialsFromEnvironment(apiUrl);
   if (fromEnvironment) return { credentials: fromEnvironment, backend: "environment" };
@@ -168,11 +182,11 @@ export async function loadCredentials(apiUrl: string): Promise<CredentialState> 
     } catch {
       stored = null;
     }
-    if (stored) return { credentials: boundToOrigin(stored, origin), backend: "keychain" };
+    if (stored) return { credentials: stored, backend: "keychain" };
   }
 
   const stored = readFileStore()[apiUrl] ?? null;
-  if (stored) return { credentials: boundToOrigin(stored, origin), backend: "file" };
+  if (stored) return { credentials: stored, backend: "file" };
   return { credentials: null, backend: "none" };
 }
 

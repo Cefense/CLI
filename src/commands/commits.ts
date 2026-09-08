@@ -2,15 +2,12 @@ import { openSession, type GlobalOptions } from "../core/session.js";
 import type { CommitEntry, CommitsResponse, Project } from "../core/types.js";
 import { commitUrl, providerLabel, providerOf } from "../core/providers.js";
 import { resolveLinkedProject } from "./link.js";
-import { observedCommand } from "./observed.js";
-import { browse } from "../ui/browser.js";
+import { printList } from "../ui/list.js";
 import * as out from "../ui/output.js";
-import { keyValue, renderTable } from "../ui/table.js";
-import { padEnd, relativeTime, terminalWidth, truncate, wrapText } from "../ui/format.js";
-import { c, glyph, scanStatusLabel } from "../ui/theme.js";
+import { relativeTime } from "../ui/format.js";
+import { c } from "../ui/theme.js";
 import { isAgentMode } from "../ui/mode.js";
 import { compactCommit } from "../core/compact.js";
-import { CODE_HOSTS, openExternal } from "../ui/open.js";
 
 export interface CommitsOptions {
   limit?: number;
@@ -35,59 +32,6 @@ function delta(commit: CommitEntry): string {
     commit.counts.suppressed > 0 ? c.dim(`~${commit.counts.suppressed}`) : "",
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(" ") : c.dim("no change");
-}
-
-function commitDetail(project: Project, commit: CommitEntry, width: number): string[] {
-  const lines: string[] = [];
-  const push = (value = "") => lines.push(value ? `  ${value}` : "");
-  const body = Math.min(96, width - 4);
-
-  push();
-  push(`${c.bold(subject(commit))}`);
-  push();
-  push(
-    c.dim(
-      [
-        commit.sha.slice(0, 12),
-        commit.authorLogin ?? commit.authorName,
-        relativeTime(commit.committedAt),
-      ].join("      "),
-    ),
-  );
-
-  const rest = commit.message.split("\n").slice(1).join("\n").trim();
-  if (rest) {
-    push();
-    for (const wrapped of wrapText(rest, body)) push(c.dim(wrapped));
-  }
-
-  push();
-  push(c.dim("SCAN"));
-  push();
-  if (!commit.scanId) {
-    push(c.dim("This commit has never been scanned."));
-  } else {
-    const counts = commit.counts;
-    const facts: Array<[string, string]> = [
-      ["Status", scanStatusLabel(commit.scanStatus)],
-      ["Findings", commit.findingCount === null ? "-" : String(commit.findingCount)],
-      ["Introduced", counts && counts.introduced > 0 ? c.red(String(counts.introduced)) : "0"],
-      ["Resolved", counts && counts.resolved > 0 ? c.green(String(counts.resolved)) : "0"],
-      ["Suppressed", String(counts?.suppressed ?? 0)],
-      ["Scan id", c.dim(commit.scanId)],
-    ];
-    for (const row of keyValue(facts, 11)) push(row);
-    push();
-    push(c.dim("Press f to read the findings this scan recorded."));
-  }
-
-  const url = commitUrl(project, commit.sha);
-  if (url) {
-    push();
-    push(c.dim(url));
-  }
-  push();
-  return lines;
 }
 
 export async function commitsCommand(
@@ -131,97 +75,57 @@ export async function commitsCommand(
     return 0;
   }
 
-  if (commits.length === 0) {
-    out.line();
-    if (!listing.historyAvailable) {
-      out.info(`Cefense cannot read the commit history of ${c.bold(project.fullName)}.`);
-      out.hint(`Reconnect ${host} with cf provider connect ${providerOf(project)}.`);
-    } else {
-      out.info(`${c.bold(project.fullName)} has no commits on ${listing.branch ?? "its default branch"}.`);
-    }
-    out.line();
-    return 0;
-  }
+  const scanned = commits.find((commit) => commit.scanId);
 
-  if (out.isPiped()) {
-    out.lines(
-      renderTable(
-        commits,
-        [
-          { header: "commit", value: (commit) => commit.sha.slice(0, 7), min: 7, max: 7 },
-          { header: "subject", value: subject, min: 20 },
-          { header: "author", value: (commit) => commit.authorLogin ?? commit.authorName, min: 8 },
-          {
-            header: "findings",
-            value: (commit) => (commit.findingCount === null ? "-" : String(commit.findingCount)),
-            align: "right",
-            min: 5,
-          },
-          { header: "delta", value: delta, min: 9 },
-          { header: "when", value: (commit) => relativeTime(commit.committedAt), min: 9 },
-        ],
-        { width: terminalWidth() - 4 },
-      ).map((row) => `  ${row}`),
-    );
-    out.line();
-    return 0;
-  }
-
-  let followUp: CommitEntry | null = null;
-
-  await browse(commits, {
-    header: (visible) => {
-      const introduced = visible.reduce((sum, commit) => sum + (commit.counts?.introduced ?? 0), 0);
-      const resolved = visible.reduce((sum, commit) => sum + (commit.counts?.resolved ?? 0), 0);
-      const scanned = visible.filter((commit) => commit.scanned).length;
-      const name = listing.branch ? `${project.fullName}${c.cyan(`#${listing.branch}`)}` : project.fullName;
-      return [
-        "",
-        `  ${c.bold(name)}   ${c.dim(`${visible.length} ${visible.length === 1 ? "commit" : "commits"}, ${scanned} scanned`)}`,
-        `  ${c.red(`${introduced} introduced`)}${c.dim("  ·  ")}${c.green(`${resolved} resolved`)}`,
-        "",
-      ];
-    },
-    renderRow: (commit, selected, width) => {
-      const marker = selected ? c.cyan(glyph.arrow) : " ";
-      const title = truncate(subject(commit), Math.max(20, width - 60));
-      return [
-        `${marker} ${c.dim(commit.sha.slice(0, 7))} ${padEnd(selected ? c.bold(title) : title, Math.max(20, width - 60))}  ${padEnd(delta(commit), 14)}${c.dim(relativeTime(commit.committedAt))}`,
-      ];
-    },
-    renderDetail: (commit, width) => commitDetail(project, commit, width),
-    filterText: (commit) => `${commit.sha} ${commit.message} ${commit.authorLogin ?? commit.authorName}`,
-    emptyMessage: "No commit matches that filter.",
-    refresh: async () => {
-      listing = await session.client.commits(project.githubRepoId, query);
-      commits = cap(listing);
-      return commits;
-    },
-    actions: [
+  printList({
+    noun: "commit",
+    scope: listing.branch ? `${project.fullName}#${listing.branch}` : project.fullName,
+    footnote: `${commits.filter((commit) => commit.scanned).length} of ${commits.length} scanned by Cefense.`,
+    rows: commits,
+    columns: [
+      { header: "commit", value: (commit) => c.dim(commit.sha.slice(0, 7)), min: 7, max: 7 },
+      { header: "subject", value: subject, min: 20 },
       {
-        key: "f",
-        label: (commit) => (commit?.scanId ? "findings" : null),
-        run: (commit, context) => {
-          if (!commit?.scanId) return;
-          followUp = commit;
-          context.close();
-        },
+        header: "author",
+        value: (commit) => c.dim(commit.authorLogin ?? commit.authorName),
+        min: 8,
+        max: 18,
       },
       {
-        key: "o",
-        label: host.toLowerCase(),
-        run: (commit) => {
-          if (!commit) return;
-          const url = commitUrl(project, commit.sha);
-          void openExternal(url, { hosts: CODE_HOSTS });
-        },
+        header: "findings",
+        value: (commit) => (commit.findingCount === null ? c.dim("-") : String(commit.findingCount)),
+        align: "right",
+        min: 5,
       },
+      { header: "delta", value: delta, min: 9 },
+      { header: "when", value: (commit) => c.dim(relativeTime(commit.committedAt)), min: 9 },
     ],
+    pipeColumns: [
+      { header: "commit", value: (commit) => commit.sha },
+      { header: "subject", value: subject },
+      { header: "author", value: (commit) => commit.authorLogin ?? commit.authorName },
+      {
+        header: "findings",
+        value: (commit) => (commit.findingCount === null ? "" : String(commit.findingCount)),
+      },
+      { header: "scanned", value: (commit) => (commit.scanned ? "yes" : "no") },
+      { header: "when", value: (commit) => commit.committedAt },
+    ],
+    empty: listing.historyAvailable
+      ? `${project.fullName} has no commits on ${listing.branch ?? "its default branch"}.`
+      : `Cefense cannot read the commit history of ${project.fullName}.`,
+    emptyHint: listing.historyAvailable
+      ? null
+      : `Reconnect ${host} with cf provider connect ${providerOf(project)}.`,
+    next: scanned
+      ? [
+          {
+            command: `cf observed --scan ${scanned.scanId}`,
+            purpose: `findings at ${scanned.sha.slice(0, 7)}`,
+          },
+        ]
+      : [],
   });
 
-  const pending = followUp as CommitEntry | null;
-  if (pending?.scanId) {
-    return observedCommand({ ...globals, repo: project.fullName }, { scanId: pending.scanId });
-  }
   return 0;
 }
