@@ -1,6 +1,6 @@
 import { AGENT_SCHEMA_VERSION, prune } from "../core/compact.js";
 import { CefenseError, EXIT_API } from "../core/errors.js";
-import { terminalWidth } from "./format.js";
+import { sanitizeForTerminal, terminalWidth } from "./format.js";
 import { isAgentMode } from "./mode.js";
 import { c, glyph } from "./theme.js";
 
@@ -52,7 +52,7 @@ export function agentError(error: unknown): void {
 
 export function line(value = ""): void {
   if (isAgentMode()) return;
-  process.stdout.write(`${value}\n`);
+  process.stdout.write(`${sanitizeForTerminal(value)}\n`);
 }
 
 export function lines(values: string[]): void {
@@ -102,14 +102,15 @@ export function hint(message: string): void {
 export function renderError(error: unknown): void {
   if (isAgentMode()) return;
   const stream = process.stderr;
+  const emit = (value: string) => stream.write(`${sanitizeForTerminal(value)}\n`);
   if (error instanceof CefenseError) {
-    stream.write(`\n  ${c.red(glyph.cross)} ${error.message}\n`);
-    if (error.remedy) stream.write(`    ${c.dim(error.remedy)}\n`);
-    stream.write("\n");
+    emit(`\n  ${c.red(glyph.cross)} ${error.message}`);
+    if (error.remedy) emit(`    ${c.dim(error.remedy)}`);
+    emit("");
     return;
   }
   const message = error instanceof Error ? error.message : String(error);
-  stream.write(`\n  ${c.red(glyph.cross)} ${message}\n\n`);
+  emit(`\n  ${c.red(glyph.cross)} ${message}\n`);
 }
 
 export function isPiped(): boolean {

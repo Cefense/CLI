@@ -1,4 +1,3 @@
-import open from "open";
 import { openSession, type GlobalOptions } from "../core/session.js";
 import type { GithubRepo, Project } from "../core/types.js";
 import { providerLabel, providerOf } from "../core/providers.js";
@@ -18,6 +17,7 @@ import { watchScan } from "./scan.js";
 import { SCAN_DEPTHS, SCAN_INTERVALS, SCAN_MODES } from "./settings.js";
 import { isAgentMode } from "../ui/mode.js";
 import { compactProject, prune } from "../core/compact.js";
+import { CODE_HOSTS, openExternal } from "../ui/open.js";
 
 type Row =
   | { kind: "project"; project: Project }
@@ -314,7 +314,7 @@ export async function statusCommand(
         run: (row) => {
           const url =
             row?.kind === "project" ? row.project.htmlUrl : row?.kind === "available" ? row.repo.htmlUrl : null;
-          if (url) void open(url).catch(() => undefined);
+          void openExternal(url, { hosts: CODE_HOSTS });
         },
       },
       {

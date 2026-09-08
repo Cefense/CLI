@@ -1,4 +1,3 @@
-import open from "open";
 import { openSession, type GlobalOptions, type Session } from "../core/session.js";
 import { CefenseError, UsageError } from "../core/errors.js";
 import {
@@ -16,6 +15,7 @@ import { padEnd, terminalWidth } from "../ui/format.js";
 import { c, glyph } from "../ui/theme.js";
 import { isAgentMode } from "../ui/mode.js";
 import { prune } from "../core/compact.js";
+import { openExternal } from "../ui/open.js";
 
 export interface Connection {
   provider: Provider;
@@ -198,7 +198,7 @@ export async function ensureProviderConnected(
     }
   }
 
-  void open(target).catch(() => undefined);
+  void openExternal(target);
 
   if (options.wait === false) return status;
 

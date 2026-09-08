@@ -1,4 +1,3 @@
-import open from "open";
 import { openSession, type GlobalOptions } from "../core/session.js";
 import type { Branch, BranchesResponse, Project } from "../core/types.js";
 import { providerLabel, providerOf, treeUrl } from "../core/providers.js";
@@ -12,6 +11,7 @@ import { padEnd, relativeTime, terminalWidth } from "../ui/format.js";
 import { c, glyph, scanStatusLabel } from "../ui/theme.js";
 import { isAgentMode } from "../ui/mode.js";
 import { compactBranch } from "../core/compact.js";
+import { CODE_HOSTS, openExternal } from "../ui/open.js";
 
 function branchUrl(project: Project, branch: Branch): string | null {
   return treeUrl(project, branch.name);
@@ -162,7 +162,7 @@ export async function branchesCommand(globals: GlobalOptions): Promise<number> {
         run: (branch) => {
           if (!branch) return;
           const url = branchUrl(project, branch);
-          if (url) void open(url).catch(() => undefined);
+          void openExternal(url, { hosts: CODE_HOSTS });
         },
       },
     ],

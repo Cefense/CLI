@@ -1,4 +1,3 @@
-import open from "open";
 import { openSession, type GlobalOptions } from "../core/session.js";
 import type { CommitEntry, CommitsResponse, Project } from "../core/types.js";
 import { commitUrl, providerLabel, providerOf } from "../core/providers.js";
@@ -11,6 +10,7 @@ import { padEnd, relativeTime, terminalWidth, truncate, wrapText } from "../ui/f
 import { c, glyph, scanStatusLabel } from "../ui/theme.js";
 import { isAgentMode } from "../ui/mode.js";
 import { compactCommit } from "../core/compact.js";
+import { CODE_HOSTS, openExternal } from "../ui/open.js";
 
 export interface CommitsOptions {
   limit?: number;
@@ -213,7 +213,7 @@ export async function commitsCommand(
         run: (commit) => {
           if (!commit) return;
           const url = commitUrl(project, commit.sha);
-          if (url) void open(url).catch(() => undefined);
+          void openExternal(url, { hosts: CODE_HOSTS });
         },
       },
     ],

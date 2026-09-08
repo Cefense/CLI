@@ -1,4 +1,3 @@
-import open from "open";
 import { openSession, type GlobalOptions, type Session } from "../core/session.js";
 import type { Finding, Fix, Project } from "../core/types.js";
 import { browse } from "../ui/browser.js";

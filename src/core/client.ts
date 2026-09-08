@@ -43,6 +43,7 @@ export interface RepoSettings {
 
 const RETRYABLE = new Set([429, 502, 503, 504]);
 const MAX_ATTEMPTS = 3;
+const EXPIRY_SKEW_MS = 30_000;
 
 interface RequestOptions {
   query?: Record<string, string | number | boolean | undefined>;
@@ -93,6 +94,12 @@ export class CefenseClient {
     return this.credentials?.refreshToken ?? null;
   }
 
+  private get expired(): boolean {
+    const expiresAt = this.credentials?.expiresAt;
+    if (typeof expiresAt !== "number" || !Number.isFinite(expiresAt)) return false;
+    return Date.now() >= expiresAt - EXPIRY_SKEW_MS;
+  }
+
   private async renew(): Promise<StoredCredentials> {
     if (!this.config || !this.credentials?.refreshToken) {
       throw new AuthRequiredError("Your session has expired.");
@@ -128,6 +135,11 @@ export class CefenseClient {
     }
 
     let renewed = false;
+    if (this.expired && this.credentials?.refreshToken && this.config) {
+      renewed = true;
+      await this.renew();
+    }
+
     for (let attempt = 0; ; attempt += 1) {
       const headers: Record<string, string> = {
         accept: options.accept ?? "application/json",

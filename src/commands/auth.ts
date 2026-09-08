@@ -1,4 +1,3 @@
-import open from "open";
 import { deleteCredentials, keychainName, listStoredOrigins, loadCredentials, saveCredentials } from "../core/credentials.js";
 import { assertVersionSupported, fetchDiscovery } from "../core/discovery.js";
 import { exchangeCode, requestAuthorizationCode, revokeToken } from "../core/oauth.js";
@@ -14,6 +13,7 @@ import { keyValue } from "../ui/table.js";
 import { VERSION } from "../version.js";
 import { isAgentMode } from "../ui/mode.js";
 import { prune } from "../core/compact.js";
+import { openExternal } from "../ui/open.js";
 
 export async function authLogin(
   globals: GlobalOptions,
@@ -65,7 +65,7 @@ export async function authLogin(
           out.line(`    ${c.cyan(url)}`);
           out.line();
         }
-        void open(url).catch(() => undefined);
+        void openExternal(url, { hosts: [new URL(apiUrl).host, new URL(config.auth.issuer).host] });
         progress.start("Waiting for authentication in the browser");
       },
     });

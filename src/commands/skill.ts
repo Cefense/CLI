@@ -305,18 +305,33 @@ export async function skillInstall(
   const global = Boolean(options.global);
   const planned = targets.map((target) => ({ target, file: pathFor(target, global) }));
 
-  if (!globals.yes && !isAgentMode()) {
+  if (!globals.yes) {
+    if (isAgentMode()) {
+      throw new UsageError(
+        `This writes the Cefense skill into ${planned.map((entry) => display(entry.file)).join(", ")}.`,
+        global
+          ? "A global install adds a standing instruction to fetch https://cefense.com/skill.md. Re-run with --yes to confirm."
+          : "Re-run with --yes to confirm.",
+        "confirmation_required",
+      );
+    }
     out.line();
     out.info(`This writes the Cefense skill into ${planned.length === 1 ? "one file" : `${planned.length} files`}.`);
     out.line();
     for (const entry of planned) {
       out.line(`    ${c.cyan(display(entry.file))}   ${c.dim(entry.target.label)}`);
     }
+    if (global) {
+      out.line();
+      out.warn(
+        "A global install writes a standing instruction to fetch and follow https://cefense.com/skill.md.",
+      );
+      out.hint("Your coding agent will read that URL on every future session.");
+    }
     out.line();
     const proceed = await confirm({
-      message: "Write them?",
-      initialValue: true,
-      assumeYes: globals.yes,
+      message: global ? "Write them, including the fetch instruction?" : "Write them?",
+      initialValue: !global,
     });
     if (!proceed) {
       out.line();

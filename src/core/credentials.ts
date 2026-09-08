@@ -1,8 +1,58 @@
 import { chmodSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { credentialsFilePath, ensureDataDir, removeCredentialsFile } from "./config.js";
+import {
+  DEFAULT_API_URL,
+  credentialsFilePath,
+  ensureDataDir,
+  normaliseApiUrl,
+  removeCredentialsFile,
+} from "./config.js";
+import { CefenseError } from "./errors.js";
 import type { StoredCredentials } from "./types.js";
 
 const SERVICE = "cefense-cli";
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
+export function assertCredentialOrigin(apiUrl: string): string {
+  let url: URL;
+  try {
+    url = new URL(apiUrl);
+  } catch {
+    throw new CefenseError(`${apiUrl} is not a URL Cefense can send a token to.`, {
+      remedy: "Pass a full https URL to --api-url.",
+      code: "insecure_api_url",
+    });
+  }
+  if (url.protocol === "https:") return url.origin;
+  if (url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname)) return url.origin;
+  throw new CefenseError(`Cefense will not send your token to ${url.origin}.`, {
+    remedy:
+      "Credentials are only sent over https, or over http to localhost. Point --api-url or CEFENSE_API_URL at an https origin.",
+    code: "insecure_api_url",
+  });
+}
+
+function environmentTokenOrigin(): string {
+  const declared =
+    process.env.CEFENSE_TOKEN_ORIGIN?.trim() || process.env.CEFENSE_API_URL?.trim() || DEFAULT_API_URL;
+  try {
+    return assertCredentialOrigin(normaliseApiUrl(declared));
+  } catch (error) {
+    if (error instanceof CefenseError) throw error;
+    throw new CefenseError(`CEFENSE_TOKEN_ORIGIN is not a URL: ${declared}.`, {
+      remedy: "Set it to the https origin the token was issued for.",
+      code: "insecure_api_url",
+    });
+  }
+}
+
+function originOf(value: string): string | null {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
 
 export type CredentialBackend = "keychain" | "file" | "environment" | "none";
 
@@ -74,6 +124,14 @@ function writeFileStore(store: FileStore): void {
 export function credentialsFromEnvironment(apiUrl: string): StoredCredentials | null {
   const token = process.env.CEFENSE_TOKEN?.trim();
   if (!token) return null;
+  const target = assertCredentialOrigin(apiUrl);
+  const issued = environmentTokenOrigin();
+  if (issued !== target) {
+    throw new CefenseError(`CEFENSE_TOKEN was issued for ${issued}, not ${target}.`, {
+      remedy: `Set CEFENSE_TOKEN_ORIGIN to ${target} if the token really belongs there, or drop the --api-url override.`,
+      code: "token_origin_mismatch",
+    });
+  }
   return {
     accessToken: token,
     refreshToken: null,
@@ -81,26 +139,40 @@ export function credentialsFromEnvironment(apiUrl: string): StoredCredentials | 
     subject: null,
     email: null,
     clientId: "",
-    issuer: apiUrl,
+    issuer: target,
   };
 }
 
+function boundToOrigin(credentials: StoredCredentials, origin: string): StoredCredentials {
+  const issuer = credentials.issuer ? originOf(credentials.issuer) : null;
+  if (issuer && issuer !== origin) {
+    throw new CefenseError(`The stored token was issued by ${issuer}, not ${origin}.`, {
+      remedy: `Run cf auth login --api-url ${origin} to sign in to this instance.`,
+      code: "token_origin_mismatch",
+    });
+  }
+  return credentials;
+}
+
 export async function loadCredentials(apiUrl: string): Promise<CredentialState> {
+  const origin = assertCredentialOrigin(apiUrl);
+
   const fromEnvironment = credentialsFromEnvironment(apiUrl);
   if (fromEnvironment) return { credentials: fromEnvironment, backend: "environment" };
 
   const keyring = await loadKeyring();
   if (keyring) {
+    let stored: StoredCredentials | null = null;
     try {
-      const stored = parse(new keyring.Entry(SERVICE, apiUrl).getPassword());
-      if (stored) return { credentials: stored, backend: "keychain" };
+      stored = parse(new keyring.Entry(SERVICE, apiUrl).getPassword());
     } catch {
-      void 0;
+      stored = null;
     }
+    if (stored) return { credentials: boundToOrigin(stored, origin), backend: "keychain" };
   }
 
   const stored = readFileStore()[apiUrl] ?? null;
-  if (stored) return { credentials: stored, backend: "file" };
+  if (stored) return { credentials: boundToOrigin(stored, origin), backend: "file" };
   return { credentials: null, backend: "none" };
 }
 
@@ -113,6 +185,7 @@ export async function saveCredentials(
   apiUrl: string,
   credentials: StoredCredentials,
 ): Promise<SaveResult> {
+  assertCredentialOrigin(apiUrl);
   const keyring = await loadKeyring();
   if (keyring) {
     try {

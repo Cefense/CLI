@@ -1,4 +1,5 @@
 import { isAgentMode } from "./mode.js";
+import { sanitizeForTerminal } from "./format.js";
 const ESC = String.fromCharCode(27);
 const CTRL_C = String.fromCharCode(3);
 const CTRL_D = String.fromCharCode(4);
@@ -126,7 +127,8 @@ export function exitFullScreen(): void {
 
 export function paint(lines: string[]): void {
   const rows = process.stdout.rows ?? lines.length;
-  write(ansi.home + ansi.clearBelow + lines.slice(0, rows).join("\n"));
+  const safe = lines.slice(0, rows).map(sanitizeForTerminal);
+  write(ansi.home + ansi.clearBelow + safe.join("\n"));
 }
 
 export function isInteractive(): boolean {

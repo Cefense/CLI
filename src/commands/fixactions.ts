@@ -1,4 +1,3 @@
-import open from "open";
 import type { Session } from "../core/session.js";
 import { messageOf } from "../core/errors.js";
 import type { Fix, Project } from "../core/types.js";
@@ -7,6 +6,7 @@ import { confirmByTyping } from "../ui/prompts.js";
 import { wrapText } from "../ui/format.js";
 import * as out from "../ui/output.js";
 import { c, glyph } from "../ui/theme.js";
+import { CODE_HOSTS, openExternal } from "../ui/open.js";
 
 export interface FixTarget {
   findingId: string;
@@ -161,8 +161,10 @@ export function fixActions<T>(
         if (!found) return;
 
         if (found.fix?.status === "opened" && found.fix.prUrl) {
-          void open(found.fix.prUrl).catch(() => undefined);
-          context.setStatus(`Opened ${found.fix.prUrl}`);
+          const prUrl = found.fix.prUrl;
+          void openExternal(prUrl, { hosts: CODE_HOSTS }).then((opened) => {
+            context.setStatus(opened ? `Opened ${prUrl}` : `That pull request URL was refused: ${prUrl}`);
+          });
           return;
         }
         if (found.fix?.status !== "ready") {

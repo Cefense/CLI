@@ -116,7 +116,7 @@ Repositories live on GitHub, GitLab, or Bitbucket. Once one is connected it is a
 
 | Command | What it does |
 | --- | --- |
-| `cf status` | the dashboard: repositories, live scan progress, finding counts |
+| `cf status` | the dashboard: repositories, live scan progress, finding counts, `--watch` to keep polling |
 | `cf scan` | rescan a repository, `--wait` to block until it settles |
 | `cf scan --branch <name>` | scan a branch other than the default |
 | `cf scan --url <repository-url>` | connect a public GitHub repository by URL and scan it |
@@ -124,16 +124,22 @@ Repositories live on GitHub, GitLab, or Bitbucket. Once one is connected it is a
 | `cf commits` | the commit history, and what each scanned commit introduced or resolved |
 | `cf triage <finding-id> <decision>` | record a finding as `false-positive`, `accepted-risk`, or `open` |
 | `cf audit` | everything that has happened on this account, newest first |
-| `cf observed` | browse every finding in your code |
+| `cf observed` | browse every finding in your code, `--matched` for only the researched ones |
 | `cf observed show <finding-id>` | one finding in full, with research, data flow and references |
 | `cf matched` | only the findings joined to the research that explains them |
 | `cf fix` | browse findings and their patches side by side |
 | `cf fix show <finding-id>` | the patch generated for one finding |
 | `cf fix generate <finding-id>` | generate a patch, `--wait` to block until it is ready |
 | `cf fix publish <finding-id>` | open a pull request with a generated patch |
-| `cf fix merge [finding-id]` | merge that pull request and delete its branch, prompts when omitted |
+| `cf fix merge [finding-id]` | merge that pull request and delete its branch, `--no-delete-branch` keeps it, prompts when omitted |
 
 `cf observed` and `cf matched` both take `--branch <name>` to read one branch's last scan, and `--scan <id>` to read a scan by id. Without either you get the newest scan of the repository, whichever branch it ran on.
+
+`cf observed --matched` narrows the list to the findings joined to security research, which is the same set `cf matched` shows: use whichever reads better in the command you are already running.
+
+`cf status --watch` keeps the dashboard polling even when nothing is scanning, so it stays open as a live view instead of drawing once and exiting.
+
+`cf fix merge --no-delete-branch` merges the pull request and leaves the branch in place. Without it the branch is deleted, which is the default.
 
 `cf commits` reads the host's own history, not only what Cefense has scanned, so most rows are commits nothing has scanned yet: those have no findings and no deltas rather than a zero. `--branch <name>` reads another branch, `--limit <n>` shows fewer.
 
@@ -388,6 +394,16 @@ Set `CEFENSE_TOKEN` instead of signing in. It is read from the environment and n
 
 `--exit-code` returns 1 when a critical or high finding is present, which fails the job.
 
+## Where your credentials live
+
+`cf auth login` stores the token in your operating system's credential store: the macOS Keychain, Windows Credential Manager, or the system keyring on Linux. It is keyed by the instance origin, so a token issued by one instance is never sent to another.
+
+There is one fallback. On macOS and Linux, if no keyring is available, or the keyring refuses the write, the token is written to `~/.cefense-cli/credentials.json` instead. The file and the directory are created with owner-only permissions (`0600` and `0700`), and the CLI says so at the end of `cf auth login` rather than falling back quietly. It is plain JSON: anything running as your user can read it, which is exactly what the keyring exists to prevent, so treat it as a degraded mode rather than the normal one. On Windows there is no fallback: a failed write is an error. `cf auth status` names the backend in use, and `cf auth logout` removes the entry from whichever one holds it.
+
+`CEFENSE_TOKEN` overrides both and is never persisted. It is bound to a single origin: `CEFENSE_TOKEN_ORIGIN` if you set it, otherwise `CEFENSE_API_URL`, otherwise `https://cefense.com`. Pointing `--api-url` somewhere else with the token set is refused rather than sent, so a token meant for CI cannot be redirected to another host.
+
+Credentials are only ever sent over `https`, or over `http` to an explicit loopback address for local development. Any other `http` origin is refused.
+
 ## Severity vocabulary
 
 Cefense displays four severities. The wire values differ, and filters accept both.
@@ -434,6 +450,7 @@ Resolution order, first match wins:
 | `CEFENSE_API_URL` | the Cefense instance to talk to, default `https://cefense.com` |
 | `CEFENSE_REPO` | the repository to act on, same as `--repo` |
 | `CEFENSE_TOKEN` | an access token to use instead of the keychain, never persisted |
+| `CEFENSE_TOKEN_ORIGIN` | the origin `CEFENSE_TOKEN` was issued for, defaults to `CEFENSE_API_URL` |
 | `NO_COLOR` | disable colour |
 | `FORCE_COLOR` | keep colour when piping |
 

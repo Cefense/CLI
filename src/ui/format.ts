@@ -1,6 +1,38 @@
 import { glyph } from "./theme.js";
 
-const ANSI = new RegExp(String.fromCharCode(27) + "\\[[0-9;]*m", "g");
+const ESC = String.fromCharCode(27);
+
+const ANSI = new RegExp(
+  [
+    `${ESC}\\][\\s\\S]*?(?:\\u0007|${ESC}\\\\|$)`,
+    `${ESC}[P^_X][\\s\\S]*?(?:${ESC}\\\\|$)`,
+    `${ESC}\\[[0-?]*[ -/]*[@-~]`,
+    `${ESC}[@-Z\\\\-_]`,
+  ].join("|"),
+  "g",
+);
+
+const SGR = new RegExp(`${ESC}\\[[0-9;]*m`, "g");
+
+const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
+
+const MARK = "\uE000";
+const MARKER = /\uE000/g;
+
+export function sanitizeForTerminal(value: string): string {
+  const kept: string[] = [];
+  const marked = value
+    .replace(MARKER, "")
+    .replace(SGR, (match) => {
+      kept.push(match);
+      return MARK;
+    })
+    .replace(ANSI, "")
+    .replace(CONTROL, "")
+    .replace(/\t/g, "  ");
+  let index = 0;
+  return marked.replace(MARKER, () => kept[index++] ?? "");
+}
 
 export function terminalWidth(fallback = 80): number {
   const width = process.stdout.columns;

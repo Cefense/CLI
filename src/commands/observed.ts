@@ -1,4 +1,3 @@
-import open from "open";
 import { openSession, type GlobalOptions } from "../core/session.js";
 import { UsageError } from "../core/errors.js";
 import type { Finding, Fix, Project } from "../core/types.js";
@@ -14,6 +13,7 @@ import { relativeTime, terminalWidth, wrapText } from "../ui/format.js";
 import { c, displaySeverity, glyph, severityColor, severityRank } from "../ui/theme.js";
 import { isAgentMode } from "../ui/mode.js";
 import { compactFinding, compactFindingDetail } from "../core/compact.js";
+import { CODE_HOSTS, openExternal } from "../ui/open.js";
 
 export interface ObservedOptions {
   severity?: string;
@@ -347,7 +347,7 @@ export async function observedCommand(
         run: (row) => {
           if (!row) return;
           const url = sourceUrlFor(project, row.finding, scope.label);
-          if (url) void open(url).catch(() => undefined);
+          void openExternal(url, { hosts: CODE_HOSTS });
         },
       },
       {
@@ -398,7 +398,7 @@ export async function observedCommand(
         },
         run: (row) => {
           const source = row?.finding.intelligenceSources[0];
-          if (source) void open(source.sourceUrl).catch(() => undefined);
+          if (source) void openExternal(source.sourceUrl);
         },
       },
     ],
