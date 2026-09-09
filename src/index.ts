@@ -36,6 +36,7 @@ import { observedCommand, observedShow, requireLimit } from "./commands/observed
 import { fixCommand } from "./commands/fix.js";
 import { fixGenerate, fixMerge, fixPublish, fixShow } from "./commands/fixcmds.js";
 import { skillInstall, skillList, skillShow, skillUninstall } from "./commands/skill.js";
+import { agentCheck, agentSchema } from "./commands/agent.js";
 import { completionScript, SHELLS } from "./commands/completion.js";
 
 const program = new Command();
@@ -49,6 +50,7 @@ function withGlobals(command: Command): Command {
     .option("--verbose", "show more detail on failure")
     .option("-y, --yes", "skip confirmation prompts")
     .option("--columns <list>", "only show these columns, comma separated")
+    .option("--fields <list>", "with --agent: narrow every list to these keys, comma separated")
     .option("--web", "open the result in a browser instead of printing it")
     .option("--no-pager", "never page long output")
     .option("--no-link", "do not remember this directory's repository");
@@ -60,11 +62,12 @@ function globalsFrom(command: Command): GlobalOptions {
   const pick = <T>(key: string): T | undefined =>
     (own[key] as T | undefined) ?? (root[key] as T | undefined);
 
-  const agent = Boolean(pick<boolean>("agent"));
+  const agent = Boolean(pick<boolean>("agent")) || envAgentMode();
 
   const globals: GlobalOptions = {
     repo: pick<string>("repo"),
     columns: pick<string>("columns"),
+    fields: pick<string>("fields"),
     web: Boolean(pick<boolean>("web")),
     pager: agent ? false : own.pager !== false && root.pager !== false,
     json: agent || Boolean(pick<boolean>("json")),
@@ -82,7 +85,22 @@ function globalsFrom(command: Command): GlobalOptions {
   out.setCommandName(commandPath(command));
   setPagerEnabled(globals.pager !== false);
   setColumnFilter(globals.columns);
+  out.setFieldFilter(agent ? globals.fields : undefined);
   return globals;
+}
+
+/**
+ * Agent mode from the environment, so a harness sets it once rather than
+ * hoping every composed command carries the flag.
+ *
+ * A forgotten --agent is not a small mistake: it hands back a rendered view
+ * with colour and a pager where JSON was expected, which an agent then tries
+ * to parse.
+ */
+function envAgentMode(): boolean {
+  const raw = process.env.CEFENSE_AGENT?.trim().toLowerCase();
+  if (!raw) return false;
+  return raw !== "0" && raw !== "false" && raw !== "no" && raw !== "off";
 }
 
 function commandPath(command: Command): string {
@@ -221,6 +239,7 @@ withGlobals(program.command("scan"))
   .option("--url <repository-url>", "connect a GitHub repository by URL and scan it")
   .option("--no-watch", "queue the scan without following its progress")
   .option("--wait", "block until the scan finishes")
+  .option("--progress", "with --wait: write one JSON progress line per poll to stderr")
   .action(
     run((globals, command) =>
       scanCommand(globals, {
@@ -228,6 +247,7 @@ withGlobals(program.command("scan"))
         url: command.opts().url,
         watch: command.opts().watch !== false,
         wait: Boolean(command.opts().wait),
+        progress: Boolean(command.opts().progress),
       }),
     ),
   );
@@ -465,6 +485,18 @@ withGlobals(skill.command("uninstall"))
       }),
     ),
   );
+
+const agent = program
+  .command("agent")
+  .description("what an agent needs to drive this CLI without being taught it");
+
+withGlobals(agent.command("schema", { isDefault: true }))
+  .description("the whole command surface, envelope, error codes, and gates, as JSON")
+  .action(run((globals) => agentSchema(globals, program)));
+
+withGlobals(agent.command("check"))
+  .description("can an agent proceed here, and if not, what has to happen first")
+  .action(run((globals) => agentCheck(globals)));
 
 withGlobals(program.command("completion"))
   .argument("<shell>", `one of ${SHELLS.join(", ")}`)

@@ -12,6 +12,7 @@ export const AUDIT_CATEGORIES = [
   "scan",
   "finding",
   "fix",
+  "proof",
   "repository",
   "settings",
   "export",

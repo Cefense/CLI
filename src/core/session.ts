@@ -8,6 +8,7 @@ import type { CliConfigResponse, StoredCredentials } from "./types.js";
 export interface GlobalOptions {
   repo?: string;
   columns?: string;
+  fields?: string;
   web?: boolean;
   pager?: boolean;
   json?: boolean;

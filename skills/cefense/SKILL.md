@@ -3,8 +3,9 @@ name: cefense
 description: Find, understand, and fix security vulnerabilities in this repository using the Cefense CLI. Use when asked to run a security scan, check this repository for vulnerabilities or CVEs, triage or explain security findings, generate a patch for a vulnerability, or open a pull request that fixes one.
 license: MIT
 metadata:
-  version: 3
+  version: 4
   homepage: https://cefense.com
+  documentation: https://agent.cefense.com
 ---
 
 # Cefense
@@ -23,7 +24,7 @@ Use Cefense when the question is about the security of this repository as it act
 
 Do not use it to grade code you are writing right now, and do not use it as a linter. It reports on what was committed and scanned, not on the working tree.
 
-If `cf` is not installed or this repository is not connected, follow https://cefense.com/skill.md first.
+If `cf` is not installed or this repository is not connected, run `cf agent check --agent` and follow its `blockers`, or read https://agent.cefense.com/setup.md.
 
 ## The contract
 
@@ -35,9 +36,30 @@ Pass `--agent` to every command. It prints exactly one line of JSON to stdout, n
 ```
 
 - Branch on `error.code`. Never match on `error.message`, which is written for people and will change.
+- Absent keys are omitted rather than sent as null, and empty arrays are dropped. Test for presence.
 - `next` names real commands that act on what was just returned. Prefer them over commands you compose.
 - Pass `--repo owner/name` every time. `--agent` deliberately remembers no default for the working directory.
 - Exit codes: `0` fine, `1` findings present under `--exit-code`, `2` usage, `3` not signed in, `4` API failure, `130` interrupted.
+
+Set these once instead of repeating flags:
+
+```sh
+export CEFENSE_AGENT=1      # every invocation is in agent mode, no --agent needed
+export CEFENSE_REPO=acme/api # every command acts on this repository
+```
+
+`--fields <list>` narrows every list in the envelope to the keys you name, which on a real repository takes a findings listing from about 32 KB to about 9 KB. Use it when ranking or triaging. Do not use it when reading one finding to judge it, because that needs the whole record.
+
+### Ask the CLI instead of guessing
+
+```sh
+cf agent check --agent
+cf agent schema --agent
+```
+
+`cf agent check` answers "can I proceed here, and if not, what has to happen first" in one call: it reports `ready`, and `blockers` each carrying `resolvedBy` (`agent` or `user`) so you know whether to act or to stop and ask. Run it first in a repository you have not touched before.
+
+`cf agent schema` returns the whole command surface, the envelope, every error code with its remedy, the enums, and the gates. It is generated from the argument parser, so it cannot be out of date. Reach for it whenever this document and the CLI seem to disagree: the CLI is right.
 
 ## Vocabulary
 
@@ -94,7 +116,7 @@ cf fix generate <finding-id> --wait --agent
 cf fix show <finding-id> --agent
 ```
 
-`--wait` polls until settled, up to about three minutes. Without it you get `generating` back and poll `cf fix show` yourself. Statuses: `generating`, `ready`, `failed`, `skipped`, `publishing`, `opened`.
+`--wait` polls until settled, up to about three minutes. Without it you get `generating` back and poll `cf fix show` yourself. Statuses: `generating`, `ready`, `failed`, `skipped`, `publishing`, `opened`, `merged`, `closed`. The last two are reached after the pull request is resolved, and `closed` means it was closed without merging.
 
 When `ready`, `data.fix.diff` holds the unified diff, `data.fix.explanation` says why, and `data.fix.file` names the one file it touches. Read the diff. A generated patch is a proposal. Saying it is wrong, incomplete, or fixes the symptom rather than the cause is a useful answer, and better than passing it along.
 
@@ -126,7 +148,7 @@ It refuses rather than forcing its way past anything: `pull_request_blocked` whe
 cf scan --repo acme/api --wait --agent
 ```
 
-`--wait` blocks until the scan settles, up to about ten minutes, and returns `status`, `findings`, and `error`. Without it you get the `scanId` immediately and have to poll `cf status --agent` yourself.
+`--wait` blocks until the scan settles, up to about ten minutes, and returns `status`, `findings`, and `error`. A scan settles as `completed`, `failed`, or `cancelled`. Add `--progress` to get one JSON progress line per poll on stderr, which keeps a supervisor from treating a long scan as a hang. Without `--wait` you get the `scanId` immediately and have to poll `cf status --agent` yourself.
 
 Rescan after merging a fix, not before. Finding ids belong to a scan, so after a rescan list again rather than reusing old ids.
 
@@ -172,7 +194,7 @@ Run bare, `cf settings` opens an interactive screen for a person, so an agent sh
 
 `scanDepth` is how hard each scan looks. `default` runs the full pipeline once, balancing depth against time. `max` keeps sending fresh passes until nothing new turns up: exhaustive, and much slower, so it is for an audit or a release rather than routine scanning. Say that before turning it on, because the user pays for the time.
 
-`checks` is which analyses run: `sast`, `sca`, `secrets`, `iac`, `quality`, `sbom`. Presets `essentials`, `balanced`, and `everything` expand to sets of those. `runtime` and `pentest` are shown in the product but cannot run on a repository scan, and are refused with `invalid_check`. `--add` and `--remove` change one check without restating the rest.
+`checks` is which analyses run: `sast`, `sca`, `secrets`, `iac`, `quality`, `sbom`. Presets `essentials`, `balanced`, and `everything` expand to sets of those. `runtime` is named in the product but needs an agent inside a running workload, so a repository scan cannot run it and it is refused with `invalid_check`. `--add` and `--remove` change one check without restating the rest.
 
 Changing checks applies from the next scan, not retroactively. Say that rather than implying old findings will change.
 
@@ -186,7 +208,7 @@ cf audit --category fix,repository --limit 50 --agent
 cf audit --before 2026-09-01T00:00:00Z --agent
 ```
 
-Every recorded action on the account, newest first: who did it, what it targeted, what changed, and whether it succeeded. Categories are `scan`, `finding`, `fix`, `repository`, `settings`, `export`, `account`, `integration`.
+Every recorded action on the account, newest first: who did it, what it targeted, what changed, and whether it succeeded. Categories are `scan`, `finding`, `fix`, `proof`, `repository`, `settings`, `export`, `account`, `integration`.
 
 This is the record, so use it to answer "who dismissed this", "when did scanning turn on", and "did that pull request actually merge" instead of guessing from the current state. It is append-only and nothing you run can edit it.
 
@@ -266,7 +288,7 @@ Rules for running this unattended:
 | `invalid_scan_interval` | 2 | use 1h, 6h, 12h, 24h, or 168h |
 | `invalid_scan_depth` | 2 | use default or max |
 | `invalid_triage_status` | 2 | use open, false-positive, or accepted-risk |
-| `invalid_audit_category` | 2 | use one of the eight audit categories |
+| `invalid_audit_category` | 2 | use one of the nine audit categories |
 | `invalid_date` | 2 | pass an ISO timestamp to `--before` |
 | `invalid_provider` | 2 | use github, gitlab, or bitbucket |
 | `finding_not_triageable` | 4 | the finding has no fingerprint, report and stop |
@@ -301,4 +323,11 @@ Rules for running this unattended:
 - Never ask for a token or write credentials to a file. The CLI keeps its token in the operating system keychain.
 - If something is not in the JSON, say so instead of filling the gap.
 
-Full documentation: https://cefense.com/docs
+Full agent documentation: https://agent.cefense.com
+
+Every page there is plain markdown at a stable URL. https://agent.cefense.com/llms-full.txt is the whole corpus in one fetch. The pages worth knowing by name:
+
+- https://agent.cefense.com/contract.md the envelope, exit codes, environment variables
+- https://agent.cefense.com/errors.md every error code, generated from the CLI's own catalogue
+- https://agent.cefense.com/recipes.md worked loops with the JSON at each step
+- https://agent.cefense.com/judgement.md consent, the gates, and what never to do

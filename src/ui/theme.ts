@@ -85,6 +85,8 @@ export function scanStatusLabel(status: string | null | undefined): string {
       return c.green(`${glyph.check} ready`);
     case "failed":
       return c.red(`${glyph.cross} failed`);
+    case "cancelled":
+      return c.yellow(`${glyph.cross} cancelled`);
     default:
       return c.dim(`${glyph.track} never`);
   }

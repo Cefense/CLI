@@ -101,7 +101,7 @@ export interface GithubReposResponse {
   repos: GithubRepo[];
 }
 
-export type ScanStatus = "queued" | "running" | "completed" | "failed";
+export type ScanStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
 export type ScanMode = "manual" | "push" | "pull-request" | "scheduled";
 

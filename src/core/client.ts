@@ -1,4 +1,5 @@
 import { CefenseError, AuthRequiredError, FeatureRequiredError } from "./errors.js";
+import { translateWireCode } from "./codes.js";
 import { refreshCredentials } from "./oauth.js";
 import { saveCredentials } from "./credentials.js";
 import { USER_AGENT } from "../version.js";
@@ -211,6 +212,20 @@ export class CefenseClient {
         typeof payload.pricingUrl === "string" ? payload.pricingUrl : null,
         webUrl,
       );
+    }
+
+    // The API names its refusals precisely: a merge stopped by branch
+    // protection is pull_request_blocked, not "a 409". Carrying that code
+    // through is what lets an agent branch on it, and without this every one
+    // of them arrived as api_error while the skill told agents to expect the
+    // specific code.
+    const wire = translateWireCode(payload.code);
+    if (wire) {
+      return new CefenseError(message ?? wire.meaning, {
+        remedy: wire.remedy,
+        exitCode: wire.exitCode,
+        code: wire.code,
+      });
     }
     if (response.status === 404) {
       return new CefenseError(message ?? "Not found.", {

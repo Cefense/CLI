@@ -6,9 +6,52 @@ import { c, glyph } from "./theme.js";
 
 let jsonMode = false;
 let commandName = "";
+let fields: string[] | null = null;
 
 export function setJsonMode(value: boolean): void {
   jsonMode = value;
+}
+
+/**
+ * Narrows every list in an agent envelope to the named keys.
+ *
+ * A whole-repository listing is the largest thing the CLI produces, and an
+ * agent ranking findings needs four keys of it rather than twenty. The
+ * projection is deliberately shallow and only touches arrays of objects
+ * directly under `data`, so what `--fields id,severity,title` returns is
+ * predictable from the unfiltered shape rather than something to discover.
+ */
+export function setFieldFilter(value: string | undefined): void {
+  const wanted = (value ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  fields = wanted.length > 0 ? [...new Set(["id", ...wanted])] : null;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function project(data: unknown): unknown {
+  if (!fields || !isPlainObject(data)) return data;
+  const keys = fields;
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (Array.isArray(value) && value.some(isPlainObject)) {
+      result[key] = value.map((entry) => {
+        if (!isPlainObject(entry)) return entry;
+        const narrowed: Record<string, unknown> = {};
+        for (const wanted of keys) {
+          if (wanted in entry) narrowed[wanted] = entry[wanted];
+        }
+        return narrowed;
+      });
+      continue;
+    }
+    result[key] = value;
+  }
+  return result;
 }
 
 export function isJsonMode(): boolean {
@@ -24,7 +67,7 @@ export function agentEmit(data: unknown, next: string[] = []): void {
     schemaVersion: AGENT_SCHEMA_VERSION,
     ok: true,
     command: commandName,
-    data,
+    data: project(data),
   };
   if (next.length > 0) payload.next = next;
   process.stdout.write(`${JSON.stringify(payload)}\n`);

@@ -61,7 +61,6 @@ export const CHECKS: Array<{ id: string; name: string; detail: string; available
   { id: "quality", name: "Code quality", detail: "Smells and complexity", available: true },
   { id: "sbom", name: "SBOM", detail: "Component inventory export", available: true },
   { id: "runtime", name: "Runtime protection", detail: "Needs a workload agent", available: false },
-  { id: "pentest", name: "Automated pentesting", detail: "Needs an authorized target", available: false },
 ];
 
 export const CHECK_PRESETS: Record<string, string[]> = {

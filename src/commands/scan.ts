@@ -11,7 +11,8 @@ import { isAgentMode } from "../ui/mode.js";
 const POLL_MS = 2000;
 
 function terminal(scan: ScanSummary | null): boolean {
-  return !scan || scan.status === "completed" || scan.status === "failed";
+  if (!scan) return true;
+  return scan.status === "completed" || scan.status === "failed" || scan.status === "cancelled";
 }
 
 function describe(scan: ScanSummary): string {
@@ -63,16 +64,42 @@ export async function watchScan(
     progress.stop(`Scan failed: ${latest.error ?? "no reason reported"}`, "fail");
     return latest;
   }
+  if (latest.status === "cancelled") {
+    progress.stop(`Scan cancelled before it finished.`, "warn");
+    return latest;
+  }
   progress.stop(
     `Scanned ${label} in ${elapsed(latest.createdAt, latest.finishedAt)} · ${latest.findingCount} ${latest.findingCount === 1 ? "finding" : "findings"}`,
   );
   return latest;
 }
 
+/**
+ * Progress for a caller that cannot watch a spinner.
+ *
+ * A scan under --wait can run for ten minutes with nothing on stdout, which
+ * reads as a hang to an agent harness and to CI, and gets killed. These lines
+ * go to stderr so the one-line-of-JSON contract on stdout is untouched.
+ */
+function emitProgress(scan: ScanSummary | null, scanId: string): void {
+  process.stderr.write(
+    `${JSON.stringify({
+      event: "scan.progress",
+      scanId,
+      status: scan?.status ?? "queued",
+      stage: scan?.stage ?? null,
+      filesScanned: scan?.filesScanned ?? null,
+      fileCount: scan?.fileCount ?? null,
+      findings: scan?.findingCount ?? null,
+    })}\n`,
+  );
+}
+
 async function awaitScan(
   session: Session,
   githubRepoId: string,
   attempts = 300,
+  progress: ((scan: ScanSummary | null) => void) | null = null,
 ): Promise<ScanSummary | null> {
   let latest: ScanSummary | null = null;
   // A transient poll failure is tolerated, but a run of consecutive failures
@@ -92,6 +119,7 @@ async function awaitScan(
     }
     const project = projects.find((entry) => entry.githubRepoId === githubRepoId);
     latest = project?.scan ?? latest;
+    progress?.(latest);
     if (latest && terminal(latest)) return latest;
   }
   return latest;
@@ -106,7 +134,7 @@ async function awaitScan(
 async function scanUrl(
   session: Session,
   url: string,
-  options: { watch?: boolean; wait?: boolean },
+  options: { watch?: boolean; wait?: boolean; progress?: boolean },
 ): Promise<number> {
   const { project, scanId } = await session.client.scanPublicRepo(url);
 
@@ -117,7 +145,12 @@ async function scanUrl(
       ]);
       return 0;
     }
-    const settled = await awaitScan(session, project.githubRepoId);
+    const settled = await awaitScan(
+      session,
+      project.githubRepoId,
+      300,
+      options.progress ? (scan) => emitProgress(scan, scanId) : null,
+    );
     out.agentEmit(
       {
         repository: project.fullName,
@@ -155,13 +188,14 @@ async function scanUrl(
 
 export async function scanCommand(
   globals: GlobalOptions,
-  options: { watch?: boolean; wait?: boolean; branch?: string; url?: string } = {},
+  options: { watch?: boolean; wait?: boolean; branch?: string; url?: string; progress?: boolean } = {},
 ): Promise<number> {
   const session = await openSession(globals, { auth: true });
   if (options.url) {
     return scanUrl(session, options.url, {
       watch: options.watch,
       wait: options.wait,
+      progress: options.progress,
     });
   }
   const { project } = await resolveLinkedProject(session, globals);
@@ -180,7 +214,12 @@ export async function scanCommand(
       ]);
       return 0;
     }
-    const settled = await awaitScan(session, project.githubRepoId);
+    const settled = await awaitScan(
+      session,
+      project.githubRepoId,
+      300,
+      options.progress ? (scan) => emitProgress(scan, scanId) : null,
+    );
     out.agentEmit(
       {
         repository: project.fullName,
