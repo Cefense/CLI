@@ -5,7 +5,7 @@ license: MIT
 metadata:
   version: 4
   homepage: https://cefense.com
-  documentation: https://agent.cefense.com
+  documentation: https://cefense.com/agent
 ---
 
 # Cefense
@@ -24,7 +24,7 @@ Use Cefense when the question is about the security of this repository as it act
 
 Do not use it to grade code you are writing right now, and do not use it as a linter. It reports on what was committed and scanned, not on the working tree.
 
-If `cf` is not installed or this repository is not connected, run `cf agent check --agent` and follow its `blockers`, or read https://agent.cefense.com/setup.md.
+If `cf` is not installed or this repository is not connected, run `cf agent check --agent` and follow its `blockers`, or read https://cefense.com/agent/setup.md.
 
 ## The contract
 
@@ -323,11 +323,11 @@ Rules for running this unattended:
 - Never ask for a token or write credentials to a file. The CLI keeps its token in the operating system keychain.
 - If something is not in the JSON, say so instead of filling the gap.
 
-Full agent documentation: https://agent.cefense.com
+Full agent documentation: https://cefense.com/agent
 
-Every page there is plain markdown at a stable URL. https://agent.cefense.com/llms-full.txt is the whole corpus in one fetch. The pages worth knowing by name:
+Every page there is plain markdown at a stable URL. https://cefense.com/llms-full.txt is the whole corpus in one fetch. The pages worth knowing by name:
 
-- https://agent.cefense.com/contract.md the envelope, exit codes, environment variables
-- https://agent.cefense.com/errors.md every error code, generated from the CLI's own catalogue
-- https://agent.cefense.com/recipes.md worked loops with the JSON at each step
-- https://agent.cefense.com/judgement.md consent, the gates, and what never to do
+- https://cefense.com/agent/contract.md the envelope, exit codes, environment variables
+- https://cefense.com/agent/errors.md every error code, generated from the CLI's own catalogue
+- https://cefense.com/agent/recipes.md worked loops with the JSON at each step
+- https://cefense.com/agent/judgement.md consent, the gates, and what never to do

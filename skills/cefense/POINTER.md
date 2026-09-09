@@ -30,6 +30,6 @@ Every command takes `--agent` and prints one line of JSON on stdout. Branch on `
 
 Read `{{reference}}` before using any of this. It is the full guide: filters, the fix lifecycle, error codes, and how to read a finding.
 
-Not set up yet? Run `cf agent check --agent` and follow its blockers, or read https://agent.cefense.com/setup.md
+Not set up yet? Run `cf agent check --agent` and follow its blockers, or read https://cefense.com/agent/setup.md
 
-Full agent documentation: https://agent.cefense.com (https://agent.cefense.com/llms-full.txt is all of it in one fetch)
+Full agent documentation: https://cefense.com/agent (https://cefense.com/llms-full.txt is all of it in one fetch)

@@ -277,7 +277,7 @@ export async function agentSchema(globals: GlobalOptions, program: Command): Pro
       version: VERSION,
       package: "@cefense-npm/cefense-cli",
       node: ">=22.12.0",
-      documentation: "https://agent.cefense.com",
+      documentation: "https://cefense.com/agent",
     },
     schemaVersion: AGENT_SCHEMA_VERSION,
     invocation: INVOCATION,
