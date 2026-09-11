@@ -7,6 +7,7 @@ import type {
   Project,
   WireSeverity,
 } from "./types.js";
+import type { Organization } from "./organizations.js";
 import { providerOf } from "./providers.js";
 
 export const AGENT_SCHEMA_VERSION = 1;
@@ -76,6 +77,19 @@ export function compactFinding(
         })
       : null,
     fix: fix ? compactFix(fix, options) : null,
+  });
+}
+
+export function compactOrganization(
+  organization: Organization,
+  active: string | null,
+): Record<string, unknown> {
+  return prune({
+    id: organization.id,
+    slug: organization.slug,
+    name: organization.name,
+    role: organization.role,
+    active: organization.slug === active ? true : null,
   });
 }
 

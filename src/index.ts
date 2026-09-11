@@ -11,12 +11,14 @@ import { CancelledError, EXIT_INTERRUPTED, isCefenseError } from "./core/errors.
 import type { GlobalOptions } from "./core/session.js";
 import { setColorEnabled } from "./ui/theme.js";
 import { isAgentMode, setAgentMode } from "./ui/mode.js";
+import { setOrganizationFlag } from "./core/organizations.js";
 import * as out from "./ui/output.js";
 import { setPagerEnabled } from "./ui/pager.js";
 import { setColumnFilter } from "./ui/list.js";
 import { VERSION } from "./version.js";
 import { authLogin, authLogout, authStatus } from "./commands/auth.js";
 import { repoConnect, repoDisconnect, repoList, repoSetDefault } from "./commands/repo.js";
+import { orgList, orgShow, orgUse } from "./commands/org.js";
 import { statusCommand } from "./commands/status.js";
 import { scanCommand } from "./commands/scan.js";
 import { branchesCommand } from "./commands/branches.js";
@@ -44,6 +46,7 @@ const program = new Command();
 function withGlobals(command: Command): Command {
   return command
     .option("--repo <owner/name>", "repository to act on")
+    .option("--org <slug>", "organization to act on")
     .option("--json", "emit JSON instead of a rendered view")
     .option("--agent", "machine mode: compact JSON envelope, structured errors, never interactive")
     .option("--no-color", "disable colour")
@@ -66,6 +69,7 @@ function globalsFrom(command: Command): GlobalOptions {
 
   const globals: GlobalOptions = {
     repo: pick<string>("repo"),
+    org: pick<string>("org"),
     columns: pick<string>("columns"),
     fields: pick<string>("fields"),
     web: Boolean(pick<boolean>("web")),
@@ -80,6 +84,7 @@ function globalsFrom(command: Command): GlobalOptions {
 
   const noColorEnv = Boolean(process.env.NO_COLOR);
   setAgentMode(agent);
+  setOrganizationFlag(globals.org);
   setColorEnabled(globals.color !== false && !noColorEnv && Boolean(process.stdout.isTTY || process.env.FORCE_COLOR));
   out.setJsonMode(Boolean(globals.json));
   out.setCommandName(commandPath(command));
@@ -165,6 +170,21 @@ withGlobals(auth.command("logout"))
 withGlobals(auth.command("status"))
   .description("show who you are signed in as")
   .action(run((globals) => authStatus(globals)));
+
+const org = program.command("org").description("choose which organization commands act on");
+
+withGlobals(org.command("list", { isDefault: true }))
+  .description("organizations this account belongs to")
+  .action(run((globals) => orgList(globals)));
+
+withGlobals(org.command("use"))
+  .argument("<slug>", "the organization every command should act on")
+  .description("remember an organization for this Cefense instance")
+  .action(run((globals, command) => orgUse(globals, command.args[0])));
+
+withGlobals(org.command("show"))
+  .description("show the organization commands are acting on, and where it came from")
+  .action(run(() => orgShow()));
 
 const repo = program.command("repo").description("manage connected repositories");
 

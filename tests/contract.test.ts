@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { AUDIT_CATEGORIES } from "../src/commands/audit.js";
 import { CHECKS, SCAN_DEPTHS, SCAN_INTERVALS, SCAN_MODES } from "../src/commands/settings.js";
+import { ORGANIZATION_ROLES } from "../src/core/organizations.js";
 
 /**
  * The CLI is published standalone and cannot import @cefense/schemas, so every
@@ -104,6 +105,18 @@ test("scan depths match the database constraint", { skip }, () => {
   assert.deepEqual(
     SCAN_DEPTHS.map((depth) => depth.id).sort(),
     checkConstraint(controlSchema(), "scanDepth").sort(),
+  );
+});
+
+test("organization roles match the database constraint", { skip }, () => {
+  const source = controlSchema();
+  // Two tables have a role column, and users_role_check comes first in the
+  // file, so the search starts at the constraint this is actually about.
+  const at = source.indexOf("organization_members_role_check");
+  assert.ok(at > 0, "organization_members_role_check moved, update this test");
+  assert.deepEqual(
+    [...ORGANIZATION_ROLES].sort(),
+    checkConstraint(source.slice(at), "role").sort(),
   );
 });
 

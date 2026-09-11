@@ -86,6 +86,27 @@ export function clearRepoDefault(scope: string): boolean {
   return true;
 }
 
+/**
+ * The organization every command acts on, keyed by instance.
+ *
+ * Deliberately not per-directory the way the repository default is. An account
+ * belongs to the same organizations wherever the user happens to be standing,
+ * and a selection that changed with the working directory would silently move
+ * a command between tenants. It is keyed by apiUrl for the same reason
+ * credentials are: two instances are two different sets of organizations.
+ */
+type OrganizationsFile = Record<string, string>;
+
+export function readActiveOrganization(apiUrl: string): string | null {
+  return (readJson<OrganizationsFile>("organizations.json") ?? {})[apiUrl] ?? null;
+}
+
+export function writeActiveOrganization(apiUrl: string, slug: string): void {
+  const all = readJson<OrganizationsFile>("organizations.json") ?? {};
+  all[apiUrl] = slug;
+  writeJson("organizations.json", all);
+}
+
 interface DiscoveryCache {
   [apiUrl: string]: { fetchedAt: number; config: CliConfigResponse };
 }

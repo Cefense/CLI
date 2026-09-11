@@ -135,6 +135,38 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     retry: "never",
   },
   {
+    code: "unknown_organization",
+    exitCode: EXIT_USAGE,
+    meaning: "The slug given to cf org use is not one this account belongs to.",
+    remedy: "Run cf org list --agent for the slugs, then use one of those. Nothing was stored.",
+    retry: "never",
+  },
+  {
+    code: "organization_required",
+    exitCode: EXIT_USAGE,
+    meaning:
+      "The account belongs to none or to several organizations, so the API cannot pick one for you.",
+    remedy:
+      "Run cf org list --agent, then pass --org <slug>, set CEFENSE_ORG, or run cf org use <slug> once.",
+    retry: "fix-first",
+  },
+  {
+    code: "organization_not_found",
+    exitCode: EXIT_USAGE,
+    meaning: "No organization with that slug is one the account is a member of.",
+    remedy:
+      "Run cf org list --agent for the slugs. The API answers the same way for a slug that does not exist and one you cannot see, so do not read it as proof either way.",
+    retry: "fix-first",
+  },
+  {
+    code: "organization_forbidden",
+    exitCode: EXIT_API,
+    meaning: "The role held in this organization does not allow that action.",
+    remedy:
+      "Report it and stop. Roles are owner, admin, and member, and only the user can be given a different one.",
+    retry: "never",
+  },
+  {
     code: "invalid_date",
     exitCode: EXIT_USAGE,
     meaning: "A timestamp could not be read.",
@@ -484,6 +516,9 @@ export const WIRE_ERROR_CODES: Record<string, string> = {
   github_forbidden: "provider_forbidden",
   repo_unavailable: "repository_unavailable",
   feature_required: "feature_required",
+  organization_required: "organization_required",
+  organization_not_found: "organization_not_found",
+  organization_forbidden: "organization_forbidden",
 };
 
 export function translateWireCode(value: unknown): ErrorCodeEntry | null {

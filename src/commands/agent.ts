@@ -12,6 +12,7 @@ import {
 import { matchProject } from "../core/repo.js";
 import { openSession, type GlobalOptions } from "../core/session.js";
 import { compactProject } from "../core/compact.js";
+import { ORGANIZATION_ROLES } from "../core/organizations.js";
 import { PROVIDERS } from "../core/providers.js";
 import type { Project } from "../core/types.js";
 import * as out from "../ui/output.js";
@@ -19,6 +20,7 @@ import { VERSION } from "../version.js";
 
 const GLOBAL_FLAGS = new Set([
   "--repo <owner/name>",
+  "--org <slug>",
   "--json",
   "--agent",
   "--no-color",
@@ -122,6 +124,8 @@ const INVOCATION = {
       "Set to 1 to put every invocation in agent mode without the flag. Set to 0 to force it off.",
     CEFENSE_REPO:
       "owner/name used when --repo is absent. This is how a harness avoids repeating --repo.",
+    CEFENSE_ORG:
+      "Organization slug used when --org is absent. Overrides the selection cf org use stored, and is overridden by --org.",
     CEFENSE_API_URL: "The Cefense instance to talk to. Defaults to the public one.",
     CEFENSE_TOKEN: "A token to use instead of the keychain. Read-only, never written.",
   },
@@ -129,6 +133,7 @@ const INVOCATION = {
     "Agent mode does not resolve the working directory to a repository. Pass --repo or set CEFENSE_REPO.",
     "Agent mode never prompts. A command that would have asked fails with confirmation_required instead.",
     "cf auth login needs a browser and cannot be completed by an agent.",
+    "Every request is scoped to one organization: --org, then CEFENSE_ORG, then what cf org use stored. With none of them the API picks, but only when the account belongs to exactly one organization, and answers organization_required otherwise.",
   ],
 };
 
@@ -186,6 +191,10 @@ const ENUMS = {
     "integration",
   ],
   provider: ["github", "gitlab", "bitbucket"],
+  organizationRole: {
+    values: [...ORGANIZATION_ROLES],
+    note: "owner is Cefense's own role, not one of the two the identity provider models. It is the seat that cannot be removed by a peer administrator.",
+  },
 };
 
 const GATES = [

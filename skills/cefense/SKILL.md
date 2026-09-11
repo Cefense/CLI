@@ -46,6 +46,7 @@ Set these once instead of repeating flags:
 ```sh
 export CEFENSE_AGENT=1      # every invocation is in agent mode, no --agent needed
 export CEFENSE_REPO=acme/api # every command acts on this repository
+export CEFENSE_ORG=acme      # every command acts on this organization
 ```
 
 `--fields <list>` narrows every list in the envelope to the keys you name, which on a real repository takes a findings listing from about 32 KB to about 9 KB. Use it when ranking or triaging. Do not use it when reading one finding to judge it, because that needs the whole record.
@@ -68,6 +69,29 @@ cf agent schema --agent
 Repositories live on GitHub, GitLab, or Bitbucket. Everything below works the same on all three: once a repository is connected it is addressed by `--repo owner/name` and nothing else changes. Only account connection and `cf scan --url` are GitHub-specific.
 
 Severities read as Critical, High, Watch, Info. On the wire they are `critical`, `high`, `medium`, `low`, and filters take either spelling. Findings carry both `severity` (the wire value) and `severityLabel` (what to tell a person).
+
+## Organizations
+
+Every repository, scan, finding, and fix belongs to one organization, and every command acts on exactly one. Which one is decided in this order:
+
+1. `--org <slug>` passed to the command
+2. `CEFENSE_ORG` in the environment
+3. the selection `cf org use` stored for this Cefense instance
+4. nothing, in which case the API uses the account's own organization, but only when it belongs to exactly one
+
+```sh
+cf org list --agent
+cf org use acme --agent
+cf org show --agent
+```
+
+`cf org list` returns every organization the account belongs to in `data.organizations`, each with `slug`, `name`, `role`, and `active` on the one currently selected. Address an organization by its `slug`, never by `id`.
+
+`cf org use <slug>` checks the slug against that list before storing it, so a typo fails there rather than turning the next unrelated command into a puzzle. The selection is global to the instance rather than per directory: unlike the repository, an organization does not change with where you are standing. `cf org show` reports what is selected and which of the four answers above decided it, and it needs no network.
+
+Roles are `owner`, `admin`, and `member`. `owner` is Cefense's own role, the seat a peer administrator cannot remove.
+
+`organization_required` means nothing named an organization and the account belongs to none or to several: list them and pass `--org`. `organization_not_found` means the slug is not one this account is a member of, and the API answers the same way for a slug that does not exist at all, so do not read it as evidence either way. `organization_forbidden` means the role held there does not allow the action, which only the user can change.
 
 ## The loop
 
@@ -291,6 +315,10 @@ Rules for running this unattended:
 | `invalid_audit_category` | 2 | use one of the nine audit categories |
 | `invalid_date` | 2 | pass an ISO timestamp to `--before` |
 | `invalid_provider` | 2 | use github, gitlab, or bitbucket |
+| `unknown_organization` | 2 | the slug is not one this account belongs to, run `cf org list` |
+| `organization_required` | 2 | name one with `--org`, `CEFENSE_ORG`, or `cf org use` |
+| `organization_not_found` | 2 | the slug is not one this account can see, run `cf org list` |
+| `organization_forbidden` | 4 | the role held in that organization is too low, tell the user |
 | `finding_not_triageable` | 4 | the finding has no fingerprint, report and stop |
 | `provider_not_connected` | 4 | the account needs a browser, send the user the URL |
 | `provider_reconnect_required` | 4 | the host token expired, the user must reconnect |

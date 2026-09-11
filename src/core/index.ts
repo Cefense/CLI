@@ -25,8 +25,10 @@ export {
   dataDir,
   normaliseApiUrl,
   readPreferences,
+  readActiveOrganization,
   readRepoDefault,
   resolveApiUrl,
+  writeActiveOrganization,
   writePreferences,
   writeRepoDefault,
   clearRepoDefault,
@@ -38,6 +40,7 @@ export {
   compactFinding,
   compactFindingDetail,
   compactFix,
+  compactOrganization,
   compactProject,
   prune,
   AGENT_SCHEMA_VERSION,
@@ -54,6 +57,17 @@ export {
   type RepoLocation,
   type Resolution,
 } from "./repo.js";
+export {
+  ORGANIZATION_ROLES,
+  activeOrganization,
+  resolveOrganization,
+  setOrganizationFlag,
+  type ActiveOrganization,
+  type Organization,
+  type OrganizationRole,
+  type OrganizationsResponse,
+  type OrganizationSource,
+} from "./organizations.js";
 export {
   PROVIDERS,
   blobUrl,

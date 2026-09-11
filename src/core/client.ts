@@ -2,6 +2,7 @@ import { CefenseError, AuthRequiredError, FeatureRequiredError } from "./errors.
 import { translateWireCode } from "./codes.js";
 import { refreshCredentials } from "./oauth.js";
 import { saveCredentials } from "./credentials.js";
+import { activeOrganization, type OrganizationsResponse } from "./organizations.js";
 import { USER_AGENT } from "../version.js";
 import { isAgentMode } from "../ui/mode.js";
 import type {
@@ -53,6 +54,7 @@ interface RequestOptions {
   allowUnauthenticated?: boolean;
   accept?: string;
   raw?: boolean;
+  unscoped?: boolean;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -141,12 +143,20 @@ export class CefenseClient {
       await this.renew();
     }
 
+    // Every resource is scoped to an organization, so the header belongs here
+    // rather than on the routes that happen to need it today. The listing of
+    // organizations is the one exception: it is what the user reads to recover
+    // from a stale selection, so scoping it would make a slug they have left
+    // impossible to replace from the CLI.
+    const organization = options.unscoped ? null : activeOrganization(this.apiUrl);
+
     for (let attempt = 0; ; attempt += 1) {
       const headers: Record<string, string> = {
         accept: options.accept ?? "application/json",
         "user-agent": USER_AGENT,
       };
       if (isAgentMode()) headers["x-cefense-client"] = "agent";
+      if (organization) headers["x-cefense-org"] = organization;
       if (this.credentials?.accessToken) {
         headers.authorization = `Bearer ${this.credentials.accessToken}`;
       }
@@ -260,6 +270,11 @@ export class CefenseClient {
 
   me(): Promise<MeResponse> {
     return this.request<MeResponse>("GET", "/api/me");
+  }
+
+  /** Every organization the account is a member of, with the role it holds. */
+  organizations(): Promise<OrganizationsResponse> {
+    return this.request<OrganizationsResponse>("GET", "/api/organizations", { unscoped: true });
   }
 
   /**
