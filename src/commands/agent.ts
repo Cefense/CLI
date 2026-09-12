@@ -13,6 +13,7 @@ import { matchProject } from "../core/repo.js";
 import { openSession, type GlobalOptions } from "../core/session.js";
 import { compactProject } from "../core/compact.js";
 import { ORGANIZATION_ROLES } from "../core/organizations.js";
+import { BILLING_INTERVALS, BILLING_PLANS, BILLING_STATUSES } from "./plan.js";
 import { PROVIDERS } from "../core/providers.js";
 import type { Project } from "../core/types.js";
 import * as out from "../ui/output.js";
@@ -191,6 +192,12 @@ const ENUMS = {
     "integration",
   ],
   provider: ["github", "gitlab", "bitbucket"],
+  billingPlan: [...BILLING_PLANS],
+  billingInterval: [...BILLING_INTERVALS],
+  billingStatus: {
+    values: [...BILLING_STATUSES],
+    note: "Stripe's vocabulary plus none, which is an organization that has never subscribed. Branch on cf plan's entitled rather than on the status: past_due still entitles the organization while the card is retried.",
+  },
   organizationRole: {
     values: [...ORGANIZATION_ROLES],
     note: "owner is Cefense's own role, not one of the two the identity provider models. It is the seat that cannot be removed by a peer administrator.",
@@ -227,6 +234,12 @@ const GATES = [
     requires: "the user's agreement",
     effect: "Connects a new repository to the user's account.",
     rule: "Ask exactly as you would before opening a pull request.",
+  },
+  {
+    command: "cf plan upgrade",
+    requires: "the user's agreement",
+    effect: "Opens a checkout for a paid plan and returns the URL that completes it.",
+    rule: "Nothing is bought by running it and no agent can finish it, but it is a step towards spending their money. Ask first, hand over the URL, and stop.",
   },
   {
     command: "cf settings",

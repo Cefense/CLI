@@ -19,6 +19,7 @@ import { VERSION } from "./version.js";
 import { authLogin, authLogout, authStatus } from "./commands/auth.js";
 import { repoConnect, repoDisconnect, repoList, repoSetDefault } from "./commands/repo.js";
 import { orgList, orgShow, orgUse } from "./commands/org.js";
+import { planPortal, planShow, planUpgrade } from "./commands/plan.js";
 import { statusCommand } from "./commands/status.js";
 import { scanCommand } from "./commands/scan.js";
 import { branchesCommand } from "./commands/branches.js";
@@ -185,6 +186,28 @@ withGlobals(org.command("use"))
 withGlobals(org.command("show"))
   .description("show the organization commands are acting on, and where it came from")
   .action(run(() => orgShow()));
+
+const plan = withGlobals(program.command("plan"))
+  .description("the organization's plan, its token allowance, and what is left of it")
+  .action(run((globals) => planShow(globals)));
+
+withGlobals(plan.command("upgrade"))
+  .argument("<plan>", "plus, pro, or max")
+  .description("start a checkout for a plan and print the URL that completes it")
+  .option("--yearly", "bill yearly instead of monthly")
+  .option("--seats <n>", "seats beyond the ones the plan includes")
+  .action(
+    run((globals, command) =>
+      planUpgrade(globals, command.args[0], {
+        yearly: Boolean(command.opts().yearly),
+        seats: command.opts().seats,
+      }),
+    ),
+  );
+
+withGlobals(plan.command("portal"))
+  .description("print the billing portal URL: invoices, payment method, seats, cancellation")
+  .action(run((globals) => planPortal(globals)));
 
 const repo = program.command("repo").description("manage connected repositories");
 

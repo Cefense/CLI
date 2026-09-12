@@ -22,7 +22,10 @@ cf commits --repo <owner/name> --branch <name> --agent
 cf settings --repo <owner/name> --agent
 cf audit --agent
 cf sbom --repo <owner/name> --format cyclonedx --agent
+cf plan --agent
 ```
+
+`cf plan` reports the organization's plan and how much of its token allowance is left, which is what `allowance_exhausted` means when a scan suddenly refuses. `cf plan upgrade <plan>` and `cf plan portal` only print a URL for the user to open: nothing is bought by running them, and no agent can finish either.
 
 Everything belongs to an organization: `cf org list` shows the ones this account is in, `cf org use <slug>` picks one for good, and `--org <slug>` picks one for a single command. An account with exactly one organization can ignore all of that.
 

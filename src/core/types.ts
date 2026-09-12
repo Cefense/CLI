@@ -408,3 +408,74 @@ export interface AuditEvent {
 export interface AuditResponse {
   events: AuditEvent[];
 }
+
+export type BillingPlan = "free" | "plus" | "pro" | "max";
+export type PaidBillingPlan = "plus" | "pro" | "max";
+export type BillingInterval = "month" | "year";
+export type BillingStatus =
+  | "none"
+  | "trialing"
+  | "active"
+  | "past_due"
+  | "canceled"
+  | "incomplete"
+  | "incomplete_expired"
+  | "unpaid"
+  | "paused";
+
+export interface PlanDefinition {
+  id: BillingPlan;
+  name: string;
+  tagline: string;
+  price: Record<BillingInterval, number | null>;
+  monthlyTokens: number;
+  grantIsOneTime: boolean;
+  grantExpiryDays: number;
+  seatsIncluded: number;
+  repositories: number | null;
+  maxDepthRuns: number | null;
+  features: string[];
+}
+
+export interface BillingSubscription {
+  plan: BillingPlan;
+  status: BillingStatus;
+  interval: BillingInterval;
+  seats: number;
+  extraSeats: number;
+  entitled: boolean;
+  cancelAtPeriodEnd: boolean;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  hasCustomer: boolean;
+}
+
+/**
+ * `allowance` and `remaining` arrive as null on an organization with an
+ * internal unlimited grant: the API holds them as Infinity, which JSON renders
+ * as null. Null is unlimited here, not unknown.
+ */
+export interface BillingUsage {
+  tokens: number;
+  allowance: number | null;
+  exhausted: boolean;
+  remaining: number | null;
+  overTokens: number;
+  costMicros: number;
+  scans: number;
+  periodStart: string;
+  periodEnd: string | null;
+}
+
+export interface BillingResponse {
+  configured: boolean;
+  canAdminister: boolean;
+  catalogue: {
+    plans: PlanDefinition[];
+    annualDiscountPercent: number;
+    seatPriceCents: Record<BillingInterval, number>;
+    tokensPerExtraSeat: number;
+  };
+  subscription: BillingSubscription;
+  usage: BillingUsage;
+}

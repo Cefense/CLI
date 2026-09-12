@@ -4,6 +4,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { AUDIT_CATEGORIES } from "../src/commands/audit.js";
+import {
+  BILLING_INTERVALS,
+  BILLING_PLANS,
+  BILLING_STATUSES,
+  PAID_BILLING_PLANS,
+} from "../src/commands/plan.js";
 import { CHECKS, SCAN_DEPTHS, SCAN_INTERVALS, SCAN_MODES } from "../src/commands/settings.js";
 import { ORGANIZATION_ROLES } from "../src/core/organizations.js";
 
@@ -50,11 +56,15 @@ function controlSchema(): string {
   return readFileSync(join(ROOT!, "packages", "database", "src", "schema", "control.ts"), "utf8");
 }
 
+function billingSchema(): string {
+  return readFileSync(join(ROOT!, "packages", "schemas", "src", "billing.ts"), "utf8");
+}
+
 /** Values from a `export const NAME = [ "a", "b" ] as const` block. */
 function constArray(source: string, name: string): string[] {
   const match = source.match(new RegExp(`export const ${name} = \\[([\\s\\S]*?)\\]`));
   if (!match) throw new Error(`${name} not found in the shared schema`);
-  return [...match[1]!.matchAll(/"([a-z-]+)"/g)].map((entry) => entry[1]!);
+  return [...match[1]!.matchAll(/"([a-z_-]+)"/g)].map((entry) => entry[1]!);
 }
 
 /** Values from a Postgres `in ('a', 'b')` CHECK constraint. */
@@ -118,6 +128,23 @@ test("organization roles match the database constraint", { skip }, () => {
     [...ORGANIZATION_ROLES].sort(),
     checkConstraint(source.slice(at), "role").sort(),
   );
+});
+
+test("billing plans match the product's shared vocabulary", { skip }, () => {
+  const schema = billingSchema();
+  assert.deepEqual([...BILLING_PLANS], constArray(schema, "BILLING_PLANS"));
+  assert.deepEqual([...PAID_BILLING_PLANS], constArray(schema, "PAID_BILLING_PLANS"));
+});
+
+test("billing intervals match the product's shared vocabulary", { skip }, () => {
+  assert.deepEqual([...BILLING_INTERVALS], constArray(billingSchema(), "BILLING_INTERVALS"));
+});
+
+test("billing statuses cover every status the product models", { skip }, () => {
+  const real = constArray(billingSchema(), "BILLING_STATUSES");
+  assert.ok(real.length > 1, "BILLING_STATUSES moved, so this test is asserting nothing");
+  const missing = real.filter((status) => !BILLING_STATUSES.includes(status as never));
+  assert.deepEqual(missing, [], "the product models billing statuses the CLI does not");
 });
 
 test("audit categories match the backend's own type", { skip }, () => {

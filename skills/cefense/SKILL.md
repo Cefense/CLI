@@ -3,7 +3,7 @@ name: cefense
 description: Find, understand, and fix security vulnerabilities in this repository using the Cefense CLI. Use when asked to run a security scan, check this repository for vulnerabilities or CVEs, triage or explain security findings, generate a patch for a vulnerability, or open a pull request that fixes one.
 license: MIT
 metadata:
-  version: 4
+  version: 5
   homepage: https://cefense.com
   documentation: https://cefense.com/agent
 ---
@@ -92,6 +92,32 @@ cf org show --agent
 Roles are `owner`, `admin`, and `member`. `owner` is Cefense's own role, the seat a peer administrator cannot remove.
 
 `organization_required` means nothing named an organization and the account belongs to none or to several: list them and pass `--org`. `organization_not_found` means the slug is not one this account is a member of, and the API answers the same way for a slug that does not exist at all, so do not read it as evidence either way. `organization_forbidden` means the role held there does not allow the action, which only the user can change.
+
+## Plan and usage
+
+Every scan and every generated patch spends tokens from the organization's monthly allowance. When that allowance runs out, scanning stops: this is the thing most likely to make a command that worked yesterday fail today.
+
+```sh
+cf plan --agent
+```
+
+`data.usage` is the meter: `tokens` spent, `allowance` for the period, `remaining`, `percentUsed`, and `exhausted`. `data.plan` is `free`, `plus`, `pro`, or `max`, `data.entitled` says whether it is actually being paid for, and `renewsAt` is when the period rolls over. On an organization with no allowance applied at all, `allowance`, `remaining` and `percentUsed` are absent and `usage.unlimited` is true. `data.catalogue` lists every plan with its price, tokens, seats, repository limit, and max-depth allotment, so you can say what moving up would actually buy rather than guessing.
+
+Read it before starting a long run, and read it when a scan refuses. Any member can, whatever their role.
+
+```sh
+cf plan upgrade pro --agent
+cf plan upgrade pro --yearly --seats 3 --agent
+cf plan portal --agent
+```
+
+**Neither of these buys anything, and neither can be finished by an agent.** `cf plan upgrade` opens a checkout and returns `data.checkoutUrl`; `cf plan portal` returns `data.portalUrl` for invoices, the payment method, seat changes, and cancellation. Both carry `requiresHuman: true`. Give the URL to the user and stop. Never open a browser, never fill a payment form, and never treat a returned URL as a completed purchase: the plan changes only once the payment clears, so confirm with `cf plan --agent` afterwards rather than assuming.
+
+`--seats <n>` counts seats **beyond** the ones the plan already includes, so `--seats 0` is the plan on its own. `--yearly` bills annually, which `data.annualDiscountPercent` prices.
+
+Ask the user before running `cf plan upgrade`, exactly as you would before opening a pull request. It is a step towards spending their money, and only an owner or admin may take it: any other role answers `billing_forbidden`, and `data.canAdministerBilling` says in advance whether this account is one.
+
+`allowance_exhausted` means the tokens for this period are gone and no scan will start until the period resets or the plan changes. `repository_limit` means the plan covers fewer repositories than the account is trying to connect. `depth_unavailable` means max depth is not included on this plan, so re-run at default depth. `no_subscription` means nothing has ever been bought, so there is no portal to open. `billing_unavailable` means this deployment has no billing configured at all. None of them are retryable, and none of them are yours to solve: report and stop.
 
 ## The loop
 
@@ -319,6 +345,15 @@ Rules for running this unattended:
 | `organization_required` | 2 | name one with `--org`, `CEFENSE_ORG`, or `cf org use` |
 | `organization_not_found` | 2 | the slug is not one this account can see, run `cf org list` |
 | `organization_forbidden` | 4 | the role held in that organization is too low, tell the user |
+| `allowance_exhausted` | 4 | the period's tokens are spent, run `cf plan`, only the user can fix it |
+| `repository_limit` | 4 | the plan covers fewer repositories, disconnect one or move up |
+| `depth_unavailable` | 4 | max depth is not on this plan, re-run at default depth |
+| `invalid_plan` | 2 | use plus, pro, or max |
+| `invalid_seats` | 2 | `--seats` takes a whole number from 0 to 500 |
+| `billing_forbidden` | 4 | only an owner or admin may change what the organization pays |
+| `billing_unavailable` | 4 | this deployment has no billing configured |
+| `no_subscription` | 4 | nothing has been bought, so there is no portal to open |
+| `plan_unavailable` | 4 | that plan is not on sale here yet, report it |
 | `finding_not_triageable` | 4 | the finding has no fingerprint, report and stop |
 | `provider_not_connected` | 4 | the account needs a browser, send the user the URL |
 | `provider_reconnect_required` | 4 | the host token expired, the user must reconnect |
@@ -346,6 +381,7 @@ Rules for running this unattended:
 - Never change scan settings without asking. `cf settings mode`, `cf settings every`, `cf settings depth`, and `cf settings checks` write the user's policy.
 - Never run `cf triage` without the user agreeing to that specific decision. Dismissing a finding is their call about their own risk, and it is recorded under their name.
 - Never run `cf scan --url` without asking. It connects a repository to the user's account.
+- Never run `cf plan upgrade` without asking. It is a step towards spending the user's money, and the checkout URL it returns is for them to open, not for you to act on.
 - Never invent a finding id, a severity, a CVE, or an exploit path. All of it comes from the JSON.
 - Never edit a file to silence a finding instead of fixing it, and never suppress or filter a finding away to make a report look better.
 - Never ask for a token or write credentials to a file. The CLI keeps its token in the operating system keychain.

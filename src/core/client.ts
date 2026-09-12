@@ -10,6 +10,8 @@ import type {
   AuditResponse,
   ArticleDetail,
   ArticlesResponse,
+  BillingInterval,
+  BillingResponse,
   BranchesResponse,
   CefenseProfile,
   CliConfigResponse,
@@ -25,6 +27,7 @@ import type {
   ProfileResponse,
   Project,
   ProjectsResponse,
+  PaidBillingPlan,
   Provider,
   ProviderStatus,
   SbomFormat,
@@ -490,6 +493,35 @@ export class CefenseClient {
 
   article(id: string): Promise<{ article: ArticleDetail }> {
     return this.request("GET", `/api/articles/${encodeURIComponent(id)}`);
+  }
+
+  /**
+   * The plan catalogue, this organization's subscription, and the live meter.
+   *
+   * One call answers all of `cf plan`, which is how the CLI and the workspace
+   * end up quoting the same allowance rather than each computing one.
+   */
+  billing(): Promise<BillingResponse> {
+    return this.request<BillingResponse>("GET", "/api/billing");
+  }
+
+  /**
+   * Opens a Stripe Checkout session and returns the URL that completes it.
+   *
+   * Nothing is bought here. The session is an intent to pay, and only the
+   * webhook that fires on the payment grants the plan, so the CLI can hand the
+   * URL to a person without having changed anything.
+   */
+  startBillingCheckout(options: {
+    plan: PaidBillingPlan;
+    interval: BillingInterval;
+    extraSeats: number;
+  }): Promise<{ url: string }> {
+    return this.request("POST", "/api/billing/checkout", { body: options });
+  }
+
+  billingPortal(): Promise<{ url: string }> {
+    return this.request("POST", "/api/billing/portal");
   }
 
   profile(): Promise<ProfileResponse> {
