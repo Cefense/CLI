@@ -484,6 +484,14 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     retry: "never",
   },
   {
+    code: "already_subscribed",
+    exitCode: EXIT_API,
+    meaning: "The organization already has a subscription, so a new one cannot be started.",
+    remedy:
+      "Changing an existing plan happens in the workspace, under Plan and usage, because it is prorated and charged immediately. Tell the user rather than retrying.",
+    retry: "never",
+  },
+  {
     code: "api_error",
     exitCode: EXIT_API,
     meaning: "The Cefense API failed and gave no more specific code.",
@@ -590,6 +598,7 @@ export const WIRE_ERROR_CODES: Record<string, string> = {
   billing_unavailable: "billing_unavailable",
   billing_forbidden: "billing_forbidden",
   no_subscription: "no_subscription",
+  already_subscribed: "already_subscribed",
   plan_unavailable: "plan_unavailable",
   invalid_plan: "invalid_plan",
   organization_required: "organization_required",

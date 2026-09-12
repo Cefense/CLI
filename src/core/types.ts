@@ -430,7 +430,6 @@ export interface PlanDefinition {
   price: Record<BillingInterval, number | null>;
   monthlyTokens: number;
   grantIsOneTime: boolean;
-  grantExpiryDays: number;
   seatsIncluded: number;
   repositories: number | null;
   maxDepthRuns: number | null;

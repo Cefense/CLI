@@ -247,7 +247,7 @@ function renewalRow(billing: BillingResponse): [string, string] {
   if (definition?.grantIsOneTime) {
     return [
       "grant",
-      c.dim(`one-time, ${definition.grantExpiryDays} days from when it was issued, it does not renew`),
+      c.dim("one-time, it does not renew and it does not expire"),
     ];
   }
   return ["renews", c.dim("nothing is being billed, so there is no renewal")];
