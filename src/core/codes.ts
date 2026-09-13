@@ -142,6 +142,15 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     retry: "never",
   },
   {
+    code: "duplicate_email",
+    exitCode: EXIT_USAGE,
+    meaning:
+      "The signed-in identity carries an email address that already belongs to a different Cefense account.",
+    remedy:
+      "Sign in as the account that already holds that address, or sign in with a different one. If this is a development deployment sharing a database with production, the two identity providers have separate user pools and the same person has an id in each.",
+    retry: "fix-first",
+  },
+  {
     code: "organization_required",
     exitCode: EXIT_USAGE,
     meaning:
@@ -601,6 +610,7 @@ export const WIRE_ERROR_CODES: Record<string, string> = {
   already_subscribed: "already_subscribed",
   plan_unavailable: "plan_unavailable",
   invalid_plan: "invalid_plan",
+  duplicate_email: "duplicate_email",
   organization_required: "organization_required",
   organization_not_found: "organization_not_found",
   organization_forbidden: "organization_forbidden",
