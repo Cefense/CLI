@@ -95,13 +95,15 @@ Roles are `owner`, `admin`, and `member`. `owner` is Cefense's own role, the sea
 
 ## Plan and usage
 
-Every scan and every generated patch spends tokens from the organization's monthly allowance. When that allowance runs out, scanning stops: this is the thing most likely to make a command that worked yesterday fail today.
+Every scan and every generated patch spends tokens from the organization's token allowance. When that allowance runs out, scanning stops: this is the thing most likely to make a command that worked yesterday fail today. **There is no overage.** Nothing you can pass spends past the allowance, so do not offer the user a way to keep scanning that does not involve them paying for a plan.
 
 ```sh
 cf plan --agent
 ```
 
-`data.usage` is the meter: `tokens` spent, `allowance` for the period, `remaining`, `percentUsed`, and `exhausted`. `data.plan` is `free`, `plus`, `pro`, or `max`, `data.entitled` says whether it is actually being paid for, and `renewsAt` is when the period rolls over. On an organization with no allowance applied at all, `allowance`, `remaining` and `percentUsed` are absent and `usage.unlimited` is true. `data.catalogue` lists every plan with its price, tokens, seats, repository limit, and max-depth allotment, so you can say what moving up would actually buy rather than guessing.
+`data.usage` is the meter: `tokens` spent, `allowance` for the period, `remaining`, `percentUsed`, and `exhausted`. `data.plan` is `free`, `plus`, `pro`, or `max`, and `data.entitled` says whether it is actually being paid for. The meter runs in months on every plan, so `usage.periodEnd` is when the tokens come back and `renewsAt` is when the subscription renews: on a yearly plan those are eleven months apart, and quoting the wrong one tells the user to wait a year. On an organization with no allowance applied at all, `allowance`, `remaining` and `percentUsed` are absent and `usage.unlimited` is true. `data.catalogue` lists every plan with its price, tokens, seats, repository limit, max-depth allotment, and the capabilities it carries (`scanEveryPush`, `pullRequestScans`, `imageScanning`, `immunityWatch`, `ssoAndAudit`, and `scanIntervalFloor` for how often scheduled scans may run), so you can say what moving up would actually buy rather than guessing.
+
+The free tier is a tier, not a trial. Its grant is issued once, never expires and never refills, so it has no `renewsAt` and no `usage.periodEnd` at all, and when it is spent, waiting does not help. Nothing is deleted when it runs out: what stops is scanning.
 
 Read it before starting a long run, and read it when a scan refuses. Any member can, whatever their role.
 
@@ -117,7 +119,9 @@ cf plan portal --agent
 
 Ask the user before running `cf plan upgrade`, exactly as you would before opening a pull request. It is a step towards spending their money, and only an owner or admin may take it: any other role answers `billing_forbidden`, and `data.canAdministerBilling` says in advance whether this account is one.
 
-`allowance_exhausted` means the tokens for this period are gone and no scan will start until the period resets or the plan changes. `repository_limit` means the plan covers fewer repositories than the account is trying to connect. `depth_unavailable` means max depth is not included on this plan, so re-run at default depth. `no_subscription` means nothing has ever been bought, so there is no portal to open. `billing_unavailable` means this deployment has no billing configured at all. None of them are retryable, and none of them are yours to solve: report and stop.
+`cf plan upgrade` starts a first subscription. An organization that already pays cannot check out again, because that would open a second subscription alongside the first: the CLI refuses the plan already held with `usage_error`, and the API refuses a different one with `already_subscribed`. Moving an existing subscriber between plans happens in the workspace, where it is prorated and charged immediately; `cf plan portal` holds invoices, the payment method, seat changes and cancellation. Neither is yours to do.
+
+`allowance_exhausted` means the tokens are gone and no scan will start until the plan changes, or until the period rolls over on a paid plan. `repository_limit` means the plan covers fewer repositories than the account is trying to connect, and it is counted when one is added, so nothing already connected is at risk and disconnecting someone's repository to make room is not yours to offer. `depth_unavailable` means max depth is not included on this plan, so re-run at default depth. `no_subscription` means nothing has ever been bought, so there is no portal to open. `billing_unavailable` means this deployment has no billing configured at all. None of them are retryable, and none of them are yours to solve: report and stop.
 
 ## The loop
 
@@ -345,14 +349,15 @@ Rules for running this unattended:
 | `organization_required` | 2 | name one with `--org`, `CEFENSE_ORG`, or `cf org use` |
 | `organization_not_found` | 2 | the slug is not one this account can see, run `cf org list` |
 | `organization_forbidden` | 4 | the role held in that organization is too low, tell the user |
-| `allowance_exhausted` | 4 | the period's tokens are spent, run `cf plan`, only the user can fix it |
-| `repository_limit` | 4 | the plan covers fewer repositories, disconnect one or move up |
+| `allowance_exhausted` | 4 | the tokens are spent, run `cf plan`, only the user can fix it, and there is no overage |
+| `repository_limit` | 4 | the plan covers fewer repositories, the user disconnects one or moves up |
 | `depth_unavailable` | 4 | max depth is not on this plan, re-run at default depth |
 | `invalid_plan` | 2 | use plus, pro, or max |
 | `invalid_seats` | 2 | `--seats` takes a whole number from 0 to 500 |
 | `billing_forbidden` | 4 | only an owner or admin may change what the organization pays |
 | `billing_unavailable` | 4 | this deployment has no billing configured |
 | `no_subscription` | 4 | nothing has been bought, so there is no portal to open |
+| `already_subscribed` | 4 | there is already a subscription, a plan change happens in the workspace |
 | `plan_unavailable` | 4 | that plan is not on sale here yet, report it |
 | `finding_not_triageable` | 4 | the finding has no fingerprint, report and stop |
 | `provider_not_connected` | 4 | the account needs a browser, send the user the URL |
@@ -381,7 +386,8 @@ Rules for running this unattended:
 - Never change scan settings without asking. `cf settings mode`, `cf settings every`, `cf settings depth`, and `cf settings checks` write the user's policy.
 - Never run `cf triage` without the user agreeing to that specific decision. Dismissing a finding is their call about their own risk, and it is recorded under their name.
 - Never run `cf scan --url` without asking. It connects a repository to the user's account.
-- Never run `cf plan upgrade` without asking. It is a step towards spending the user's money, and the checkout URL it returns is for them to open, not for you to act on.
+- Never run `cf plan upgrade` without asking. It is a step towards spending the user's money, and the checkout URL it returns is for them to open, not for you to act on. Never report a plan as changed until `cf plan --agent` says it is.
+- Never work around a plan limit. `allowance_exhausted`, `repository_limit` and `depth_unavailable` are the plan refusing: do not retry them, do not move the work to another organization, and do not disconnect a repository to make room.
 - Never invent a finding id, a severity, a CVE, or an exploit path. All of it comes from the JSON.
 - Never edit a file to silence a finding instead of fixing it, and never suppress or filter a finding away to make a report look better.
 - Never ask for a token or write credentials to a file. The CLI keeps its token in the operating system keychain.

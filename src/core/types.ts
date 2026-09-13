@@ -433,7 +433,14 @@ export interface PlanDefinition {
   seatsIncluded: number;
   repositories: number | null;
   maxDepthRuns: number | null;
+  scanEveryPush: boolean;
+  pullRequestScans: boolean;
+  imageScanning: boolean;
+  immunityWatch: boolean;
+  ssoAndAudit: boolean;
+  scanIntervalFloor: string | null;
   features: string[];
+  adds: string[];
 }
 
 export interface BillingSubscription {

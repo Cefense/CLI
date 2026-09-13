@@ -143,6 +143,12 @@ function compactPlan(entry: PlanDefinition, current: BillingPlan): Record<string
     repositoriesUnlimited: entry.repositories === null ? true : null,
     maxDepthRuns: entry.maxDepthRuns,
     maxDepthUnlimited: entry.maxDepthRuns === null ? true : null,
+    scanEveryPush: entry.scanEveryPush || null,
+    pullRequestScans: entry.pullRequestScans || null,
+    imageScanning: entry.imageScanning || null,
+    immunityWatch: entry.immunityWatch || null,
+    ssoAndAudit: entry.ssoAndAudit || null,
+    scanIntervalFloor: entry.scanIntervalFloor,
     current: entry.id === current ? true : null,
   });
 }
