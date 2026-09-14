@@ -308,7 +308,7 @@ export function requireLimit(value: string): number {
   return parsed;
 }
 
-const SEVERITY_ALIASES: Record<string, string> = {
+export const SEVERITY_ALIASES: Record<string, string> = {
   critical: "critical",
   high: "high",
   watch: "medium",

@@ -10,6 +10,11 @@ import {
   BILLING_STATUSES,
   PAID_BILLING_PLANS,
 } from "../src/commands/plan.js";
+import {
+  NOTIFICATION_CADENCES,
+  NOTIFICATION_KINDS,
+  NOTIFICATION_SEVERITIES,
+} from "../src/commands/notifications.js";
 import { CHECKS, SCAN_DEPTHS, SCAN_INTERVALS, SCAN_MODES } from "../src/commands/settings.js";
 import { ORGANIZATION_ROLES } from "../src/core/organizations.js";
 
@@ -54,6 +59,10 @@ function workspaceSchema(): string {
 
 function controlSchema(): string {
   return readFileSync(join(ROOT!, "packages", "database", "src", "schema", "control.ts"), "utf8");
+}
+
+function notificationSchema(): string {
+  return readFileSync(join(ROOT!, "packages", "schemas", "src", "notifications.ts"), "utf8");
 }
 
 function billingSchema(): string {
@@ -177,4 +186,43 @@ test("scan statuses cover every state the database allows", { skip }, () => {
   const known = [...declared![1]!.matchAll(/"([a-z]+)"/g)].map((entry) => entry[1]!);
   const missing = allowed.filter((status) => !known.includes(status));
   assert.deepEqual(missing, [], "the database can store scan statuses the CLI does not model");
+});
+
+test("notification kinds match the product's shared vocabulary", { skip }, () => {
+  assert.deepEqual(
+    [...NOTIFICATION_KINDS],
+    constArray(notificationSchema(), "NOTIFICATION_KINDS"),
+    "the CLI knows a different set of notifications than the product sends",
+  );
+});
+
+test("notification kinds match the database constraint", { skip }, () => {
+  // Several tables carry a `kind` column, so the search starts at the named
+  // constraint rather than at the first match in the file.
+  const source = controlSchema();
+  const at = source.indexOf("notification_preferences_kind_check");
+  assert.ok(at > 0, "notification_preferences_kind_check moved, update this test");
+  const constraint = source.slice(at).match(/\$\{table\.kind\} in \(([^)]*)\)/);
+  assert.ok(constraint, "the notification kind CHECK constraint moved, update this test");
+  const allowed = [...constraint[1]!.matchAll(/'([a-z_]+)'/g)].map((entry) => entry[1]!);
+  assert.deepEqual(
+    [...NOTIFICATION_KINDS].sort(),
+    allowed.sort(),
+    "the database can store notification kinds the CLI does not model",
+  );
+});
+
+test("notification cadences match the product's shared vocabulary", { skip }, () => {
+  assert.deepEqual(
+    [...NOTIFICATION_CADENCES],
+    constArray(notificationSchema(), "NOTIFICATION_CADENCES"),
+  );
+});
+
+test("the notification severity floor uses the product's display severities", { skip }, () => {
+  assert.deepEqual(
+    [...NOTIFICATION_SEVERITIES],
+    constArray(workspaceSchema(), "DISPLAY_SEVERITIES"),
+    "the severity floor the CLI offers is not the set the product grades findings on",
+  );
 });

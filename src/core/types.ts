@@ -485,3 +485,59 @@ export interface BillingResponse {
   subscription: BillingSubscription;
   usage: BillingUsage;
 }
+
+/**
+ * Notification vocabulary, hand-copied from
+ * packages/schemas/src/notifications.ts.
+ *
+ * The CLI is published standalone and cannot import @cefense/schemas, so these
+ * are copies and copies drift. tests/contract.test.ts reads the real lists off
+ * disk and fails when they diverge.
+ */
+export type NotificationKind =
+  | "connection"
+  | "scan_report"
+  | "scan_failed"
+  | "advisory"
+  | "fix_pr_opened";
+
+export type NotificationCadence = "every" | "daily";
+
+export type NotificationSeverity = "critical" | "high" | "medium" | "low";
+
+export interface NotificationKindRow {
+  kind: NotificationKind;
+  title: string;
+  description: string;
+  /** A security notice, which cannot be turned off. */
+  mandatory: boolean;
+  supportsSeverity: boolean;
+  supportsCadence: boolean;
+  repositoryScoped: boolean;
+  enabled: boolean;
+  minSeverity: NotificationSeverity | null;
+  cadence: NotificationCadence;
+}
+
+export interface NotificationOverride {
+  connectedRepositoryId: string;
+  muted: boolean;
+  minSeverity: NotificationSeverity | null;
+}
+
+export interface NotificationRepositoryRow {
+  id: string;
+  fullName: string;
+  provider: string;
+  lastScanCounts: Record<NotificationSeverity, number> | null;
+  override: NotificationOverride | null;
+}
+
+export interface NotificationsResponse {
+  /** Whether anything can actually be delivered on this deployment. */
+  configured: boolean;
+  email: string;
+  kinds: NotificationKindRow[];
+  repositories: NotificationRepositoryRow[];
+  sentLast30Days: Record<string, number>;
+}

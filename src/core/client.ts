@@ -24,6 +24,9 @@ import type {
   HealthResponse,
   MergeResult,
   MeResponse,
+  NotificationKindRow,
+  NotificationOverride,
+  NotificationsResponse,
   ProfileResponse,
   Project,
   ProjectsResponse,
@@ -501,6 +504,32 @@ export class CefenseClient {
    * One call answers all of `cf plan`, which is how the CLI and the workspace
    * end up quoting the same allowance rather than each computing one.
    */
+  notifications(): Promise<NotificationsResponse> {
+    return this.request<NotificationsResponse>("GET", "/api/notifications");
+  }
+
+  setNotificationKind(
+    kind: string,
+    patch: { enabled?: boolean; minSeverity?: string | null; cadence?: string },
+  ): Promise<{ setting: NotificationKindRow }> {
+    return this.request("PATCH", `/api/notifications/kinds/${encodeURIComponent(kind)}`, {
+      body: patch,
+    });
+  }
+
+  setNotificationRepository(
+    repositoryId: string,
+    override: { muted: boolean; minSeverity: string | null },
+  ): Promise<{ override: NotificationOverride | null }> {
+    return this.request("PUT", `/api/notifications/repositories/${encodeURIComponent(repositoryId)}`, {
+      body: override,
+    });
+  }
+
+  clearNotificationRepository(repositoryId: string): Promise<void> {
+    return this.request("DELETE", `/api/notifications/repositories/${encodeURIComponent(repositoryId)}`);
+  }
+
   billing(): Promise<BillingResponse> {
     return this.request<BillingResponse>("GET", "/api/billing");
   }

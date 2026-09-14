@@ -20,6 +20,11 @@ import { authLogin, authLogout, authStatus } from "./commands/auth.js";
 import { repoConnect, repoDisconnect, repoList, repoSetDefault } from "./commands/repo.js";
 import { orgList, orgShow, orgUse } from "./commands/org.js";
 import { planPortal, planShow, planUpgrade } from "./commands/plan.js";
+import {
+  notificationsRepository,
+  notificationsSet,
+  notificationsShow,
+} from "./commands/notifications.js";
 import { statusCommand } from "./commands/status.js";
 import { scanCommand } from "./commands/scan.js";
 import { branchesCommand } from "./commands/branches.js";
@@ -208,6 +213,50 @@ withGlobals(plan.command("upgrade"))
 withGlobals(plan.command("portal"))
   .description("print the billing portal URL: invoices, payment method, seats, cancellation")
   .action(run((globals) => planPortal(globals)));
+
+const notifications = withGlobals(program.command("notifications"))
+  .alias("notify")
+  .description("what Cefense emails you about, and which repositories are exceptions")
+  .action(run((globals) => notificationsShow(globals)));
+
+withGlobals(notifications.command("set"))
+  .argument("<kind>", "scan_report, scan_failed, advisory, or fix_pr_opened")
+  .description("turn a notification on or off, or change its severity floor")
+  .option("--on", "send this one")
+  .option("--off", "stop sending this one")
+  .option("--severity <level>", "only send at this severity or above")
+  .option("--cadence <rate>", "every, or daily for at most one a day")
+  .action(
+    run((globals, command) =>
+      notificationsSet(globals, command.args[0], {
+        on: Boolean(command.opts().on),
+        off: Boolean(command.opts().off),
+        severity: command.opts().severity,
+        cadence: command.opts().cadence,
+      }),
+    ),
+  );
+
+withGlobals(notifications.command("mute"))
+  .argument("<repository>", "owner/name to silence")
+  .description("stop emailing about one repository without changing anything else")
+  .action(run((globals, command) => notificationsRepository(globals, command.args[0], { mute: true })));
+
+withGlobals(notifications.command("repo"))
+  .argument("<repository>", "owner/name to make an exception for")
+  .description("give one repository its own severity floor")
+  .option("--severity <level>", "only send at this severity or above")
+  .option("--mute", "send nothing at all for this repository")
+  .option("--reset", "go back to the default settings")
+  .action(
+    run((globals, command) =>
+      notificationsRepository(globals, command.args[0], {
+        severity: command.opts().severity,
+        mute: Boolean(command.opts().mute),
+        reset: Boolean(command.opts().reset),
+      }),
+    ),
+  );
 
 const repo = program.command("repo").description("manage connected repositories");
 

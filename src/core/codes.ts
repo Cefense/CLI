@@ -448,6 +448,60 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     retry: "fix-first",
   },
   {
+    code: "unknown_notification_kind",
+    exitCode: EXIT_USAGE,
+    meaning: "The notification named is not one the product sends.",
+    remedy:
+      "Use connection, scan_report, scan_failed, advisory, or fix_pr_opened. Run cf notifications --agent to read the current settings and their exact names.",
+    retry: "never",
+  },
+  {
+    code: "notification_mandatory",
+    exitCode: EXIT_API,
+    meaning:
+      "That notification is a security notice and cannot be turned off. It is how the account owner finds out a credential for their account was granted.",
+    remedy:
+      "Do not retry. Tell the user it cannot be disabled, and that every other notification can be.",
+    retry: "never",
+  },
+  {
+    code: "notification_no_severity",
+    exitCode: EXIT_USAGE,
+    meaning: "That notification does not carry findings, so it has no severity floor.",
+    remedy:
+      "Only scan_report and advisory take --severity. The others are single events: a scan stopped, a pull request opened, an account was connected.",
+    retry: "never",
+  },
+  {
+    code: "notification_no_cadence",
+    exitCode: EXIT_USAGE,
+    meaning: "That notification happens once per event, so it has no cadence.",
+    remedy: "Only scan_report takes --cadence, because it is the only one that repeats.",
+    retry: "never",
+  },
+  {
+    code: "invalid_cadence",
+    exitCode: EXIT_USAGE,
+    meaning: "The cadence named is not one the product models.",
+    remedy: "Use every for one email per event, or daily for at most one a day.",
+    retry: "never",
+  },
+  {
+    code: "repository_not_found",
+    exitCode: EXIT_USAGE,
+    meaning: "The repository named is not connected to this organization.",
+    remedy:
+      "Run cf repo list --agent for the names that are, and pass one of those as owner/name.",
+    retry: "never",
+  },
+  {
+    code: "ambiguous_repository",
+    exitCode: EXIT_USAGE,
+    meaning: "The repository name given matches more than one connected repository.",
+    remedy: "Name it in full as owner/name. Run cf repo list --agent to read the exact names.",
+    retry: "never",
+  },
+  {
     code: "invalid_plan",
     exitCode: EXIT_USAGE,
     meaning: "The plan named is not one that can be bought.",
@@ -609,6 +663,10 @@ export const WIRE_ERROR_CODES: Record<string, string> = {
   no_subscription: "no_subscription",
   already_subscribed: "already_subscribed",
   plan_unavailable: "plan_unavailable",
+  unknown_notification_kind: "unknown_notification_kind",
+  notification_mandatory: "notification_mandatory",
+  notification_no_severity: "notification_no_severity",
+  notification_no_cadence: "notification_no_cadence",
   invalid_plan: "invalid_plan",
   duplicate_email: "duplicate_email",
   organization_required: "organization_required",
