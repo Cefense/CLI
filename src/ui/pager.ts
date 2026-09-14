@@ -32,6 +32,7 @@ export function page(content: string[]): void {
     input: `${content.join("\n")}\n`,
     stdio: ["pipe", "inherit", "inherit"],
     env: { ...process.env, LESSCHARSET: "utf-8" },
+    shell: false,
   });
 
   if (result.error) lines(content);
