@@ -43,6 +43,7 @@ import { sbomCommand } from "./commands/sbom.js";
 import { observedCommand, observedShow, requireLimit } from "./commands/observed.js";
 import { fixCommand } from "./commands/fix.js";
 import { fixGenerate, fixMerge, fixPublish, fixShow } from "./commands/fixcmds.js";
+import { proofAttest, proofCommand, proofRun, proofShow } from "./commands/proof.js";
 import { skillInstall, skillList, skillShow, skillUninstall } from "./commands/skill.js";
 import { agentCheck, agentSchema } from "./commands/agent.js";
 import { completionScript, SHELLS } from "./commands/completion.js";
@@ -378,7 +379,7 @@ withGlobals(program.command("audit"))
   .description("everything that has happened on this account, newest first")
   .option("--limit <n>", "maximum events to fetch", requireLimit)
   .option("--before <timestamp>", "only events older than this ISO timestamp")
-  .option("--category <list>", "scan,finding,fix,repository,settings,export,account,integration")
+  .option("--category <list>", "scan,finding,fix,proof,repository,settings,export,account,integration")
   .action(
     run((globals, command) =>
       auditCommand(globals, {
@@ -481,6 +482,35 @@ withGlobals(fix.command("merge"))
         method: command.opts().method,
         deleteBranch: command.opts().deleteBranch !== false,
       }),
+    ),
+  );
+
+const proof = withGlobals(program.command("proof"))
+  .description("replay the evidence against a patch and record the verdict")
+  .action(run((globals) => proofCommand(globals)));
+
+withGlobals(proof.command("show"))
+  .argument("<finding-id>", "the finding whose proof you want")
+  .description("show one proof with its checks and witness")
+  .action(run((globals, command) => proofShow(globals, command.args[0] as string)));
+
+withGlobals(proof.command("run"))
+  .argument("<finding-id>", "the finding whose patch to prove")
+  .description("replay the recorded evidence against the generated patch")
+  .option("--wait", "poll until the proof settles or fails")
+  .action(
+    run((globals, command) =>
+      proofRun(globals, command.args[0] as string, { wait: Boolean(command.opts().wait) }),
+    ),
+  );
+
+withGlobals(proof.command("attest"))
+  .argument("<finding-id>", "the finding whose credential rotation to attest")
+  .description("record by hand that a leaked credential was rotated")
+  .option("--note <text>", "why you are attesting, kept in the audit log")
+  .action(
+    run((globals, command) =>
+      proofAttest(globals, command.args[0] as string, { note: command.opts().note }),
     ),
   );
 

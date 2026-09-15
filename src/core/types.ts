@@ -541,3 +541,65 @@ export interface NotificationsResponse {
   repositories: NotificationRepositoryRow[];
   sentLast30Days: Record<string, number>;
 }
+
+/**
+ * What kind of evidence a proof replays, which the finding's category decides.
+ *
+ * `none` is a real kind, not a gap: a maintainability finding has no exploit to
+ * replay, so its proof settles as `unprovable` without running anything.
+ */
+export type ProofKind = "dependency-range" | "secret-rotation" | "exploit-replay" | "none";
+
+export type ProofStatus = "running" | "settled" | "failed";
+
+/**
+ * How a settled proof came out.
+ *
+ * `proven` is a fact established by execution, `argued` is a model's reasoned
+ * case and is what most code fixes settle as, `incomplete` means something the
+ * patch cannot do on its own is still outstanding (rotating a leaked credential,
+ * say), `refuted` means the patch does not close the finding, and `unprovable`
+ * means there was nothing to prove.
+ *
+ * Only `refuted` stops a pull request being opened. The workspace holds the
+ * button on more than that, but the server enforces this one.
+ */
+export type ProofVerdict = "proven" | "argued" | "incomplete" | "refuted" | "unprovable";
+
+export type ProofCheckVerdict = "pass" | "fail" | "warn" | "pending";
+
+export interface ProofCheck {
+  id: string;
+  label: string;
+  verdict: ProofCheckVerdict;
+  evidence: string;
+  model?: string | null;
+}
+
+/** The attack a replay proof re-ran, recorded so the run can be read back. */
+export interface ProofWitness {
+  attackInput?: string | null;
+  entry?: string | null;
+  expectedFailure?: string | null;
+  assertions?: string[];
+}
+
+export interface FindingProof {
+  id: string;
+  findingId: string;
+  kind: ProofKind;
+  status: ProofStatus;
+  verdict: ProofVerdict | null;
+  summary: string | null;
+  checks: ProofCheck[];
+  witness: ProofWitness | null;
+  patchHash: string;
+  baseSha: string;
+  attestedBy: string | null;
+  attestedAt: string | null;
+  attestationNote: string | null;
+  model: string | null;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

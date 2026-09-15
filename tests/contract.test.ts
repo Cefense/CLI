@@ -17,6 +17,7 @@ import {
 } from "../src/commands/notifications.js";
 import { CHECKS, SCAN_DEPTHS, SCAN_INTERVALS, SCAN_MODES } from "../src/commands/settings.js";
 import { ORGANIZATION_ROLES } from "../src/core/organizations.js";
+import { verdictLabel } from "../src/core/compact.js";
 
 /**
  * The CLI is published standalone and cannot import @cefense/schemas, so every
@@ -175,6 +176,62 @@ test("fix statuses cover every state the database allows", { skip }, () => {
   const known = [...declared[1]!.matchAll(/"([a-z]+)"/g)].map((entry) => entry[1]!);
   const missing = allowed.filter((status) => !known.includes(status));
   assert.deepEqual(missing, [], "the database can store fix statuses the CLI does not model");
+});
+
+/** Values from a named `check("name", sql`... in ('a','b')`)` constraint. */
+function namedCheckConstraint(source: string, name: string): string[] {
+  const match = source.match(new RegExp(`"${name}"[\\s\\S]{0,200}?in \\(([^)]*)\\)`));
+  if (!match) throw new Error(`no CHECK constraint found named ${name}`);
+  return [...match[1]!.matchAll(/'([a-z-]+)'/g)].map((entry) => entry[1]!);
+}
+
+/** A `export type Name = "a" | "b";` union in the CLI's own types. */
+function typeUnion(name: string): string[] {
+  const source = readFileSync(cliSource("core", "types.ts"), "utf8");
+  const declared = source.match(new RegExp(`export type ${name} =([^;]*);`));
+  assert.ok(declared, `the ${name} union moved, update this test`);
+  return [...declared[1]!.matchAll(/"([a-z-]+)"/g)].map((entry) => entry[1]!);
+}
+
+/**
+ * The CLI spells a verdict for a person, and so does the workspace's proof
+ * strip. A user reading the dashboard and an agent reading the CLI have to be
+ * given the same word, and "Nothing to prove" for `unprovable` is exactly the
+ * kind of label that gets reworded in one place only.
+ */
+test("proof verdict labels match the workspace's", { skip }, () => {
+  const source = readFileSync(
+    join(ROOT!, "apps", "cefense-ui", "src", "app", "app", "views", "fix-view.tsx"),
+    "utf8",
+  );
+  const table = source.match(/STRIP_VERDICTS[^=]*=\s*\{([\s\S]*?)\n\};/);
+  assert.ok(table, "STRIP_VERDICTS moved, update this test");
+  const pairs = [...table[1]!.matchAll(/(\w+):\s*\{\s*label:\s*"([^"]+)"/g)];
+  assert.ok(pairs.length >= 5, "the workspace verdict table shrank, update this test");
+  for (const [, verdict, label] of pairs) {
+    assert.equal(verdictLabel(verdict!), label, `the CLI and the workspace disagree on ${verdict}`);
+  }
+});
+
+test("proof kinds match the database constraint", { skip }, () => {
+  assert.deepEqual(
+    typeUnion("ProofKind").sort(),
+    namedCheckConstraint(controlSchema(), "finding_proofs_kind_check").sort(),
+  );
+});
+
+test("proof statuses match the database constraint", { skip }, () => {
+  assert.deepEqual(
+    typeUnion("ProofStatus").sort(),
+    namedCheckConstraint(controlSchema(), "finding_proofs_status_check").sort(),
+  );
+});
+
+test("proof verdicts match the database constraint", { skip }, () => {
+  assert.deepEqual(
+    typeUnion("ProofVerdict").sort(),
+    namedCheckConstraint(controlSchema(), "finding_proofs_verdict_check").sort(),
+  );
 });
 
 test("scan statuses cover every state the database allows", { skip }, () => {

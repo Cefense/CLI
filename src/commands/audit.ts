@@ -1,4 +1,4 @@
-import { openSession, type GlobalOptions } from "../core/session.js";
+import { openSession, type GlobalOptions, type Session } from "../core/session.js";
 import { UsageError } from "../core/errors.js";
 import type { AuditEvent } from "../core/types.js";
 import { printList } from "../ui/list.js";
@@ -67,6 +67,44 @@ function actor(event: AuditEvent): string {
   return event.actor.kind === "user" ? event.actor.name : `${event.actor.name} (${event.actor.kind})`;
 }
 
+/**
+ * Fill `limit` with events of the wanted category, paging back through time.
+ *
+ * Without this, `--limit` bounded the fetch rather than the result: the server
+ * has no category filter, so `cf audit --category proof --limit 3` asked for
+ * three events, got three scans, filtered them all away, and reported "No proof
+ * activity is recorded" over an account that had plenty. An empty answer that
+ * means "not in the first page" is worse than a slow one.
+ *
+ * Paging stops when the server runs out, which it signals by returning fewer
+ * events than asked for, and at PAGE_CAP either way so a rare category cannot
+ * walk the whole log.
+ */
+const PAGE_SIZE = 200;
+const PAGE_CAP = 10;
+/** What the route returns when --limit is absent, matching its own default. */
+const DEFAULT_LIMIT = 200;
+
+async function collectByCategory(
+  session: Session,
+  select: (events: AuditEvent[]) => AuditEvent[],
+  query: { limit?: number; before?: string },
+): Promise<AuditEvent[]> {
+  const wanted = query.limit ?? DEFAULT_LIMIT;
+  const found: AuditEvent[] = [];
+  let before = query.before;
+
+  for (let page = 0; page < PAGE_CAP && found.length < wanted; page += 1) {
+    const { events } = await session.client.auditEvents({ limit: PAGE_SIZE, before });
+    if (events.length === 0) break;
+    found.push(...select(events));
+    if (events.length < PAGE_SIZE) break;
+    before = events[events.length - 1]!.at;
+  }
+
+  return found.slice(0, wanted);
+}
+
 export async function auditCommand(
   globals: GlobalOptions,
   options: AuditOptions = {},
@@ -81,7 +119,9 @@ export async function auditCommand(
   const select = (events: AuditEvent[]): AuditEvent[] =>
     categories.length === 0 ? events : events.filter((event) => categories.includes(event.category));
 
-  let events = select((await session.client.auditEvents(query)).events);
+  const events = categories.length === 0
+    ? select((await session.client.auditEvents(query)).events)
+    : await collectByCategory(session, select, query);
 
   if (isAgentMode()) {
     out.agentEmit(

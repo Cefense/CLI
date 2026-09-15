@@ -174,6 +174,40 @@ cf fix show <finding-id> --agent
 
 When `ready`, `data.fix.diff` holds the unified diff, `data.fix.explanation` says why, and `data.fix.file` names the one file it touches. Read the diff. A generated patch is a proposal. Saying it is wrong, incomplete, or fixes the symptom rather than the cause is a useful answer, and better than passing it along.
 
+### Prove the patch
+
+```sh
+cf proof run <finding-id> --wait --agent
+cf proof show <finding-id> --agent
+cf proof --agent
+```
+
+A proof replays the evidence that produced the finding against the patch that claims to close it, and records what happened. It needs a patch first: without one it refuses with `fix_not_found`.
+
+What gets replayed depends on the finding's category, in `data.proof.kind`: `dependency-range` checks the upgraded version is out of the vulnerable range, `secret-rotation` checks the credential is gone from the code, `exploit-replay` re-runs the recorded attack against the patched file, and `none` is a maintainability finding with no exploit to replay.
+
+`data.proof.verdict` is how it came out:
+
+| verdict | meaning |
+| --- | --- |
+| `proven` | established by running it |
+| `argued` | a reasoned case rather than an execution, and what most code fixes settle as |
+| `incomplete` | something outside the patch is still outstanding, such as rotating the leaked credential |
+| `refuted` | the patch does not close the finding |
+| `unprovable` | there was nothing to prove |
+
+Only `refuted` stops the pull request: publishing that patch fails with `fix_proof_refuted`. Regenerate rather than arguing with it.
+
+`data.proof.checks` says what each step found and `data.proof.witness` holds the attack that was replayed, its entry point, and what should now fail. Read them. A proof is evidence to show the user, not a badge to quote.
+
+A secret rotation settles as `incomplete` because nothing Cefense can run says whether the credential was revoked at the provider. Only the user knows that:
+
+```sh
+cf proof attest <finding-id> --yes --agent
+```
+
+**This writes into the audit log, under the user's name, that the credential was rotated.** Ask them whether they actually revoked it. Do not infer it from the patch, and never pass `--yes` because the verdict was inconvenient.
+
 ### Publish, only when asked
 
 ```sh
@@ -304,6 +338,7 @@ cf scan --repo acme/api --wait --agent
 cf observed --repo acme/api --severity critical,high --agent
 cf observed show <finding-id> --repo acme/api --agent
 cf fix generate <finding-id> --wait --agent
+cf proof run <finding-id> --wait --agent
 cf fix publish <finding-id> --yes --agent
 cf fix merge <finding-id> --yes --agent
 cf scan --repo acme/api --wait --agent
@@ -314,14 +349,14 @@ The last scan is the point of the exercise: it is what proves the path no longer
 Rules for running this unattended:
 
 - **Get consent once, for the loop, and say what it includes.** "Fix and merge the critical findings in acme/api" is consent to merge. "Have a look at the findings" is not.
-- **Still read every diff.** Speed is not permission to stop judging. A patch that narrows the input instead of fixing the sink should be reported, not merged.
+- **Still read every diff.** Speed is not permission to stop judging. A patch that narrows the input instead of fixing the sink should be reported, not merged. The proof is a second opinion, not a substitute for reading it.
 - **One finding at a time.** Generate, publish, merge, and confirm before starting the next. Batching means a bad patch is discovered after five have landed.
 - **Stop on the first refusal.** `pull_request_blocked` and `pull_request_conflicted` mean a human set a rule. Report and wait.
 
 ## Working efficiently
 
 - **Start narrow.** `--severity critical,high` on a large repository, then widen. Whole-repository listings are the biggest payload the CLI produces.
-- **Do not re-list to refresh one row.** `cf observed show <id>` and `cf fix show <id>` are cheap and current.
+- **Do not re-list to refresh one row.** `cf observed show <id>`, `cf fix show <id>` and `cf proof show <id>` are cheap and current.
 - **Follow `next`.** It is computed from the state you just fetched, so it already knows whether a fix exists.
 - **Batch the reading, serialise the writing.** Read as many findings as you need, then generate patches one at a time so the user can judge each.
 - **Use `--exit-code` in CI**, never string matching on output.
@@ -375,6 +410,11 @@ Rules for running this unattended:
 | `pull_request_draft` | 4 | the pull request is still a draft |
 | `pull_request_closed` | 4 | it was closed without merging |
 | `fix_in_progress` | 2 | one is already generating, poll instead of starting another |
+| `proof_not_found` | 2 | run the proof before reading or attesting it |
+| `proof_in_progress` | 2 | one is already running, poll `cf proof show` instead of starting another |
+| `proof_not_settled` | 2 | it has no verdict yet, poll until `status` is settled or failed |
+| `proof_not_attestable` | 2 | only a settled secret rotation proof that came back incomplete can be attested |
+| `fix_proof_refuted` | 4 | the proof refuted this exact patch, regenerate rather than publish it |
 | `confirmation_required` | 2 | ask the user, then pass `--yes` |
 | `feature_required` | 4 | the account does not include this, tell the user |
 | `api_error` | 4 | the API failed, retry once, then report it |
@@ -384,6 +424,7 @@ Rules for running this unattended:
 
 - Never run `cf fix publish` or `cf fix merge` without the user agreeing to it in this conversation, and treat merging as a separate ask from opening.
 - Never change scan settings without asking. `cf settings mode`, `cf settings every`, `cf settings depth`, and `cf settings checks` write the user's policy.
+- Never run `cf proof attest` without asking the user whether the credential was actually rotated. It records their claim about the world, not the CLI's.
 - Never run `cf triage` without the user agreeing to that specific decision. Dismissing a finding is their call about their own risk, and it is recorded under their name.
 - Never run `cf scan --url` without asking. It connects a repository to the user's account.
 - Never run `cf plan upgrade` without asking. It is a step towards spending the user's money, and the checkout URL it returns is for them to open, not for you to act on. Never report a plan as changed until `cf plan --agent` says it is.

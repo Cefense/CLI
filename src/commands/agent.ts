@@ -177,6 +177,15 @@ const ENUMS = {
     "merged",
     "closed",
   ],
+  proofKind: {
+    values: ["dependency-range", "secret-rotation", "exploit-replay", "none"],
+    note: "Decided by the finding's category, not chosen. none is a maintainability finding, which has no exploit to replay.",
+  },
+  proofStatus: ["running", "settled", "failed"],
+  proofVerdict: {
+    values: ["proven", "argued", "incomplete", "refuted", "unprovable"],
+    note: "Only refuted stops a pull request being opened. argued is the passing outcome of an exploit replay and is what most code fixes settle as. incomplete means something outside the patch is outstanding, such as rotating the leaked credential.",
+  },
   triage: ["open", "false-positive", "accepted-risk"],
   mergeMethod: ["merge", "squash", "rebase"],
   sbomFormat: ["cyclonedx", "spdx"],
@@ -224,6 +233,12 @@ const GATES = [
     rule: "Say which files before asking.",
   },
   {
+    command: "cf proof attest",
+    requires: "--yes",
+    effect: "Records in the audit log, under the user's name, that a leaked credential was rotated.",
+    rule: "Only the user knows whether the credential was actually revoked. Ask them, do not infer it from the patch.",
+  },
+  {
     command: "cf triage",
     requires: "the user's explicit decision",
     effect: "Records a judgement about risk against the user's account.",
@@ -265,11 +280,12 @@ const WORKFLOWS = [
     steps: [
       "cf observed show <finding-id> --repo <owner/name> --agent",
       "cf fix generate <finding-id> --wait --agent",
+      "cf proof run <finding-id> --wait --agent",
       "cf fix publish <finding-id> --yes --agent",
       "cf fix merge <finding-id> --yes --agent",
       "cf scan --repo <owner/name> --wait --agent",
     ],
-    note: "Read data.fix.diff before publishing. A generated patch is a proposal, and saying it is wrong is a useful answer.",
+    note: "Read data.fix.diff before publishing. A generated patch is a proposal, and saying it is wrong is a useful answer. The proof replays the evidence against that exact patch: a refuted verdict means publishing will be refused, so regenerate instead.",
   },
   {
     name: "ci-gate",

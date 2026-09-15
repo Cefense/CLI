@@ -17,6 +17,7 @@ import type {
   CliConfigResponse,
   CommitsResponse,
   Fix,
+  FindingProof,
   FindingsResponse,
   GithubRepo,
   GithubReposResponse,
@@ -488,6 +489,24 @@ export class CefenseClient {
 
   publishFix(findingId: string): Promise<{ fix: Fix }> {
     return this.request("POST", `/api/fix/findings/${encodeURIComponent(findingId)}/publish`);
+  }
+
+  proofForFinding(findingId: string): Promise<{ proof: FindingProof | null }> {
+    return this.request("GET", `/api/proof/findings/${encodeURIComponent(findingId)}`);
+  }
+
+  proofsForScan(scanId: string): Promise<{ proofs: FindingProof[] }> {
+    return this.request("GET", `/api/proof/scans/${encodeURIComponent(scanId)}`);
+  }
+
+  runProof(findingId: string): Promise<{ proof: FindingProof | null }> {
+    return this.request("POST", `/api/proof/findings/${encodeURIComponent(findingId)}/run`);
+  }
+
+  attestProof(findingId: string, note?: string): Promise<{ proof: FindingProof | null }> {
+    return this.request("POST", `/api/proof/findings/${encodeURIComponent(findingId)}/attest`, {
+      body: note ? { note } : {},
+    });
   }
 
   articles(query: { limit?: number; offset?: number; githubRepoId?: string } = {}): Promise<ArticlesResponse> {

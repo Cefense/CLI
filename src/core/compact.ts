@@ -3,8 +3,10 @@ import type {
   Branch,
   CommitEntry,
   Finding,
+  FindingProof,
   Fix,
   Project,
+  ProofVerdict,
   WireSeverity,
 } from "./types.js";
 import type { Organization } from "./organizations.js";
@@ -43,6 +45,71 @@ export function compactFix(fix: Fix, options: { diff?: boolean } = {}): Record<s
     explanation: fix.explanation,
     hasDiff: Boolean(fix.diff),
     diff: options.diff ? fix.diff : null,
+  });
+}
+
+/**
+ * How a verdict reads in a sentence, for output an agent quotes back to a user.
+ *
+ * The labels match the workspace's proof strip, so a person reading the
+ * dashboard and an agent reading the CLI are told the same word.
+ */
+export function verdictLabel(verdict: ProofVerdict | string): string {
+  if (verdict === "proven") return "Proven";
+  if (verdict === "argued") return "Argued";
+  if (verdict === "incomplete") return "Incomplete";
+  if (verdict === "refuted") return "Refuted";
+  if (verdict === "unprovable") return "Nothing to prove";
+  return verdict;
+}
+
+/**
+ * `blocksPublish` reports what the API actually enforces, which is that a
+ * refuted proof against this exact patch stops the pull request. The workspace
+ * holds its button on more than that, but stating the stricter rule here would
+ * have the CLI refusing things the server would have allowed.
+ */
+export function compactProof(
+  proof: FindingProof,
+  options: { checks?: boolean } = {},
+): Record<string, unknown> {
+  return prune({
+    id: proof.id,
+    findingId: proof.findingId,
+    kind: proof.kind,
+    status: proof.status,
+    verdict: proof.verdict,
+    verdictLabel: proof.verdict ? verdictLabel(proof.verdict) : null,
+    blocksPublish: proof.verdict === "refuted" ? true : null,
+    summary: proof.summary,
+    checks:
+      options.checks === false
+        ? []
+        : proof.checks.map((check) =>
+            prune({
+              id: check.id,
+              label: check.label,
+              verdict: check.verdict,
+              evidence: check.evidence,
+              model: check.model ?? null,
+            }),
+          ),
+    witness: proof.witness
+      ? prune({
+          entry: proof.witness.entry,
+          attackInput: proof.witness.attackInput,
+          expectedFailure: proof.witness.expectedFailure,
+          assertions: proof.witness.assertions ?? [],
+        })
+      : null,
+    baseSha: proof.baseSha,
+    patchHash: proof.patchHash,
+    attestedBy: proof.attestedBy,
+    attestedAt: proof.attestedAt,
+    attestationNote: proof.attestationNote,
+    model: proof.model,
+    error: proof.error,
+    updatedAt: proof.updatedAt,
   });
 }
 

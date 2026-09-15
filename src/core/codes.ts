@@ -290,6 +290,36 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     retry: "fix-first",
   },
   {
+    code: "proof_not_found",
+    exitCode: EXIT_USAGE,
+    meaning: "No proof has been run for that finding.",
+    remedy: "Run cf proof run <finding-id> --wait --agent. A patch has to exist first.",
+    retry: "fix-first",
+  },
+  {
+    code: "proof_in_progress",
+    exitCode: EXIT_USAGE,
+    meaning: "A proof for that finding is already running.",
+    remedy: "Poll cf proof show <finding-id> --agent. Do not start a second one.",
+    retry: "fix-first",
+  },
+  {
+    code: "proof_not_settled",
+    exitCode: EXIT_USAGE,
+    meaning: "The proof has not finished, so it has no verdict yet.",
+    remedy: "Poll cf proof show <finding-id> --agent until status is settled or failed.",
+    retry: "transient",
+  },
+  {
+    code: "proof_not_attestable",
+    exitCode: EXIT_USAGE,
+    meaning:
+      "Only a settled secret rotation proof that came back incomplete can be attested, and only by an organization admin.",
+    remedy:
+      "Read data.proof.kind and data.proof.verdict with cf proof show. Nothing else can be attested by hand.",
+    retry: "never",
+  },
+  {
     code: "fix_unsafe_path",
     exitCode: EXIT_API,
     meaning: "The patch would write outside the repository, or to a path the server will not touch.",
@@ -306,7 +336,8 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
   {
     code: "fix_model_unavailable",
     exitCode: EXIT_API,
-    meaning: "This deployment has no coding model configured, so patches cannot be written.",
+    meaning:
+      "This deployment has no model configured, so patches cannot be written and attacks cannot be replayed.",
     remedy: "Report it to the user. Nothing an agent runs will change it.",
     retry: "never",
   },
@@ -649,6 +680,9 @@ export const WIRE_ERROR_CODES: Record<string, string> = {
   not_ready: "fix_not_ready",
   unsafe_path: "fix_unsafe_path",
   proof_refuted: "fix_proof_refuted",
+  fix_required: "fix_not_found",
+  not_attestable: "proof_not_attestable",
+  proof_in_progress: "proof_in_progress",
   model_required: "fix_model_unavailable",
   github_required: "provider_not_connected",
   github_reconnect: "provider_reconnect_required",
