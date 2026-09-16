@@ -26,7 +26,7 @@
 
 https://github.com/user-attachments/assets/REPLACE_WITH_UPLOADED_VIDEO
 
-_`cf observed`, a generated patch, and a pull request, in under a minute._
+_`cf reproduced`, a generated patch, and a pull request, in under a minute._
 
 </div>
 
@@ -70,7 +70,7 @@ npx -p @cefense-npm/cefense-cli cf status
 ```sh
 cf auth login                 # sign in through your browser
 cf repo connect               # pick a repository and watch its first scan
-cf observed                   # browse what the scan found
+cf reproduced                   # browse what the scan found
 cf skill install              # teach your coding agent to do all of the above
 ```
 
@@ -124,8 +124,8 @@ Repositories live on GitHub, GitLab, or Bitbucket. Once one is connected it is a
 | `cf commits` | the commit history, and what each scanned commit introduced or resolved |
 | `cf triage <finding-id> <decision>` | record a finding as `false-positive`, `accepted-risk`, or `open` |
 | `cf audit` | everything that has happened on this account, newest first |
-| `cf observed` | browse every finding in your code, `--matched` for only the researched ones |
-| `cf observed show <finding-id>` | one finding in full, with research, data flow and references |
+| `cf reproduced` | browse every finding in your code, `--matched` for only the researched ones |
+| `cf reproduced show <finding-id>` | one finding in full, with research, data flow and references |
 | `cf matched` | only the findings joined to the research that explains them |
 | `cf fix` | browse findings and their patches side by side |
 | `cf fix show <finding-id>` | the patch generated for one finding |
@@ -133,9 +133,9 @@ Repositories live on GitHub, GitLab, or Bitbucket. Once one is connected it is a
 | `cf fix publish <finding-id>` | open a pull request with a generated patch |
 | `cf fix merge [finding-id]` | merge that pull request and delete its branch, `--no-delete-branch` keeps it, prompts when omitted |
 
-`cf observed` and `cf matched` both take `--branch <name>` to read one branch's last scan, and `--scan <id>` to read a scan by id. Without either you get the newest scan of the repository, whichever branch it ran on.
+`cf reproduced` and `cf matched` both take `--branch <name>` to read one branch's last scan, and `--scan <id>` to read a scan by id. Without either you get the newest scan of the repository, whichever branch it ran on.
 
-`cf observed --matched` narrows the list to the findings joined to security research, which is the same set `cf matched` shows: use whichever reads better in the command you are already running.
+`cf reproduced --matched` narrows the list to the findings joined to security research, which is the same set `cf matched` shows: use whichever reads better in the command you are already running.
 
 `cf status --watch` keeps the dashboard polling even when nothing is scanning, so it stays open as a live view instead of drawing once and exiting.
 
@@ -143,9 +143,9 @@ Repositories live on GitHub, GitLab, or Bitbucket. Once one is connected it is a
 
 `cf commits` reads the host's own history, not only what Cefense has scanned, so most rows are commits nothing has scanned yet: those have no findings and no deltas rather than a zero. `--branch <name>` reads another branch, `--limit <n>` shows fewer.
 
-A triage decision is stored against the finding's fingerprint, so it survives the rescan that replaces this scan's finding ids. `--note` records why. Press `t` in `cf observed` to do the same thing on the finding you are reading. `cf audit` takes `--category`, `--limit`, and `--before <timestamp>`.
+A triage decision is stored against the finding's fingerprint, so it survives the rescan that replaces this scan's finding ids. `--note` records why. Press `t` in `cf reproduced` to do the same thing on the finding you are reading. `cf audit` takes `--category`, `--limit`, and `--before <timestamp>`.
 
-Findings and fixes are the same data from two angles. `cf observed` carries the same `g`, `p`, and `m` keys as `cf fix`, so you can take a vulnerability from patch to merged pull request without leaving the finding you are reading.
+Findings and fixes are the same data from two angles. `cf reproduced` carries the same `g`, `p`, and `m` keys as `cf fix`, so you can take a vulnerability from patch to merged pull request without leaving the finding you are reading.
 
 Run `cf fix merge` with no argument and it offers the open pull requests to choose from, or merges straight away when there is only one.
 
@@ -192,12 +192,12 @@ Single keys act on whatever is selected. Labels are context aware, so a finding 
 
 | Key | Where | Action |
 | --- | --- | --- |
-| `g` | `observed`, `matched`, `fix` | generate a patch, or regenerate, or retry |
-| `p` | `observed`, `matched`, `fix` | open the pull request, or view it |
-| `m` | `observed`, `matched`, `fix` | merge that pull request and delete its branch |
-| `o` | `observed`, `matched` | open the file on its code host |
-| `a` | `observed`, `matched` | read the research behind the finding |
-| `t` | `observed`, `matched` | record the finding as a false positive, an accepted risk, or open |
+| `g` | `reproduced`, `matched`, `fix` | generate a patch, or regenerate, or retry |
+| `p` | `reproduced`, `matched`, `fix` | open the pull request, or view it |
+| `m` | `reproduced`, `matched`, `fix` | merge that pull request and delete its branch |
+| `o` | `reproduced`, `matched` | open the file on its code host |
+| `a` | `reproduced`, `matched` | read the research behind the finding |
+| `t` | `reproduced`, `matched` | record the finding as a false positive, an accepted risk, or open |
 | `u` | `fix` | refresh |
 | `enter` | `settings` | choose the trigger, interval or depth under the cursor, or toggle the check |
 | `s` `f` `o` | `branches` | scan this branch, read its findings, open it on its code host |
@@ -211,7 +211,7 @@ Publishing always requires typing the repository name to confirm. There is no ac
 `--agent` turns the CLI into a machine interface. It is the supported way for a coding agent (Claude Code, Cursor, Codex, or your own) to drive Cefense.
 
 ```sh
-cf observed --repo acme/api --agent
+cf reproduced --repo acme/api --agent
 ```
 
 It implies `--json --no-color --no-link`, forces non-interactive so the full-screen view can never open, silences all progress output, and prints exactly **one line of JSON on stdout**. It does **not** imply `--yes`.
@@ -224,9 +224,9 @@ Success:
 {
   "schemaVersion": 1,
   "ok": true,
-  "command": "observed",
+  "command": "reproduced",
   "data": { "repository": "acme/api", "total": 32, "counts": { "critical": 5, "high": 14 }, "findings": [] },
-  "next": ["cf observed show <id> --repo acme/api --agent", "cf fix generate <id> --wait --agent"]
+  "next": ["cf reproduced show <id> --repo acme/api --agent", "cf fix generate <id> --wait --agent"]
 }
 ```
 
@@ -254,8 +254,8 @@ The `next` array names real commands that act on what was just returned, so an a
 cf auth status --agent                            # 3 if not signed in
 cf provider list --agent                          # which code hosts are connected
 cf branches --repo acme/api --agent               # branches, and the last scan of each
-cf observed --repo acme/api --agent               # ids, severities, counts
-cf observed show <finding-id> --agent             # one finding, in full
+cf reproduced --repo acme/api --agent               # ids, severities, counts
+cf reproduced show <finding-id> --agent             # one finding, in full
 cf fix generate <finding-id> --wait --agent       # blocks until ready or failed
 cf fix publish <finding-id> --yes --agent         # opens the pull request
 cf fix merge <finding-id> --yes --agent           # merges it, deletes the branch
@@ -364,15 +364,15 @@ For onboarding an agent that has never seen Cefense at all, point it at <https:/
 Three output modes, in order of precedence:
 
 ```sh
-cf observed --agent                    # one line of JSON, envelope, stable contract
-cf observed --json                     # pretty-printed raw API response
-cf observed | grep critical            # tab-separated lines when piped
+cf reproduced --agent                    # one line of JSON, envelope, stable contract
+cf reproduced --json                     # pretty-printed raw API response
+cf reproduced | grep critical            # tab-separated lines when piped
 ```
 
 `--json` gives you the unmodified API payload for exploration:
 
 ```sh
-cf observed --json | jq '.findings[] | select(.severity == "critical") | .filePath'
+cf reproduced --json | jq '.findings[] | select(.severity == "critical") | .filePath'
 cf repo list --json  | jq -r '.[].fullName'
 ```
 
@@ -389,7 +389,7 @@ Set `CEFENSE_TOKEN` instead of signing in. It is read from the environment and n
   run: |
     npm install -g @cefense-npm/cefense-cli
     cf scan --repo ${{ github.repository }}
-    cf observed --repo ${{ github.repository }} --severity critical,high --exit-code
+    cf reproduced --repo ${{ github.repository }} --severity critical,high --exit-code
 ```
 
 `--exit-code` returns 1 when a critical or high finding is present, which fails the job.
@@ -419,7 +419,7 @@ Under `--agent`, every finding carries both `severity` (the wire value, so filte
 
 ## Linking a directory to a repository
 
-`observed`, `matched`, `fix` and `scan` act on one repository. The first time you run any of them in a directory, the CLI asks which one and remembers the answer:
+`reproduced`, `matched`, `fix` and `scan` act on one repository. The first time you run any of them in a directory, the CLI asks which one and remembers the answer:
 
 ```
   This directory is not linked to a Cefense repository.

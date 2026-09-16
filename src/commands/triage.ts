@@ -1,6 +1,6 @@
 import { openSession, type GlobalOptions, type Session } from "../core/session.js";
 import { resolveLinkedProject } from "./link.js";
-import { resolveFindingId } from "./observed.js";
+import { resolveFindingId } from "./reproduced.js";
 import { CefenseError, UsageError } from "../core/errors.js";
 import type { TriageStatus } from "../core/types.js";
 import * as out from "../ui/output.js";
@@ -66,7 +66,7 @@ export async function applyTriage(
     if (error instanceof CefenseError && /finding not found/i.test(error.message)) {
       throw new UsageError(
         `${findingId} is not a finding on any repository you own.`,
-        "Run cf observed to list finding ids.",
+        "Run cf reproduced to list finding ids.",
         "finding_not_found",
       );
     }
@@ -88,7 +88,7 @@ export async function triageCommand(
 
   if (isAgentMode()) {
     out.agentEmit({ findingId, status: applied, note: options.note ?? null }, [
-      "cf observed --agent",
+      "cf reproduced --agent",
     ]);
     return 0;
   }

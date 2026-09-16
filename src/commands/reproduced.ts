@@ -14,7 +14,7 @@ import { compactFinding, compactFindingDetail } from "../core/compact.js";
 import { CODE_HOSTS, openIfRequested } from "../ui/open.js";
 import { page } from "../ui/pager.js";
 
-export interface ObservedOptions {
+export interface ReproducedOptions {
   severity?: string;
   category?: string;
   matched?: boolean;
@@ -179,9 +179,9 @@ function renderDetail(project: Project, row: Row, width: number, ref?: string | 
   return lines;
 }
 
-export async function observedCommand(
+export async function reproducedCommand(
   globals: GlobalOptions,
-  options: ObservedOptions & { onlyMatched?: boolean },
+  options: ReproducedOptions & { onlyMatched?: boolean },
 ): Promise<number> {
   const session = await openSession(globals, { auth: true });
   const { project } = await resolveLinkedProject(session, globals);
@@ -229,7 +229,7 @@ export async function observedCommand(
       },
       rows[0]
         ? [
-            `cf observed show ${rows[0].finding.id} --repo ${project.fullName} --agent`,
+            `cf reproduced show ${rows[0].finding.id} --repo ${project.fullName} --agent`,
             `cf fix generate ${rows[0].finding.id} --wait --agent`,
             `cf scan --repo ${project.fullName} --agent`,
           ]
@@ -290,7 +290,7 @@ export async function observedCommand(
     footnote: first.hasMore ? `Use --limit ${Math.min(1000, first.total)} to see them all.` : null,
     next: head
       ? [
-          { command: `cf observed show ${marker}`, purpose: "read one in full" },
+          { command: `cf reproduced show ${marker}`, purpose: "read one in full" },
           { command: `cf fix generate ${marker}`, purpose: "write a patch for it" },
           { command: `cf triage ${marker} false-positive`, purpose: "record a decision" },
         ]
@@ -375,7 +375,7 @@ export async function resolveFindingId(
   if (needle.length < 4) {
     throw new UsageError(
       `${candidate} is too short to identify a finding.`,
-      "Use at least four characters of the id shown by cf observed.",
+      "Use at least four characters of the id shown by cf reproduced.",
       "finding_id_ambiguous",
     );
   }
@@ -390,7 +390,7 @@ export async function resolveFindingId(
   if (matches.length === 0) {
     throw new UsageError(
       `${candidate} is not a finding in the scan being read of ${project.fullName}.`,
-      `Run cf observed --repo ${project.fullName} to list finding ids.`,
+      `Run cf reproduced --repo ${project.fullName} to list finding ids.`,
       "finding_not_found",
     );
   }
@@ -401,7 +401,7 @@ export async function resolveFindingId(
   );
 }
 
-export async function observedShow(
+export async function reproducedShow(
   globals: GlobalOptions,
   findingId: string,
   options: { branch?: string; scanId?: string } = {},
@@ -416,7 +416,7 @@ export async function observedShow(
   if (!finding) {
     throw new UsageError(
       `${findingId} is not a finding in the scan being read of ${project.fullName}.`,
-      `Run cf observed --repo ${project.fullName} to list finding ids.`,
+      `Run cf reproduced --repo ${project.fullName} to list finding ids.`,
       "finding_not_found",
     );
   }

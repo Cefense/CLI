@@ -91,7 +91,7 @@ export async function statusCommand(
         repositories: projects.map(compactProject),
         availableToConnect: available.length,
       },
-      ["cf observed --agent", "cf scan --agent"],
+      ["cf reproduced --agent", "cf scan --agent"],
     );
     return 0;
   }
@@ -169,7 +169,7 @@ export async function statusCommand(
       .join("   "),
     next: first
       ? [
-          { command: "cf observed", purpose: "read the findings" },
+          { command: "cf reproduced", purpose: "read the findings" },
           { command: "cf scan", purpose: "rescan" },
           { command: "cf repo connect", purpose: "connect another repository" },
         ]

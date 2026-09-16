@@ -62,7 +62,7 @@ export async function commitsCommand(
       },
       scanned
         ? [
-            `cf observed --repo ${project.fullName} --scan ${scanned.scanId} --agent`,
+            `cf reproduced --repo ${project.fullName} --scan ${scanned.scanId} --agent`,
             `cf scan --repo ${project.fullName} --wait --agent`,
           ]
         : [`cf scan --repo ${project.fullName} --wait --agent`],
@@ -120,7 +120,7 @@ export async function commitsCommand(
     next: scanned
       ? [
           {
-            command: `cf observed --scan ${scanned.scanId}`,
+            command: `cf reproduced --scan ${scanned.scanId}`,
             purpose: `findings at ${scanned.sha.slice(0, 7)}`,
           },
         ]

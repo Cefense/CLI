@@ -60,7 +60,7 @@ export async function sbomCommand(
         path: target,
         document: target ? null : document,
       },
-      [`cf observed --repo ${project.fullName} --category dependency --agent`],
+      [`cf reproduced --repo ${project.fullName} --category dependency --agent`],
     );
     return 0;
   }

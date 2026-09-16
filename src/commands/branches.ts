@@ -25,7 +25,7 @@ export async function branchesCommand(globals: GlobalOptions): Promise<number> {
       },
       [
         `cf scan --repo ${project.fullName} --branch <name> --wait --agent`,
-        `cf observed --repo ${project.fullName} --branch <name> --agent`,
+        `cf reproduced --repo ${project.fullName} --branch <name> --agent`,
       ],
     );
     return 0;
@@ -72,7 +72,7 @@ export async function branchesCommand(globals: GlobalOptions): Promise<number> {
     footnote: listing.defaultBranch ? `${c.cyan("*")} default branch` : null,
     next: [
       { command: `cf scan --branch ${unscanned}`, purpose: "scan a branch" },
-      { command: `cf observed --branch ${unscanned}`, purpose: "read a branch's findings" },
+      { command: `cf reproduced --branch ${unscanned}`, purpose: "read a branch's findings" },
     ],
   });
 

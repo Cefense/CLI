@@ -31,7 +31,7 @@ If `cf` is not installed or this repository is not connected, run `cf agent chec
 Pass `--agent` to every command. It prints exactly one line of JSON to stdout, never opens the interactive view, and never asks a question.
 
 ```json
-{"schemaVersion":1,"ok":true,"command":"observed","data":{"...":"..."},"next":["cf fix generate <id> --wait --agent"]}
+{"schemaVersion":1,"ok":true,"command":"reproduced","data":{"...":"..."},"next":["cf fix generate <id> --wait --agent"]}
 {"schemaVersion":1,"ok":false,"command":"fix publish","error":{"code":"confirmation_required","message":"...","remedy":"...","exitCode":2}}
 ```
 
@@ -64,7 +64,7 @@ cf agent schema --agent
 
 ## Vocabulary
 
-**Observed** is something real in this repository's code. **Matched** is an Observed finding joined to the research that explains it. **Fix** is a patch for one finding, and the pull request that carries it. **Triage** is the user's recorded decision about a finding, kept per repository so it survives every rescan.
+**Reproduced** is something real in this repository's code. **Matched** is a Reproduced finding joined to the research that explains it. **Fix** is a patch for one finding, and the pull request that carries it. **Triage** is the user's recorded decision about a finding, kept per repository so it survives every rescan.
 
 Repositories live on GitHub, GitLab, or Bitbucket. Everything below works the same on all three: once a repository is connected it is addressed by `--repo owner/name` and nothing else changes. Only account connection and `cf scan --url` are GitHub-specific.
 
@@ -128,8 +128,8 @@ Ask the user before running `cf plan upgrade`, exactly as you would before openi
 ### List
 
 ```sh
-cf observed --repo acme/api --agent
-cf observed --repo acme/api --severity critical,high --agent
+cf reproduced --repo acme/api --agent
+cf reproduced --repo acme/api --severity critical,high --agent
 cf matched --repo acme/api --agent
 ```
 
@@ -156,7 +156,7 @@ A finding with no fingerprint answers `finding_not_triageable`: there is nothing
 ### Read one in full
 
 ```sh
-cf observed show <finding-id> --repo acme/api --agent
+cf reproduced show <finding-id> --repo acme/api --agent
 ```
 
 Adds the vulnerable code, the data flow from source to sink, the research that matched with its rationale, the references, and the patch if one exists.
@@ -245,7 +245,7 @@ Rescan after merging a fix, not before. Finding ids belong to a scan, so after a
 ```sh
 cf branches --repo acme/api --agent
 cf scan --repo acme/api --branch release/2.4 --wait --agent
-cf observed --repo acme/api --branch release/2.4 --agent
+cf reproduced --repo acme/api --branch release/2.4 --agent
 ```
 
 `cf branches` lists every branch GitHub shows, each with the last scan of that branch: `scanId`, `scanStatus`, `findings`, `scannedAt`. A branch with no `scanId` has never been scanned.
@@ -259,7 +259,7 @@ A branch that has never been scanned answers `branch_not_scanned` rather than qu
 ```sh
 cf commits --repo acme/api --agent
 cf commits --repo acme/api --branch release/2.4 --agent
-cf observed --repo acme/api --scan <scan-id> --agent
+cf reproduced --repo acme/api --scan <scan-id> --agent
 ```
 
 One row per commit on the branch, newest first, as the host has it. `scanned` says whether Cefense has scanned that exact commit. Only a scanned commit carries `scanId`, `findings`, and the deltas reconciliation produced: `introduced`, `resolved`, `suppressed`. Everything else is absent, so read `scanned` before reporting a commit as clean: an unscanned commit is unknown, not safe.
@@ -335,8 +335,8 @@ When the user has asked for the whole cycle rather than one finding, this is the
 
 ```sh
 cf scan --repo acme/api --wait --agent
-cf observed --repo acme/api --severity critical,high --agent
-cf observed show <finding-id> --repo acme/api --agent
+cf reproduced --repo acme/api --severity critical,high --agent
+cf reproduced show <finding-id> --repo acme/api --agent
 cf fix generate <finding-id> --wait --agent
 cf proof run <finding-id> --wait --agent
 cf fix publish <finding-id> --yes --agent
@@ -356,7 +356,7 @@ Rules for running this unattended:
 ## Working efficiently
 
 - **Start narrow.** `--severity critical,high` on a large repository, then widen. Whole-repository listings are the biggest payload the CLI produces.
-- **Do not re-list to refresh one row.** `cf observed show <id>`, `cf fix show <id>` and `cf proof show <id>` are cheap and current.
+- **Do not re-list to refresh one row.** `cf reproduced show <id>`, `cf fix show <id>` and `cf proof show <id>` are cheap and current.
 - **Follow `next`.** It is computed from the state you just fetched, so it already knows whether a fix exists.
 - **Batch the reading, serialise the writing.** Read as many findings as you need, then generate patches one at a time so the user can judge each.
 - **Use `--exit-code` in CI**, never string matching on output.

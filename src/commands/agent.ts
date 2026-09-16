@@ -94,7 +94,7 @@ const ENVELOPE = {
   success: {
     schemaVersion: "integer, currently 1. A breaking change to any shape increments it.",
     ok: "true",
-    command: "the command path that produced this, for example \"observed show\"",
+    command: "the command path that produced this, for example \"reproduced show\"",
     data: "the payload, shaped per command",
     next: "optional array of literal commands that act on what was just returned",
   },
@@ -269,8 +269,8 @@ const WORKFLOWS = [
     name: "triage",
     goal: "Report what is wrong with a repository, worst first, with evidence.",
     steps: [
-      "cf observed --repo <owner/name> --severity critical,high --agent",
-      "cf observed show <finding-id> --repo <owner/name> --agent",
+      "cf reproduced --repo <owner/name> --severity critical,high --agent",
+      "cf reproduced show <finding-id> --repo <owner/name> --agent",
     ],
     note: "The listing is a summary. Read the detail, and read dataflow, before forming an opinion about whether a finding is reachable.",
   },
@@ -278,7 +278,7 @@ const WORKFLOWS = [
     name: "patch-one",
     goal: "Close a single finding, with the user watching.",
     steps: [
-      "cf observed show <finding-id> --repo <owner/name> --agent",
+      "cf reproduced show <finding-id> --repo <owner/name> --agent",
       "cf fix generate <finding-id> --wait --agent",
       "cf proof run <finding-id> --wait --agent",
       "cf fix publish <finding-id> --yes --agent",
@@ -292,7 +292,7 @@ const WORKFLOWS = [
     goal: "Fail a pipeline when a critical or high finding is present.",
     steps: [
       "cf scan --repo <owner/name> --wait --agent",
-      "cf observed --repo <owner/name> --severity critical,high --exit-code --agent",
+      "cf reproduced --repo <owner/name> --severity critical,high --exit-code --agent",
     ],
     note: "Branch on the exit code, never on the output. Do not put --yes in a pipeline.",
   },
@@ -301,7 +301,7 @@ const WORKFLOWS = [
     goal: "Answer when a vulnerability arrived and whether a fix closed anything.",
     steps: [
       "cf commits --repo <owner/name> --agent",
-      "cf observed --repo <owner/name> --scan <scan-id> --agent",
+      "cf reproduced --repo <owner/name> --scan <scan-id> --agent",
     ],
     note: "Read `scanned` before calling a commit clean. An unscanned commit is unknown, not safe.",
   },
@@ -445,7 +445,7 @@ export async function agentCheck(globals: GlobalOptions): Promise<number> {
 
   const ready = blockers.length === 0;
   if (ready && resolved) {
-    next.push(`cf observed --repo ${resolved.fullName} --severity critical,high --agent`);
+    next.push(`cf reproduced --repo ${resolved.fullName} --severity critical,high --agent`);
   }
 
   out.agentEmit(

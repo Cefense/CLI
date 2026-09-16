@@ -1,7 +1,7 @@
 import { openSession, type GlobalOptions } from "../core/session.js";
 import { UsageError } from "../core/errors.js";
 import { prune } from "../core/compact.js";
-import { SEVERITY_ALIASES } from "./observed.js";
+import { SEVERITY_ALIASES } from "./reproduced.js";
 import type {
   NotificationCadence,
   NotificationKind,
@@ -55,7 +55,7 @@ export function parseKind(value: string): NotificationKind {
 }
 
 /**
- * Accepts the same spellings `cf observed --severity` does.
+ * Accepts the same spellings `cf reproduced --severity` does.
  *
  * The CLI shows people `watch` and `info` where the wire says `medium` and
  * `low`, and a second parser here that rejected `watch` would mean one flag

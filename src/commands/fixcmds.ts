@@ -9,7 +9,7 @@ import { isInteractive } from "../ui/screen.js";
 import { c, glyph } from "../ui/theme.js";
 import { renderDiff } from "./fixactions.js";
 import { resolveLinkedProject } from "./link.js";
-import { resolveFindingId } from "./observed.js";
+import { resolveFindingId } from "./reproduced.js";
 import { CODE_HOSTS, openIfRequested } from "../ui/open.js";
 import { shortId } from "../ui/format.js";
 

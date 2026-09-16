@@ -6,8 +6,8 @@ Use it when asked to scan this repository for vulnerabilities or CVEs, triage or
 
 ```sh
 cf scan --repo <owner/name> --wait --agent
-cf observed --repo <owner/name> --severity critical,high --agent
-cf observed show <finding-id> --repo <owner/name> --agent
+cf reproduced --repo <owner/name> --severity critical,high --agent
+cf reproduced show <finding-id> --repo <owner/name> --agent
 cf fix generate <finding-id> --wait --agent
 cf proof run <finding-id> --wait --agent
 cf fix publish <finding-id> --yes --agent

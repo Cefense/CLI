@@ -141,7 +141,7 @@ async function scanUrl(
   if (isAgentMode()) {
     if (!options.wait) {
       out.agentEmit({ repository: project.fullName, scanId }, [
-        `cf observed --repo ${project.fullName} --agent`,
+        `cf reproduced --repo ${project.fullName} --agent`,
       ]);
       return 0;
     }
@@ -159,7 +159,7 @@ async function scanUrl(
         findings: settled?.findingCount ?? null,
         error: settled?.error ?? null,
       },
-      [`cf observed --repo ${project.fullName} --severity critical,high --agent`],
+      [`cf reproduced --repo ${project.fullName} --severity critical,high --agent`],
     );
     return settled?.status === "failed" ? 4 : 0;
   }
@@ -180,7 +180,7 @@ async function scanUrl(
   out.line();
   if (scan?.status === "completed") {
     out.info("Next: review the findings");
-    out.line(`    ${c.dim(`cf observed --repo ${project.fullName}`)}`);
+    out.line(`    ${c.dim(`cf reproduced --repo ${project.fullName}`)}`);
     out.line();
   }
   return scan?.status === "failed" ? 4 : 0;
@@ -210,7 +210,7 @@ export async function scanCommand(
     if (!options.wait) {
       out.agentEmit({ repository: project.fullName, branch: ref, scanId }, [
         `cf scan --repo ${project.fullName} --wait --agent`,
-        `cf observed --repo ${project.fullName} --agent`,
+        `cf reproduced --repo ${project.fullName} --agent`,
       ]);
       return 0;
     }
@@ -229,7 +229,7 @@ export async function scanCommand(
         findings: settled?.findingCount ?? null,
         error: settled?.error ?? null,
       },
-      [`cf observed --repo ${project.fullName} --severity critical,high --agent`],
+      [`cf reproduced --repo ${project.fullName} --severity critical,high --agent`],
     );
     return settled?.status === "failed" ? 4 : 0;
   }
@@ -256,7 +256,7 @@ export async function scanCommand(
   if (scan?.status === "completed" && scan.findingCount > 0) {
     out.info("Next: review the findings");
     out.line(
-      `    ${c.dim(`cf observed --repo ${project.fullName}${ref ? ` --branch ${ref}` : ""}`)}`,
+      `    ${c.dim(`cf reproduced --repo ${project.fullName}${ref ? ` --branch ${ref}` : ""}`)}`,
     );
     out.line();
   }

@@ -40,7 +40,7 @@ import { providerConnect, providerDisconnect, providerList } from "./commands/pr
 import { auditCommand } from "./commands/audit.js";
 import { triageCommand } from "./commands/triage.js";
 import { sbomCommand } from "./commands/sbom.js";
-import { observedCommand, observedShow, requireLimit } from "./commands/observed.js";
+import { reproducedCommand, reproducedShow, requireLimit } from "./commands/reproduced.js";
 import { fixCommand } from "./commands/fix.js";
 import { fixGenerate, fixMerge, fixPublish, fixShow } from "./commands/fixcmds.js";
 import { proofAttest, proofCommand, proofRun, proofShow } from "./commands/proof.js";
@@ -400,12 +400,12 @@ function findingsOptions(command: Command): Command {
     .option("--exit-code", "exit 1 when a critical or high finding is present");
 }
 
-const observed = findingsOptions(program.command("observed"))
+const reproduced = findingsOptions(program.command("reproduced"))
   .description("browse the findings in your code")
   .option("--matched", "only findings joined to security research")
   .action(
     run((globals, command) =>
-      observedCommand(globals, {
+      reproducedCommand(globals, {
         severity: command.opts().severity,
         category: command.opts().category,
         limit: command.opts().limit,
@@ -417,14 +417,14 @@ const observed = findingsOptions(program.command("observed"))
     ),
   );
 
-withGlobals(observed.command("show"))
+withGlobals(reproduced.command("show"))
   .argument("<finding-id>", "the finding to show in full")
   .description("show one finding with its research, data flow and fix")
   .option("--branch <name>", "read the finding from a branch's last scan")
   .option("--scan <id>", "read the finding from one scan")
   .action(
     run((globals, command) =>
-      observedShow(globals, command.args[0] as string, {
+      reproducedShow(globals, command.args[0] as string, {
         branch: command.opts().branch,
         scanId: command.opts().scan,
       }),
@@ -435,7 +435,7 @@ findingsOptions(program.command("matched"))
   .description("findings joined to the research that explains them")
   .action(
     run((globals, command) =>
-      observedCommand(globals, {
+      reproducedCommand(globals, {
         severity: command.opts().severity,
         category: command.opts().category,
         limit: command.opts().limit,

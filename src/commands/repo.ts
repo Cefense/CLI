@@ -92,7 +92,7 @@ export async function repoConnect(
     if (repo.connected) {
       if (isAgentMode()) {
         out.agentEmit({ repository: repo.fullName, alreadyConnected: true }, [
-          `cf observed --repo ${repo.fullName} --agent`,
+          `cf reproduced --repo ${repo.fullName} --agent`,
         ]);
         return 0;
       }
@@ -172,7 +172,7 @@ export async function repoConnect(
           scanId: entry.scanId,
         })),
       },
-      connected[0] ? [`cf observed --repo ${connected[0].project.fullName} --agent`] : [],
+      connected[0] ? [`cf reproduced --repo ${connected[0].project.fullName} --agent`] : [],
     );
     return 0;
   }
@@ -199,7 +199,7 @@ export async function repoConnect(
 
   out.line();
   out.info("Next: review the findings");
-  out.line(`    ${c.dim("cf observed")}`);
+  out.line(`    ${c.dim("cf reproduced")}`);
   out.line();
   return 0;
 }
@@ -212,7 +212,7 @@ export async function repoList(globals: GlobalOptions): Promise<number> {
     out.agentEmit(
       { repositories: projects.map(compactProject) },
       projects[0]
-        ? [`cf observed --repo ${projects[0].fullName} --agent`]
+        ? [`cf reproduced --repo ${projects[0].fullName} --agent`]
         : ["cf repo connect <owner/name>"],
     );
     return 0;
@@ -345,7 +345,7 @@ export async function repoSetDefault(
   writeRepoDefault(scope, { githubRepoId: project.githubRepoId, fullName: project.fullName });
 
   if (isAgentMode()) {
-    out.agentEmit({ scope, repository: project.fullName, unset: false }, ["cf observed --agent"]);
+    out.agentEmit({ scope, repository: project.fullName, unset: false }, ["cf reproduced --agent"]);
     return 0;
   }
 

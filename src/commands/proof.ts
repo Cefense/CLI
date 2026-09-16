@@ -10,7 +10,7 @@ import { isInteractive } from "../ui/screen.js";
 import { c, displaySeverity, glyph, severityColor, severityRank } from "../ui/theme.js";
 import { relativeTime, shortId, wrapText, terminalWidth } from "../ui/format.js";
 import { resolveLinkedProject } from "./link.js";
-import { resolveFindingId } from "./observed.js";
+import { resolveFindingId } from "./reproduced.js";
 
 /** How a proof kind reads to a person. */
 const KIND_LABELS: Record<string, string> = {
@@ -333,7 +333,7 @@ export async function proofRun(
     progress.stop("Could not start the proof", "fail");
     throw new UsageError(
       `${findingId} is not a finding in ${project.fullName}.`,
-      `Run cf observed --repo ${project.fullName} to list finding ids.`,
+      `Run cf reproduced --repo ${project.fullName} to list finding ids.`,
       "finding_not_found",
     );
   }
