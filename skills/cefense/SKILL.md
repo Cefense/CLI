@@ -95,13 +95,13 @@ Roles are `owner`, `admin`, and `member`. `owner` is Cefense's own role, the sea
 
 ## Plan and usage
 
-Every scan and every generated patch spends tokens from the organization's token allowance. When that allowance runs out, scanning stops: this is the thing most likely to make a command that worked yesterday fail today. **There is no overage.** Nothing you can pass spends past the allowance, so do not offer the user a way to keep scanning that does not involve them paying for a plan.
+Every scan and every generated patch spends from the organization's allowance. When that allowance runs out, scanning stops: this is the thing most likely to make a command that worked yesterday fail today. **There is no overage.** Nothing you can pass spends past the allowance, so do not offer the user a way to keep scanning that does not involve them paying for a plan.
 
 ```sh
 cf plan --agent
 ```
 
-`data.usage` is the meter: `tokens` spent, `allowance` for the period, `remaining`, `percentUsed`, and `exhausted`. `data.plan` is `free`, `plus`, `pro`, or `max`, and `data.entitled` says whether it is actually being paid for. The meter runs in months on every plan, so `usage.periodEnd` is when the tokens come back and `renewsAt` is when the subscription renews: on a yearly plan those are eleven months apart, and quoting the wrong one tells the user to wait a year. On an organization with no allowance applied at all, `allowance`, `remaining` and `percentUsed` are absent and `usage.unlimited` is true. `data.catalogue` lists every plan with its price, tokens, seats, repository limit, max-depth allotment, and the capabilities it carries (`scanEveryPush`, `pullRequestScans`, `imageScanning`, `immunityWatch`, `ssoAndAudit`, and `scanIntervalFloor` for how often scheduled scans may run), so you can say what moving up would actually buy rather than guessing.
+`data.usage` is the meter: `percentUsed`, `remainingPercent`, and `exhausted`. It is a proportion and nothing else, because the token figures behind it are enforced by the API and never published. `data.plan` is `free`, `plus`, `pro`, or `max`, and `data.entitled` says whether it is actually being paid for. The meter runs in months on every plan, so `usage.periodEnd` is when the allowance comes back and `renewsAt` is when the subscription renews: on a yearly plan those are eleven months apart, and quoting the wrong one tells the user to wait a year. On an organization with no allowance applied at all, `percentUsed` and `remainingPercent` are absent and `usage.unlimited` is true. `data.catalogue` lists every plan with its price, how much it can scan as a multiple of the tier below it (`usageMultiple`, `usageScale`), seats, repository limit, max-depth allotment, and the capabilities it carries (`scanEveryPush`, `pullRequestScans`, `imageScanning`, `immunityWatch`, `ssoAndAudit`, and `scanIntervalFloor` for how often scheduled scans may run), so you can say what moving up would actually buy rather than guessing.
 
 The free tier is a tier, not a trial. Its grant is issued once, never expires and never refills, so it has no `renewsAt` and no `usage.periodEnd` at all, and when it is spent, waiting does not help. Nothing is deleted when it runs out: what stops is scanning.
 
@@ -121,7 +121,7 @@ Ask the user before running `cf plan upgrade`, exactly as you would before openi
 
 `cf plan upgrade` starts a first subscription. An organization that already pays cannot check out again, because that would open a second subscription alongside the first: the CLI refuses the plan already held with `usage_error`, and the API refuses a different one with `already_subscribed`. Moving an existing subscriber between plans happens in the workspace, where it is prorated and charged immediately; `cf plan portal` holds invoices, the payment method, seat changes and cancellation. Neither is yours to do.
 
-`allowance_exhausted` means the tokens are gone and no scan will start until the plan changes, or until the period rolls over on a paid plan. `repository_limit` means the plan covers fewer repositories than the account is trying to connect, and it is counted when one is added, so nothing already connected is at risk and disconnecting someone's repository to make room is not yours to offer. `depth_unavailable` means max depth is not included on this plan, so re-run at default depth. `no_subscription` means nothing has ever been bought, so there is no portal to open. `billing_unavailable` means this deployment has no billing configured at all. None of them are retryable, and none of them are yours to solve: report and stop.
+`allowance_exhausted` means the allowance is gone and no scan will start until the plan changes, or until the period rolls over on a paid plan. `repository_limit` means the plan covers fewer repositories than the account is trying to connect, and it is counted when one is added, so nothing already connected is at risk and disconnecting someone's repository to make room is not yours to offer. `depth_unavailable` means max depth is not included on this plan, so re-run at default depth. `no_subscription` means nothing has ever been bought, so there is no portal to open. `billing_unavailable` means this deployment has no billing configured at all. None of them are retryable, and none of them are yours to solve: report and stop.
 
 ## The loop
 
@@ -384,7 +384,7 @@ Rules for running this unattended:
 | `organization_required` | 2 | name one with `--org`, `CEFENSE_ORG`, or `cf org use` |
 | `organization_not_found` | 2 | the slug is not one this account can see, run `cf org list` |
 | `organization_forbidden` | 4 | the role held in that organization is too low, tell the user |
-| `allowance_exhausted` | 4 | the tokens are spent, run `cf plan`, only the user can fix it, and there is no overage |
+| `allowance_exhausted` | 4 | the allowance is spent, run `cf plan`, only the user can fix it, and there is no overage |
 | `repository_limit` | 4 | the plan covers fewer repositories, the user disconnects one or moves up |
 | `depth_unavailable` | 4 | max depth is not on this plan, re-run at default depth |
 | `invalid_plan` | 2 | use plus, pro, or max |

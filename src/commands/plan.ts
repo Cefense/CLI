@@ -75,17 +75,6 @@ export function parseSeats(value: string): number {
   return parsed;
 }
 
-/** Mirrors formatTokens in packages/schemas/src/billing.ts. */
-export function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) {
-    const millions = tokens / 1_000_000;
-    const rounded = millions >= 10 ? Math.round(millions) : Math.round(millions * 10) / 10;
-    return `${rounded}M`;
-  }
-  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`;
-  return String(tokens);
-}
-
 function statusLabel(status: BillingStatus): string {
   if (status === "none") return "no subscription";
   return status.replace(/_/g, " ");
@@ -115,18 +104,16 @@ function planAbove(plan: BillingPlan): PaidBillingPlan | null {
   return above as PaidBillingPlan;
 }
 
-function percentUsed(tokens: number, allowance: number): number {
-  if (allowance <= 0) return tokens > 0 ? 100 : 0;
-  return Math.min(100, Math.round((tokens / allowance) * 100));
-}
-
 /**
- * An organization with an internal unlimited grant has no allowance at all.
- * The API holds it as Infinity, which JSON renders as null, so null here means
- * unlimited rather than unknown.
+ * An organization with an internal grant has no allowance at all, so there is
+ * no proportion to report and `percentUsed` is null.
  */
 function isUnlimited(billing: BillingResponse): boolean {
-  return billing.usage.allowance === null;
+  return billing.usage.unlimited;
+}
+
+function percentOf(billing: BillingResponse): number {
+  return billing.usage.percentUsed ?? 0;
 }
 
 function compactPlan(entry: PlanDefinition, current: BillingPlan): Record<string, unknown> {
@@ -136,7 +123,8 @@ function compactPlan(entry: PlanDefinition, current: BillingPlan): Record<string
     tagline: entry.tagline,
     monthlyPriceCents: entry.price.month,
     yearlyPriceCents: entry.price.year,
-    monthlyTokens: entry.monthlyTokens,
+    usageMultiple: entry.usageMultiple,
+    usageScale: entry.usageScale,
     grantIsOneTime: entry.grantIsOneTime || null,
     seatsIncluded: entry.seatsIncluded,
     repositories: entry.repositories,
@@ -176,13 +164,10 @@ function planPayload(billing: BillingResponse, organization: string | null): Rec
     renewsAt: subscription.cancelAtPeriodEnd ? null : subscription.currentPeriodEnd,
     endsAt: subscription.cancelAtPeriodEnd ? subscription.currentPeriodEnd : null,
     usage: prune({
-      tokens: usage.tokens,
-      allowance: usage.allowance,
-      remaining: usage.remaining,
       unlimited: unlimited || null,
-      percentUsed: unlimited ? null : percentUsed(usage.tokens, usage.allowance ?? 0),
+      percentUsed: unlimited ? null : percentOf(billing),
+      remainingPercent: unlimited ? null : Math.max(0, 100 - percentOf(billing)),
       exhausted: usage.exhausted,
-      overTokens: usage.overTokens,
       scans: usage.scans,
       periodStart: usage.periodStart,
       periodEnd: usage.periodEnd,
@@ -193,7 +178,6 @@ function planPayload(billing: BillingResponse, organization: string | null): Rec
     catalogue: billing.catalogue.plans.map((entry) => compactPlan(entry, subscription.plan)),
     annualDiscountPercent: billing.catalogue.annualDiscountPercent,
     seatPriceCents: billing.catalogue.seatPriceCents,
-    tokensPerExtraSeat: billing.catalogue.tokensPerExtraSeat,
   });
 }
 
@@ -210,13 +194,17 @@ function planNext(billing: BillingResponse): string[] {
   return steps;
 }
 
+/**
+ * The meter as a proportion, never as a token count. What the organization may
+ * spend is enforced in tokens and reported as a share of the allowance: the
+ * absolute figures are not something we publish, on any surface.
+ */
 function usageLine(billing: BillingResponse): string {
   const { usage } = billing;
-  if (isUnlimited(billing)) return `${formatTokens(usage.tokens)} used, no allowance applied`;
-  const allowance = usage.allowance ?? 0;
-  const percent = percentUsed(usage.tokens, allowance);
+  if (isUnlimited(billing)) return "no allowance applied";
+  const percent = percentOf(billing);
   const tint = usage.exhausted ? c.red : percent >= 80 ? c.yellow : (value: string) => value;
-  return tint(`${formatTokens(usage.tokens)} of ${formatTokens(allowance)}   ${percent}%`);
+  return tint(`${percent}% used`);
 }
 
 function seatsLine(billing: BillingResponse): string {
@@ -287,7 +275,7 @@ function printPlan(billing: BillingResponse, organization: string | null): void 
 
   const rows: Array<[string, string]> = [
     ["seats", seatsLine(billing)],
-    ["tokens", usageLine(billing)],
+    ["usage", usageLine(billing)],
     ["scans", String(usage.scans)],
     periodRow(billing),
     renewalRow(billing),
@@ -309,16 +297,11 @@ function printPlan(billing: BillingResponse, organization: string | null): void 
   out.lines(keyValue(rows).map((row) => `  ${row}`));
 
   if (!isUnlimited(billing)) {
-    const allowance = usage.allowance ?? 0;
-    const percent = percentUsed(usage.tokens, allowance);
-    const bar = progressBar(Math.min(usage.tokens, allowance), Math.max(allowance, 1), 32);
+    const percent = percentOf(billing);
+    const bar = progressBar(percent, 100, 32);
     const tone = usage.exhausted ? c.red : percent >= 80 ? c.yellow : c.cyan;
     out.line();
-    out.line(
-      `  ${tone(bar)}   ${c.dim(
-        `${formatTokens(Math.max(0, usage.remaining ?? 0))} left`,
-      )}`,
-    );
+    out.line(`  ${tone(bar)}   ${c.dim(`${Math.max(0, 100 - percent)}% left`)}`);
   }
 
   if (usage.exhausted) {
@@ -435,7 +418,6 @@ export async function planUpgrade(
         seats: seatsIncluded + extraSeats,
         planPriceCents: definition?.price[interval] ?? null,
         seatPriceCents: extraSeats > 0 ? billing.catalogue.seatPriceCents[interval] : null,
-        tokensPerExtraSeat: extraSeats > 0 ? billing.catalogue.tokensPerExtraSeat : null,
         checkoutUrl: url,
         requiresHuman: true,
         note,

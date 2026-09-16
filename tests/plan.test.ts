@@ -3,7 +3,6 @@ import { test } from "node:test";
 import {
   BILLING_PLANS,
   PAID_BILLING_PLANS,
-  formatTokens,
   parsePaidPlan,
   parseSeats,
 } from "../src/commands/plan.js";
@@ -33,12 +32,4 @@ test("parseSeats refuses a seat count the API would reject anyway", () => {
   assert.throws(() => parseSeats("-1"), UsageError);
   assert.throws(() => parseSeats("501"), UsageError);
   assert.throws(() => parseSeats("many"), UsageError);
-});
-
-test("formatTokens matches the workspace's own rounding", () => {
-  assert.equal(formatTokens(5_000_000), "5M");
-  assert.equal(formatTokens(8_400_000), "8.4M");
-  assert.equal(formatTokens(31_000_000), "31M");
-  assert.equal(formatTokens(12_000), "12k");
-  assert.equal(formatTokens(940), "940");
 });

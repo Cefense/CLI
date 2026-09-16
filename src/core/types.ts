@@ -428,7 +428,9 @@ export interface PlanDefinition {
   name: string;
   tagline: string;
   price: Record<BillingInterval, number | null>;
-  monthlyTokens: number;
+  /** How much the plan can scan, against the tier below it. Never a token count. */
+  usageMultiple: number;
+  usageScale: string;
   grantIsOneTime: boolean;
   seatsIncluded: number;
   repositories: number | null;
@@ -457,17 +459,14 @@ export interface BillingSubscription {
 }
 
 /**
- * `allowance` and `remaining` arrive as null on an organization with an
- * internal unlimited grant: the API holds them as Infinity, which JSON renders
- * as null. Null is unlimited here, not unknown.
+ * The meter, as a proportion. The API enforces the limit in tokens and does not
+ * publish the figures, so `percentUsed` is all there is, and it is null on an
+ * organization whose internal grant applies no allowance at all.
  */
 export interface BillingUsage {
-  tokens: number;
-  allowance: number | null;
+  unlimited: boolean;
+  percentUsed: number | null;
   exhausted: boolean;
-  remaining: number | null;
-  overTokens: number;
-  costMicros: number;
   scans: number;
   periodStart: string;
   periodEnd: string | null;
@@ -480,7 +479,6 @@ export interface BillingResponse {
     plans: PlanDefinition[];
     annualDiscountPercent: number;
     seatPriceCents: Record<BillingInterval, number>;
-    tokensPerExtraSeat: number;
   };
   subscription: BillingSubscription;
   usage: BillingUsage;
