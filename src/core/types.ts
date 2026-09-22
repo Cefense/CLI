@@ -115,6 +115,28 @@ export type ScanDepth = "default" | "max";
 
 export type SbomFormat = "cyclonedx" | "spdx";
 
+/**
+ * Whether a finished scan reached the whole repository.
+ *
+ * `status` only says the scan ran to the end; a scan that hit a file cap or
+ * exhausted its call budget still completes. Null for scans recorded before
+ * the scanner reported coverage at all, which is not the same as `clean`.
+ */
+export type ScanOutcome = "clean" | "partial";
+
+/**
+ * One thing a scan did not get to.
+ *
+ * `kind` is deliberately a string: nothing constrains it in the database, so
+ * the scanner can name a new kind without this copy going stale. `detail` is
+ * written for a person and is what the CLI prints.
+ */
+export interface ScanCoverageGap {
+  kind: string;
+  detail: string;
+  count?: number;
+}
+
 export interface ScanSummary {
   id: string;
   status: ScanStatus;
@@ -125,6 +147,8 @@ export interface ScanSummary {
   error: string | null;
   createdAt: string;
   finishedAt: string | null;
+  outcome?: ScanOutcome | null;
+  coverageGaps?: ScanCoverageGap[] | null;
 }
 
 export interface Project {

@@ -1,5 +1,7 @@
 import type { CefenseClient } from "../core/client.js";
 import type { Project, ScanSummary } from "../core/types.js";
+import { coverageEnvelope } from "../core/compact.js";
+import { coverageLines, isPartialScan } from "../core/coverage.js";
 import { openSession, type GlobalOptions, type Session } from "../core/session.js";
 import { resolveLinkedProject } from "./link.js";
 import * as out from "../ui/output.js";
@@ -71,7 +73,23 @@ export async function watchScan(
   progress.stop(
     `Scanned ${label} in ${elapsed(latest.createdAt, latest.finishedAt)} · ${latest.findingCount} ${latest.findingCount === 1 ? "finding" : "findings"}`,
   );
+  reportCoverage(latest);
   return latest;
+}
+
+/**
+ * Says so when the scan stopped short of the whole repository.
+ *
+ * Printed next to the finding count on purpose: the count is the number people
+ * act on, and "3 findings" from a scan that read half the files needs the
+ * qualifier in the same breath, not further down the page.
+ */
+function reportCoverage(scan: ScanSummary | null): void {
+  if (!isPartialScan(scan)) return;
+  out.line();
+  out.warn("This scan did not cover the whole repository.");
+  for (const detail of coverageLines(scan)) out.line(`    ${c.dim(detail)}`);
+  out.line(`    ${c.dim("Findings here are a statement about what was read, not about the repository.")}`);
 }
 
 /**
@@ -157,6 +175,7 @@ async function scanUrl(
         scanId,
         status: settled?.status ?? "running",
         findings: settled?.findingCount ?? null,
+        ...coverageEnvelope(settled),
         error: settled?.error ?? null,
       },
       [`cf reproduced --repo ${project.fullName} --severity critical,high --agent`],
@@ -227,6 +246,7 @@ export async function scanCommand(
         scanId,
         status: settled?.status ?? "running",
         findings: settled?.findingCount ?? null,
+        ...coverageEnvelope(settled),
         error: settled?.error ?? null,
       },
       [`cf reproduced --repo ${project.fullName} --severity critical,high --agent`],

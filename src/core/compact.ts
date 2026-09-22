@@ -7,6 +7,7 @@ import type {
   Fix,
   Project,
   ProofVerdict,
+  ScanSummary,
   WireSeverity,
 } from "./types.js";
 import type { Organization } from "./organizations.js";
@@ -160,6 +161,23 @@ export function compactOrganization(
   });
 }
 
+/**
+ * Coverage fields for a scan, for splicing into an agent envelope.
+ *
+ * `coverage` is emitted whenever the scan reported one, `"clean"` included:
+ * an agent that only ever saw the field on partial scans could not tell a
+ * complete scan from one run by a scanner too old to say. Absent means
+ * unknown. Gaps are only meaningful when something was missed.
+ */
+export function coverageEnvelope(scan: ScanSummary | null): Record<string, unknown> {
+  if (!scan?.outcome) return {};
+  const gaps = scan.outcome === "partial" ? (scan.coverageGaps ?? []) : [];
+  return prune({
+    coverage: scan.outcome,
+    coverageGaps: gaps.map((gap) => prune({ kind: gap.kind, detail: gap.detail, count: gap.count })),
+  });
+}
+
 export function compactProject(project: Project): Record<string, unknown> {
   return prune({
     repository: project.fullName,
@@ -177,6 +195,7 @@ export function compactProject(project: Project): Record<string, unknown> {
           id: project.scan.id,
           status: project.scan.status,
           findings: project.scan.findingCount,
+          ...coverageEnvelope(project.scan),
           finishedAt: project.scan.finishedAt ?? project.scan.createdAt,
         })
       : null,

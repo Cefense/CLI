@@ -10,7 +10,8 @@ import * as out from "../ui/output.js";
 import { relativeTime, shortId, terminalWidth, wrapText } from "../ui/format.js";
 import { c, displaySeverity, glyph, severityColor, severityRank } from "../ui/theme.js";
 import { isAgentMode } from "../ui/mode.js";
-import { compactFinding, compactFindingDetail } from "../core/compact.js";
+import { compactFinding, compactFindingDetail, coverageEnvelope } from "../core/compact.js";
+import { coverageLines, isPartialScan, scanIfSame } from "../core/coverage.js";
 import { CODE_HOSTS, openIfRequested } from "../ui/open.js";
 import { page } from "../ui/pager.js";
 
@@ -211,6 +212,9 @@ export async function reproducedCommand(
   const worst = rows.some(
     (row) => row.finding.severity === "critical" || row.finding.severity === "high",
   );
+  // An empty or short list is read as good news. If the scan behind it stopped
+  // early, that reading is wrong, so the list carries the qualifier.
+  const readScan = scanIfSame(project.scan, first.scanId);
 
   if (isAgentMode()) {
     const counts: Record<string, number> = {};
@@ -224,6 +228,7 @@ export async function reproducedCommand(
         scanId: first.scanId,
         total: first.total,
         hasMore: first.hasMore,
+        ...coverageEnvelope(readScan),
         counts,
         findings: rows.map((row) => compactFinding(row.finding, row.fix)),
       },
@@ -245,6 +250,7 @@ export async function reproducedCommand(
       scanId: first.scanId,
       total: first.total,
       hasMore: first.hasMore,
+      ...coverageEnvelope(readScan),
       findings: rows.map((row) => ({ ...row.finding, fix: row.fix })),
     });
     return options.exitCode && worst ? 1 : 0;
@@ -262,6 +268,14 @@ export async function reproducedCommand(
     : options.onlyMatched
       ? `No findings in ${project.fullName} are joined to research yet.`
       : `No findings in ${project.fullName}.`;
+
+  // Above the list rather than below it: the caveat changes how the whole list
+  // should be read, and a long list would push a footnote out of sight.
+  if (isPartialScan(readScan)) {
+    out.warn("The scan behind these findings did not cover the whole repository.");
+    for (const detail of coverageLines(readScan)) out.line(`    ${c.dim(detail)}`);
+    out.line();
+  }
 
   printGrouped<Row>({
     noun: options.onlyMatched ? "matched finding" : "finding",

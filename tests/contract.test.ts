@@ -128,6 +128,19 @@ test("scan depths match the database constraint", { skip }, () => {
   );
 });
 
+/**
+ * A scan outcome the CLI does not model is a scan the CLI quietly treats as
+ * complete, which is the one mistake this field exists to prevent. The
+ * constraint also allows null — a scanner too old to report coverage — which
+ * the CLI carries as the optional field rather than as a union member.
+ */
+test("scan outcomes match the database constraint", { skip }, () => {
+  assert.deepEqual(
+    typeUnion("ScanOutcome").sort(),
+    namedCheckConstraint(controlSchema(), "scans_outcome_check").sort(),
+  );
+});
+
 test("organization roles match the database constraint", { skip }, () => {
   const source = controlSchema();
   // Two tables have a role column, and users_role_check comes first in the
