@@ -7,13 +7,13 @@ import * as out from "../ui/output.js";
 import { confirmByTyping, select, spinner } from "../ui/prompts.js";
 import { isInteractive } from "../ui/screen.js";
 import { c, glyph } from "../ui/theme.js";
-import { renderDiff } from "./fixactions.js";
+import { behaviorLine, renderDiff } from "./fixactions.js";
 import { resolveLinkedProject } from "./link.js";
 import { resolveFindingId } from "./reproduced.js";
 import { CODE_HOSTS, openIfRequested } from "../ui/open.js";
 import { shortId } from "../ui/format.js";
 
-const SETTLED = new Set(["ready", "failed", "skipped", "opened"]);
+const SETTLED = new Set(["ready", "failed", "skipped", "opened", "merged", "closed"]);
 
 async function waitForFix(
   session: Session,
@@ -33,8 +33,12 @@ async function waitForFix(
 }
 
 function renderFix(fix: Fix): void {
+  const files = (fix.files ?? []).map((file) => file.path);
   out.line();
-  out.line(`  ${c.bold(fix.filePath)}   ${c.dim(`base ${fix.baseSha.slice(0, 7)}`)}`);
+  out.line(
+    `  ${c.bold(files.length > 1 ? `${files.length} files` : fix.filePath)}   ${c.dim(`base ${fix.baseSha.slice(0, 7)}`)}`,
+  );
+  if (files.length > 1) for (const path of files) out.line(`    ${c.dim(path)}`);
   out.line();
   if (fix.status === "failed") {
     out.line(`  ${c.red(fix.error ?? "Generation failed.")}`);
@@ -47,6 +51,12 @@ function renderFix(fix: Fix): void {
   }
   if (fix.explanation) {
     out.line(`  ${c.dim(fix.explanation)}`);
+    out.line();
+  }
+  const behavior = behaviorLine(fix);
+  if (behavior) {
+    out.line(`  ${behavior}`);
+    if (fix.behaviorNote) out.line(`    ${c.dim(fix.behaviorNote)}`);
     out.line();
   }
   if (fix.prUrl) {

@@ -1,4 +1,5 @@
 import type { Fix } from "../core/types.js";
+import { STATUS_WORDS, type FindingStatus } from "../core/findingStatus.js";
 import { shortId, wrapText } from "../ui/format.js";
 import { c, glyph } from "../ui/theme.js";
 
@@ -22,6 +23,38 @@ export function fixLabel(fix: Fix | null): string {
     default:
       return c.dim(fix.status);
   }
+}
+
+export function statusLabel(status: FindingStatus, prNumber?: number | null): string {
+  const word = STATUS_WORDS[status.kind];
+  switch (status.kind) {
+    case "working":
+      return c.cyan(`${glyph.pulse} ${word}`);
+    case "ready":
+      return c.green(`${glyph.ring} ${word}`);
+    case "proven":
+      return c.green(`${glyph.check} ${word}`);
+    case "pr":
+      return c.green(prNumber ? `${glyph.check} PR #${prNumber} open` : `${glyph.check} ${word}`);
+    case "merged":
+      return c.green(prNumber ? `${glyph.check} PR #${prNumber} merged` : `${glyph.check} ${word}`);
+    case "refuted":
+      return c.red(`${glyph.cross} ${word}`);
+    case "review":
+      return c.yellow(`${glyph.warn} ${word}`);
+    default:
+      return c.dim(word);
+  }
+}
+
+export function behaviorLine(fix: Fix): string | null {
+  if (fix.behaviorChange === "removed") {
+    return c.yellow(`${glyph.warn} This patch removes behavior legitimate callers relied on.`);
+  }
+  if (fix.behaviorChange === "narrowed") {
+    return c.yellow(`${glyph.warn} This patch narrows what legitimate callers can do.`);
+  }
+  return null;
 }
 
 export function renderDiff(diff: string): string[] {
@@ -50,7 +83,15 @@ export function renderFixSection(fix: Fix | null, width: number, findingId?: str
     return lines;
   }
 
-  push(c.dim(`${fix.filePath} ${glyph.sep} base ${fix.baseSha.slice(0, 7)}`));
+  const files = (fix.files ?? []).map((file) => file.path);
+  push(
+    c.dim(
+      files.length > 1
+        ? `${files.length} files ${glyph.sep} base ${fix.baseSha.slice(0, 7)}`
+        : `${fix.filePath} ${glyph.sep} base ${fix.baseSha.slice(0, 7)}`,
+    ),
+  );
+  if (files.length > 1) for (const path of files) push(c.dim(`  ${path}`));
   push();
 
   if (fix.status === "failed") {
@@ -70,6 +111,12 @@ export function renderFixSection(fix: Fix | null, width: number, findingId?: str
   }
   if (fix.explanation) {
     for (const wrapped of wrapText(fix.explanation, body)) push(c.dim(wrapped));
+    push();
+  }
+  const behavior = behaviorLine(fix);
+  if (behavior) {
+    push(behavior);
+    if (fix.behaviorNote) for (const wrapped of wrapText(fix.behaviorNote, body - 2)) push(c.dim(`  ${wrapped}`));
     push();
   }
   if (fix.prUrl) {

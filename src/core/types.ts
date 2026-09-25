@@ -254,6 +254,36 @@ export interface EvidenceStep {
   location?: { file: string; startLine: number; endLine: number } | null;
 }
 
+export type ReachabilityVerdict = "reachable" | "imported" | "dev-only" | "unimported" | "unknown";
+
+export interface ReachabilityEvidence {
+  method: string;
+  entryPoint: string | null;
+  path: Array<{ path: string; symbol: string | null }>;
+  importedFrom: string[];
+  symbols: string[];
+  scope: string;
+  why: string;
+}
+
+/** The package behind a dependency finding, as fields. */
+export interface FindingDependency {
+  ecosystem: string;
+  name: string;
+  installedVersion: string;
+  fixedVersion: string | null;
+  direct: boolean | null;
+  scope: string | null;
+  paths: string[][];
+  requiredBy: string[];
+  pathsTruncated: boolean;
+}
+
+export interface FindingProgress {
+  fix: { status: Fix["status"]; prNumber: number | null } | null;
+  proof: { status: ProofStatus; verdict: ProofVerdict | null } | null;
+}
+
 export interface Finding {
   id: string;
   scanId: string;
@@ -298,6 +328,10 @@ export interface Finding {
   createdAt: string;
   introducedIn?: FindingOrigin | null;
   intelligenceSources: IntelligenceSource[];
+  reachability?: ReachabilityVerdict | null;
+  reachabilityEvidence?: ReachabilityEvidence | null;
+  dependency?: FindingDependency | null;
+  progress?: FindingProgress | null;
 }
 
 /** A user's decision about a finding, kept per repository and per fingerprint. */
@@ -350,9 +384,14 @@ export interface Fix {
   branch: string | null;
   error: string | null;
   model: string | null;
+  files?: Array<{ path: string }>;
+  behaviorChange?: FixBehaviorChange | null;
+  behaviorNote?: string | null;
   createdAt: string;
   updatedAt: string;
 }
+
+export type FixBehaviorChange = "none" | "narrowed" | "removed";
 
 export interface Article {
   id: string;
@@ -604,6 +643,8 @@ export interface ProofWitness {
   entry?: string | null;
   expectedFailure?: string | null;
   assertions?: string[];
+  target?: { callable: string; module: string; argShape: string; field?: string | null } | null;
+  httpRequest?: { method: string; path: string; headers?: Record<string, string>; body?: string | null } | null;
 }
 
 export interface FindingProof {
@@ -624,4 +665,14 @@ export interface FindingProof {
   error: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ProofEnvVar {
+  name: string;
+  updatedAt: string;
+}
+
+export interface ProofEnvResponse {
+  variables: ProofEnvVar[];
+  encryptionConfigured: boolean;
 }

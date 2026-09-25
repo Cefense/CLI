@@ -272,7 +272,8 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     code: "fix_not_ready",
     exitCode: EXIT_USAGE,
     meaning: "The patch exists but is not in the ready state.",
-    remedy: "Read data.fix.status with cf fix show. Only ready can be published.",
+    remedy:
+      "Read data.fix.status with cf fix show. Only ready can be published, and a proof needs ready, opened or merged.",
     retry: "fix-first",
   },
   {
@@ -317,6 +318,35 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
       "Only a settled secret rotation proof that came back incomplete can be attested, and only by an organization admin.",
     remedy:
       "Read data.proof.kind and data.proof.verdict with cf proof show. Nothing else can be attested by hand.",
+    retry: "never",
+  },
+  {
+    code: "invalid_env_name",
+    exitCode: EXIT_USAGE,
+    meaning: "An environment variable name is letters, digits and underscores, not starting with a digit.",
+    remedy: "Rename it, for example DATABASE_URL.",
+    retry: "fix-first",
+  },
+  {
+    code: "env_value_required",
+    exitCode: EXIT_USAGE,
+    meaning: "No value was given for the environment variable.",
+    remedy:
+      "Pipe the value on stdin with --stdin, or pass --from-env to read the variable of the same name from your shell. The value is never taken as an argument.",
+    retry: "fix-first",
+  },
+  {
+    code: "env_var_not_found",
+    exitCode: EXIT_USAGE,
+    meaning: "No environment variable of that name is stored for this repository.",
+    remedy: "Run cf proof env --agent to list the names that are stored.",
+    retry: "never",
+  },
+  {
+    code: "proof_env_unavailable",
+    exitCode: EXIT_API,
+    meaning: "Encryption is not configured on this deployment, so a value cannot be stored safely.",
+    remedy: "Report it and stop. An operator has to configure encryption on the server.",
     retry: "never",
   },
   {
@@ -678,6 +708,7 @@ export const WIRE_ERROR_CODES: Record<string, string> = {
   pull_request_closed: "pull_request_closed",
   in_progress: "fix_in_progress",
   not_ready: "fix_not_ready",
+  fix_not_ready: "fix_not_ready",
   unsafe_path: "fix_unsafe_path",
   proof_refuted: "fix_proof_refuted",
   fix_required: "fix_not_found",

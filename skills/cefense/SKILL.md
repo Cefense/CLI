@@ -133,7 +133,21 @@ cf reproduced --repo acme/api --severity critical,high --agent
 cf matched --repo acme/api --agent
 ```
 
-`data.findings` arrives worst first. `data.counts` breaks the total down by wire severity. Each entry carries `id`, `severity`, `severityLabel`, `title`, `file`, `line`, `category`, `cve`, `cwe`, `description`, `guidance`, `matchedSources`, and the state of any `fix`.
+`data.findings` arrives worst first. `data.counts` breaks the total down by wire severity. Each entry carries `id`, `severity`, `severityLabel`, `title`, `file`, `line`, `category`, `cve`, `cwe`, `description`, `guidance`, `matchedSources`, `reachability`, `status`, and the state of any `fix`. A dependency finding also carries `package` (`name@version`) and `fixedIn`.
+
+`reachability` says whether the vulnerable code can actually run here, which is a different question from whether the finding is real:
+
+| reachability | meaning |
+| --- | --- |
+| `reachable` | a path runs from an entry point to the vulnerable code |
+| `imported` | the code is used, but no route, job or command was found that reaches it |
+| `dev-only` | reached only from tests, fixtures or build tooling, so it does not ship |
+| `unimported` | nothing in the scanned source uses it |
+| `unknown` | Cefense did not establish it. Not the same as `unimported`: nothing was measured |
+
+Absent means the scan predates reachability. Work `reachable` first.
+
+`status` is where the finding has got to, the same word the workspace's status ring shows: `none` (no patch yet), `working` (a patch, pull request, or proof is in flight), `ready` (patch ready, not proved), `proven` (the proof came back proven or argued), `pr` (pull request open), `merged`, `refuted` (the proof shows the patch does not close it), and `review` (a person has to look: the patch failed or was skipped, the proof could not run or is incomplete, or the pull request was closed unmerged).
 
 Filters: `--severity critical,high,watch,info`, `--category code,dependency,secret,misconfig,os-package`, `--limit <n>` (1 to 1000), `--exit-code` to exit `1` when any Critical or High is present.
 
@@ -159,7 +173,7 @@ A finding with no fingerprint answers `finding_not_triageable`: there is nothing
 cf reproduced show <finding-id> --repo acme/api --agent
 ```
 
-Adds the vulnerable code, the data flow from source to sink, the research that matched with its rationale, the references, and the patch if one exists.
+Adds the vulnerable code, the data flow from source to sink, the research that matched with its rationale, the references, and the patch if one exists. It also adds `statusDetail`, the sentence behind `status`, and `proof`, the status and verdict of a proof of the patch the fix holds now. `reachabilityEvidence` says why the verdict is what it is: `why` in a sentence, `entryPoint`, the `path` from it to the code, and `symbols`, the vulnerable exports. A dependency finding adds `dependency`: `installed`, `fixedIn` (absent when no fixed release exists yet), `direct` (false means another package pulls it in), `requiredBy`, and the `paths` that drag it in. For a transitive package, the one in `requiredBy` is the one the user can change.
 
 Read this before forming an opinion. The listing is a summary, not evidence. In particular, read `dataflow`: `source` and `sink` say how untrusted input reaches the dangerous call, `steps` walks the path, and `ineffectiveSanitizers` names guards that look protective but are not. That is what tells you whether a finding is reachable in practice.
 
@@ -172,7 +186,7 @@ cf fix show <finding-id> --agent
 
 `--wait` polls until settled, up to about three minutes. Without it you get `generating` back and poll `cf fix show` yourself. Statuses: `generating`, `ready`, `failed`, `skipped`, `publishing`, `opened`, `merged`, `closed`. The last two are reached after the pull request is resolved, and `closed` means it was closed without merging.
 
-When `ready`, `data.fix.diff` holds the unified diff, `data.fix.explanation` says why, and `data.fix.file` names the one file it touches. Read the diff. A generated patch is a proposal. Saying it is wrong, incomplete, or fixes the symptom rather than the cause is a useful answer, and better than passing it along.
+When `ready`, `data.fix.diff` holds the unified diff, `data.fix.explanation` says why, and `data.fix.file` names the primary file. A patch that touches more than one file lists all of them in `data.fix.files`. `data.fix.behaviorChange` says whether it changed what the code does for legitimate callers: `none`, `narrowed`, or `removed`, with `data.fix.behaviorNote` saying how. `removed` means the patch closed the finding by deleting the feature, which is a product decision for the user, not a fix to publish quietly. Absent on older fixes. Read the diff. A generated patch is a proposal. Saying it is wrong, incomplete, or fixes the symptom rather than the cause is a useful answer, and better than passing it along.
 
 ### Prove the patch
 
@@ -198,7 +212,7 @@ What gets replayed depends on the finding's category, in `data.proof.kind`: `dep
 
 Only `refuted` stops the pull request: publishing that patch fails with `fix_proof_refuted`. Regenerate rather than arguing with it.
 
-`data.proof.checks` says what each step found and `data.proof.witness` holds the attack that was replayed, its entry point, and what should now fail. Read them. A proof is evidence to show the user, not a badge to quote.
+`data.proof.checks` says what each step found and `data.proof.witness` holds the attack that was replayed, its entry point, and what should now fail. When the attack was run for real, `witness.target` names the exported `callable` and its `module`, or `witness.httpRequest` gives the `method` and `path` fired at the booted app. Read them. A proof is evidence to show the user, not a badge to quote.
 
 A secret rotation settles as `incomplete` because nothing Cefense can run says whether the credential was revoked at the provider. Only the user knows that:
 
@@ -207,6 +221,19 @@ cf proof attest <finding-id> --yes --agent
 ```
 
 **This writes into the audit log, under the user's name, that the credential was rotated.** Ask them whether they actually revoked it. Do not infer it from the patch, and never pass `--yes` because the verdict was inconvenient.
+
+### Give a proof the environment it needs
+
+```sh
+cf proof env --repo acme/api --agent
+printf %s "$DATABASE_URL" | cf proof env set DATABASE_URL --stdin --repo acme/api --agent
+cf proof env set DATABASE_URL --from-env --repo acme/api --agent
+cf proof env unset DATABASE_URL --yes --repo acme/api --agent
+```
+
+A proof that boots the app to fire the attack at it needs whatever the app needs to start: a database URL, a test API key. These are stored per repository, encrypted, and write-only: `cf proof env` lists names and when each was set, and no command ever prints a value. The value is never an argument, so it stays out of shell history: pipe it with `--stdin` or read it from the shell with `--from-env`. Replacing a stored value and `unset` both need `--yes`, because the old value cannot be read back. Setting and removing need an organization admin.
+
+Ask the user before storing anything. Use test credentials, never production ones: the value is handed to a sandbox that runs an attack.
 
 ### Publish, only when asked
 
@@ -402,7 +429,7 @@ Rules for running this unattended:
 | `invalid_format` | 2 | use cyclonedx or spdx |
 | `sbom_unavailable` | 4 | enable the sbom check and rescan |
 | `fix_not_found` | 2 | generate the patch first |
-| `fix_not_ready` | 2 | the patch is not `ready`, check its status |
+| `fix_not_ready` | 2 | the patch is not `ready`, check its status. A proof needs `ready`, `opened` or `merged` |
 | `fix_not_published` | 2 | open the pull request before merging it |
 | `invalid_merge_method` | 2 | use merge, squash, or rebase |
 | `pull_request_blocked` | 4 | a required review or check is pending, stop |
@@ -415,6 +442,10 @@ Rules for running this unattended:
 | `proof_not_settled` | 2 | it has no verdict yet, poll until `status` is settled or failed |
 | `proof_not_attestable` | 2 | only a settled secret rotation proof that came back incomplete can be attested |
 | `fix_proof_refuted` | 4 | the proof refuted this exact patch, regenerate rather than publish it |
+| `invalid_env_name` | 2 | letters, digits and underscores, not starting with a digit |
+| `env_value_required` | 2 | pipe the value with `--stdin` or pass `--from-env`, never as an argument |
+| `env_var_not_found` | 2 | no variable of that name is stored, list them with `cf proof env` |
+| `proof_env_unavailable` | 4 | encryption is not configured on this deployment, report it |
 | `confirmation_required` | 2 | ask the user, then pass `--yes` |
 | `feature_required` | 4 | the account does not include this, tell the user |
 | `api_error` | 4 | the API failed, retry once, then report it |
@@ -424,6 +455,7 @@ Rules for running this unattended:
 
 - Never run `cf fix publish` or `cf fix merge` without the user agreeing to it in this conversation, and treat merging as a separate ask from opening.
 - Never change scan settings without asking. `cf settings mode`, `cf settings every`, `cf settings depth`, and `cf settings checks` write the user's policy.
+- Never run `cf proof env set` or `cf proof env unset` without asking the user, and never store a production credential.
 - Never run `cf proof attest` without asking the user whether the credential was actually rotated. It records their claim about the world, not the CLI's.
 - Never run `cf triage` without the user agreeing to that specific decision. Dismissing a finding is their call about their own risk, and it is recorded under their name.
 - Never run `cf scan --url` without asking. It connects a repository to the user's account.

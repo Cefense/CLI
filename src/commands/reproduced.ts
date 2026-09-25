@@ -5,12 +5,13 @@ import type { Session } from "../core/session.js";
 import { blobUrl, providerLabel, providerOf } from "../core/providers.js";
 import { printGrouped } from "../ui/list.js";
 import { resolveBranch, resolveLinkedProject } from "./link.js";
-import { fixLabel, renderFixSection } from "./fixactions.js";
+import { renderFixSection, statusLabel } from "./fixactions.js";
 import * as out from "../ui/output.js";
 import { relativeTime, shortId, terminalWidth, wrapText } from "../ui/format.js";
 import { c, displaySeverity, glyph, severityColor, severityRank } from "../ui/theme.js";
 import { isAgentMode } from "../ui/mode.js";
-import { compactFinding, compactFindingDetail, coverageEnvelope } from "../core/compact.js";
+import { compactFinding, compactFindingDetail, coverageEnvelope, progressOf } from "../core/compact.js";
+import { REACHABILITY_LEDES, isReachabilityVerdict, reachabilityLabel, statusFor } from "../core/findingStatus.js";
 import { coverageLines, isPartialScan, scanIfSame } from "../core/coverage.js";
 import { CODE_HOSTS, openIfRequested } from "../ui/open.js";
 import { page } from "../ui/pager.js";
@@ -66,6 +67,19 @@ async function resolveScope(
     );
   }
   return { scanId: branch.scanId, label: branch.name };
+}
+
+function rowStatus(row: Row): string {
+  const progress = progressOf(row.finding, row.fix);
+  return statusLabel(statusFor(progress), progress.fix?.prNumber ?? null);
+}
+
+function reachCell(finding: Finding, full = false): string {
+  const label = full ? reachabilityLabel(finding.reachability)?.toLowerCase() : finding.reachability;
+  if (!label || !isReachabilityVerdict(finding.reachability)) return c.dim("-");
+  if (finding.reachability === "reachable") return c.red(label);
+  if (finding.reachability === "imported") return c.yellow(label);
+  return c.dim(label);
 }
 
 function locationOf(finding: Finding): string {
@@ -127,6 +141,46 @@ function renderDetail(project: Project, row: Row, width: number, ref?: string | 
       });
   }
 
+  if (finding.dependency) {
+    const dependency = finding.dependency;
+    head();
+    head(c.bold("Package"));
+    body(`${c.dim("package")}    ${dependency.name} ${c.dim(`(${dependency.ecosystem})`)}`);
+    body(`${c.dim("installed")}  ${dependency.installedVersion}`);
+    body(`${c.dim("fixed in")}   ${dependency.fixedVersion ?? "No fixed release published yet"}`);
+    body(
+      `${c.dim("origin")}     ${
+        dependency.direct === true
+          ? "Declared by this project"
+          : dependency.direct === false
+            ? "Pulled in by another package"
+            : "Not established"
+      }`,
+    );
+    if (dependency.direct === false && dependency.requiredBy.length > 0) {
+      body(`${c.dim("required by")} ${dependency.requiredBy.slice(0, 5).join(", ")}`);
+    }
+    for (const chain of dependency.paths.slice(0, 3)) {
+      body(c.dim(`  ${chain.join(` ${glyph.arrow} `)}`));
+    }
+  }
+
+  if (isReachabilityVerdict(finding.reachability)) {
+    const evidence = finding.reachabilityEvidence;
+    head();
+    head(`${c.bold("Reachability")}  ${reachCell(finding, true)}`);
+    for (const wrapped of wrapText(evidence?.why ?? REACHABILITY_LEDES[finding.reachability], wrap)) body(wrapped);
+    const path = evidence?.path ?? [];
+    if (path.length > 1) {
+      for (const step of path) {
+        body(`  ${c.dim(glyph.arrow)} ${step.path}${step.symbol ? c.dim(` ${step.symbol}`) : ""}`);
+      }
+    }
+    if (evidence && evidence.symbols.length > 0) {
+      body(c.dim(`vulnerable ${evidence.symbols.length === 1 ? "export" : "exports"}: ${evidence.symbols.join(", ")}`));
+    }
+  }
+
   if (finding.exploitPath) {
     head();
     head(c.bold("Exploit path"));
@@ -168,6 +222,10 @@ function renderDetail(project: Project, row: Row, width: number, ref?: string | 
       for (const wrapped of wrapText(finding.remediation.guidance, wrap)) body(c.dim(wrapped));
     }
   }
+
+  head();
+  head(`${c.bold("Status")}  ${rowStatus(row)}`);
+  body(c.dim(statusFor(progressOf(finding, row.fix)).title));
 
   for (const fixLine of renderFixSection(row.fix, width, finding.id)) lines.push(fixLine);
 
@@ -290,7 +348,8 @@ export async function reproducedCommand(
       { header: "id", value: (row) => c.dim(shortId(row.finding.id)), min: 8, max: 8 },
       { header: "location", value: (row) => locationOf(row.finding), min: 16, max: 38 },
       { header: "title", value: (row) => row.finding.title, min: 28 },
-      { header: "fix", value: (row) => (row.fix ? fixLabel(row.fix) : c.dim("-")), min: 1 },
+      { header: "reach", value: (row) => reachCell(row.finding), min: 10, max: 10 },
+      { header: "status", value: (row) => rowStatus(row), min: 16 },
     ],
     pipeColumns: [
       { header: "severity", value: (row) => displaySeverity(row.finding.severity).toLowerCase() },
@@ -298,6 +357,8 @@ export async function reproducedCommand(
       { header: "rule", value: (row) => row.finding.ruleId ?? "" },
       { header: "fix", value: (row) => row.fix?.status ?? "no-fix" },
       { header: "title", value: (row) => row.finding.title },
+      { header: "reachability", value: (row) => row.finding.reachability ?? "" },
+      { header: "status", value: (row) => statusFor(progressOf(row.finding, row.fix)).kind },
     ],
     empty,
     emptyHint: first.scanId ? null : `Run cf scan --repo ${project.fullName}.`,
@@ -331,7 +392,7 @@ export const SEVERITY_ALIASES: Record<string, string> = {
   low: "low",
 };
 
-const CATEGORIES = ["code", "dependency", "secret", "misconfig", "os-package"];
+export const FINDING_CATEGORIES = ["code", "dependency", "secret", "misconfig", "os-package"];
 
 const WIRE_SEVERITIES = ["critical", "high", "medium", "low"] as const;
 
@@ -364,10 +425,10 @@ export function normaliseCategory(value: string | undefined): string | undefined
   const parts = splitList(value);
   if (parts.length === 0) return undefined;
   for (const part of parts) {
-    if (!CATEGORIES.includes(part)) {
+    if (!FINDING_CATEGORIES.includes(part)) {
       throw new UsageError(
         `${part} is not a category.`,
-        `Use ${CATEGORIES.join(", ")}.`,
+        `Use ${FINDING_CATEGORIES.join(", ")}.`,
         "invalid_category",
       );
     }

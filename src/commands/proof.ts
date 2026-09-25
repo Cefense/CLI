@@ -96,13 +96,15 @@ function renderProof(proof: FindingProof, finding: Finding | null): void {
   if (proof.checks.length > 0) out.line();
 
   const witness = proof.witness;
-  if (witness && (witness.entry || witness.attackInput || witness.expectedFailure)) {
+  if (witness && (witness.entry || witness.attackInput || witness.expectedFailure || witness.target || witness.httpRequest)) {
     out.line(`  ${c.dim("witness")}`);
     const field = (label: string, value: string): void => {
       out.line(`    ${c.dim(label)}`);
       for (const wrapped of wrapText(value, width - 6, "      ")) out.line(wrapped);
     };
     if (witness.entry) field("entry", witness.entry);
+    if (witness.target) field("target", `${witness.target.module} ${glyph.arrow} ${witness.target.callable}`);
+    if (witness.httpRequest) field("request", `${witness.httpRequest.method} ${witness.httpRequest.path}`);
     if (witness.attackInput) field("attack input", witness.attackInput);
     if (witness.expectedFailure) field("expected failure", witness.expectedFailure);
     for (const assertion of witness.assertions ?? []) {

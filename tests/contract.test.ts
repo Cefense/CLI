@@ -18,6 +18,14 @@ import {
 import { CHECKS, SCAN_DEPTHS, SCAN_INTERVALS, SCAN_MODES } from "../src/commands/settings.js";
 import { ORGANIZATION_ROLES } from "../src/core/organizations.js";
 import { verdictLabel } from "../src/core/compact.js";
+import { FINDING_CATEGORIES } from "../src/commands/reproduced.js";
+import { parseEnvName } from "../src/commands/proofenv.js";
+import {
+  REACHABILITY_LABELS,
+  REACHABILITY_LEDES,
+  REACHABILITY_VERDICTS,
+  STATUS_KINDS,
+} from "../src/core/findingStatus.js";
 
 /**
  * The CLI is published standalone and cannot import @cefense/schemas, so every
@@ -295,4 +303,76 @@ test("the notification severity floor uses the product's display severities", { 
     constArray(workspaceSchema(), "DISPLAY_SEVERITIES"),
     "the severity floor the CLI offers is not the set the product grades findings on",
   );
+});
+
+function uiSource(...parts: string[]): string {
+  return readFileSync(join(ROOT!, "apps", "cefense-ui", "src", "app", "app", ...parts), "utf8");
+}
+
+test("finding categories match the product's shared vocabulary", { skip }, () => {
+  assert.deepEqual([...FINDING_CATEGORIES].sort(), constArray(workspaceSchema(), "FINDING_CATEGORIES").sort());
+  assert.deepEqual(
+    [...FINDING_CATEGORIES].sort(),
+    namedCheckConstraint(controlSchema(), "findings_category_check").sort(),
+  );
+});
+
+test("reachability verdicts match the product's shared vocabulary, in order", { skip }, () => {
+  assert.deepEqual([...REACHABILITY_VERDICTS], constArray(workspaceSchema(), "REACHABILITY_VERDICTS"));
+  assert.deepEqual(typeUnion("ReachabilityVerdict"), [...REACHABILITY_VERDICTS]);
+  assert.deepEqual(
+    [...REACHABILITY_VERDICTS].sort(),
+    namedCheckConstraint(controlSchema(), "findings_reachability_check").sort(),
+  );
+});
+
+test("reachability labels match the product's", { skip }, () => {
+  const table = workspaceSchema().match(/REACHABILITY_LABELS[^=]*=\s*\{([\s\S]*?)\};/);
+  assert.ok(table, "REACHABILITY_LABELS moved, update this test");
+  const pairs = [...table[1]!.matchAll(/"?([a-z-]+)"?:\s*"([^"]+)"/g)];
+  assert.equal(pairs.length, REACHABILITY_VERDICTS.length);
+  for (const [, verdict, label] of pairs) {
+    assert.equal(REACHABILITY_LABELS[verdict as keyof typeof REACHABILITY_LABELS], label, `labels disagree on ${verdict}`);
+  }
+});
+
+test("reachability explanations match the workspace's", { skip }, () => {
+  const table = uiSource("views", "finding-detail-view.tsx").match(/REACH_COPY[^=]*=\s*\{([\s\S]*?)\n\};/);
+  assert.ok(table, "REACH_COPY moved, update this test");
+  const pairs = [...table[1]!.matchAll(/"?([a-z-]+)"?:\s*\{[^}]*?lede:\s*"([^"]+)"/g)];
+  assert.equal(pairs.length, REACHABILITY_VERDICTS.length);
+  for (const [, verdict, lede] of pairs) {
+    assert.equal(REACHABILITY_LEDES[verdict as keyof typeof REACHABILITY_LEDES], lede, `explanations disagree on ${verdict}`);
+  }
+});
+
+test("fix behavior changes match the database constraint", { skip }, () => {
+  assert.deepEqual(
+    typeUnion("FixBehaviorChange").sort(),
+    namedCheckConstraint(controlSchema(), "finding_fixes_behavior_change_check").sort(),
+  );
+});
+
+test("finding status kinds and wording match the workspace's status rings", { skip }, () => {
+  const source = uiSource("views", "finding-row.tsx");
+  const union = source.match(/export type StatusKind =([^;]*);/);
+  assert.ok(union, "StatusKind moved, update this test");
+  const kinds = [...union[1]!.matchAll(/"([a-z]+)"/g)].map((entry) => entry[1]!);
+  assert.deepEqual([...STATUS_KINDS].sort(), kinds.sort());
+
+  const body = source.match(/export function statusFor\([\s\S]*?\n\}/);
+  assert.ok(body, "statusFor moved, update this test");
+  const cli = readFileSync(cliSource("core", "findingStatus.ts"), "utf8");
+  for (const [, title] of body[0].matchAll(/title:\s*"([^"]+)"/g)) {
+    assert.ok(cli.includes(`"${title}"`), `the CLI does not say "${title}" where the workspace does`);
+  }
+});
+
+test("proof env names follow the database constraint", { skip }, () => {
+  assert.match(controlSchema(), /proof_env_vars_name_check", sql`\$\{table\.name\} ~ '\^\[A-Za-z_\]\[A-Za-z0-9_\]\*\$'`/);
+  assert.equal(parseEnvName("DATABASE_URL"), "DATABASE_URL");
+  assert.equal(parseEnvName("_x1"), "_x1");
+  for (const bad of ["1X", "A-B", "A B", ""]) {
+    assert.throws(() => parseEnvName(bad), (error: { code?: string }) => error.code === "invalid_env_name");
+  }
 });

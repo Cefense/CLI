@@ -3,6 +3,8 @@ import type {
   Branch,
   CommitEntry,
   Finding,
+  FindingDependency,
+  FindingProgress,
   FindingProof,
   Fix,
   Project,
@@ -12,6 +14,7 @@ import type {
 } from "./types.js";
 import type { Organization } from "./organizations.js";
 import { providerOf } from "./providers.js";
+import { reachabilityLabel, statusFor } from "./findingStatus.js";
 
 export const AGENT_SCHEMA_VERSION = 1;
 
@@ -44,6 +47,9 @@ export function compactFix(fix: Fix, options: { diff?: boolean } = {}): Record<s
     prNumber: fix.prNumber,
     error: fix.error,
     explanation: fix.explanation,
+    files: (fix.files ?? []).length > 1 ? (fix.files ?? []).map((file) => file.path) : null,
+    behaviorChange: fix.behaviorChange ?? null,
+    behaviorNote: fix.behaviorNote ?? null,
     hasDiff: Boolean(fix.diff),
     diff: options.diff ? fix.diff : null,
   });
@@ -101,6 +107,16 @@ export function compactProof(
           attackInput: proof.witness.attackInput,
           expectedFailure: proof.witness.expectedFailure,
           assertions: proof.witness.assertions ?? [],
+          target: proof.witness.target
+            ? prune({
+                callable: proof.witness.target.callable,
+                module: proof.witness.target.module,
+                argShape: proof.witness.target.argShape,
+              })
+            : null,
+          httpRequest: proof.witness.httpRequest
+            ? prune({ method: proof.witness.httpRequest.method, path: proof.witness.httpRequest.path })
+            : null,
         })
       : null,
     baseSha: proof.baseSha,
@@ -111,6 +127,26 @@ export function compactProof(
     model: proof.model,
     error: proof.error,
     updatedAt: proof.updatedAt,
+  });
+}
+
+export function progressOf(finding: Finding, fix: Fix | null): FindingProgress {
+  if (finding.progress) return finding.progress;
+  return { fix: fix ? { status: fix.status, prNumber: fix.prNumber } : null, proof: null };
+}
+
+export function compactDependency(dependency: FindingDependency | null | undefined): Record<string, unknown> | null {
+  if (!dependency) return null;
+  return prune({
+    ecosystem: dependency.ecosystem,
+    name: dependency.name,
+    installed: dependency.installedVersion,
+    fixedIn: dependency.fixedVersion,
+    direct: dependency.direct,
+    scope: dependency.scope,
+    requiredBy: dependency.requiredBy,
+    paths: dependency.paths,
+    pathsTruncated: dependency.pathsTruncated ? true : null,
   });
 }
 
@@ -134,6 +170,13 @@ export function compactFinding(
     description: finding.description,
     code: finding.vulnerableCode,
     guidance: finding.remediation?.guidance ?? finding.remediation?.summary ?? null,
+    reachability: finding.reachability ?? null,
+    reachabilityLabel: reachabilityLabel(finding.reachability),
+    status: statusFor(progressOf(finding, fix)).kind,
+    package: finding.dependency
+      ? `${finding.dependency.name}@${finding.dependency.installedVersion}`
+      : null,
+    fixedIn: finding.dependency?.fixedVersion ?? null,
     matchedSources: finding.intelligenceSources.length || null,
     introducedIn: finding.introducedIn
       ? prune({
@@ -213,6 +256,22 @@ export function compactFindingDetail(
     confidence: finding.confidence,
     exploitPath: finding.exploitPath,
     symbol: finding.symbol,
+    statusDetail: statusFor(progressOf(finding, fix)).title,
+    proof: finding.progress?.proof ? prune({ ...finding.progress.proof }) : null,
+    reachabilityEvidence: finding.reachabilityEvidence
+      ? prune({
+          method: finding.reachabilityEvidence.method,
+          why: finding.reachabilityEvidence.why,
+          entryPoint: finding.reachabilityEvidence.entryPoint,
+          path: finding.reachabilityEvidence.path.map((step) =>
+            step.symbol ? `${step.path}#${step.symbol}` : step.path,
+          ),
+          importedFrom: finding.reachabilityEvidence.importedFrom,
+          symbols: finding.reachabilityEvidence.symbols,
+          scope: finding.reachabilityEvidence.scope,
+        })
+      : null,
+    dependency: compactDependency(finding.dependency),
     remediation: finding.remediation
       ? prune({
           summary: finding.remediation.summary,
