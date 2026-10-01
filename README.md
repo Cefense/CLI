@@ -19,16 +19,9 @@
   DEMO VIDEO
   Record the terminal, drag the file into a GitHub issue or PR comment, and GitHub
   returns a https://github.com/user-attachments/assets/<id> URL.
-  Replace the block below with that URL on its own line.
+  Put that URL here on its own line, inside a centered div, with the caption
+  "_`cf reproduced`, a generated patch, and a pull request, in under a minute._"
 -->
-
-<div align="center">
-
-https://github.com/user-attachments/assets/REPLACE_WITH_UPLOADED_VIDEO
-
-_`cf reproduced`, a generated patch, and a pull request, in under a minute._
-
-</div>
 
 ---
 
