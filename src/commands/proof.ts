@@ -200,10 +200,10 @@ export async function proofCommand(globals: GlobalOptions): Promise<number> {
   }
 
   const groups: Array<{ key: string; label: string; tint: (value: string) => string }> = [
-    { key: "proven", label: "Proven", tint: c.green },
-    { key: "argued", label: "Argued", tint: c.green },
-    { key: "incomplete", label: "Incomplete", tint: c.yellow },
-    { key: "refuted", label: "Refuted", tint: c.red },
+    { key: "proven", label: "Confirmed", tint: c.green },
+    { key: "argued", label: "Checked", tint: c.green },
+    { key: "incomplete", label: "Needs you", tint: c.yellow },
+    { key: "refuted", label: "Not fixed", tint: c.red },
     { key: "unprovable", label: "Nothing to prove", tint: c.dim },
     { key: "running", label: "Running", tint: c.cyan },
     { key: "failed", label: "Did not finish", tint: c.red },

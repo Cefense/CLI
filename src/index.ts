@@ -222,7 +222,7 @@ const notifications = withGlobals(program.command("notifications"))
   .action(run((globals) => notificationsShow(globals)));
 
 withGlobals(notifications.command("set"))
-  .argument("<kind>", "scan_report, scan_failed, advisory, or fix_pr_opened")
+  .argument("<kind>", "scan_report, scan_failed, advisory, fix_pr_opened, or immunity")
   .description("turn a notification on or off, or change its severity floor")
   .option("--on", "send this one")
   .option("--off", "stop sending this one")

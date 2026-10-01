@@ -66,7 +66,7 @@ export function statusFor(progress: FindingProgress | null | undefined): Finding
     return { kind: "review", title: "Needs review: there is no automatic patch for this finding." };
   }
   if (proof?.status === "settled" && proof.verdict === "refuted") {
-    return { kind: "refuted", title: "Refuted: the proof shows this patch does not close the finding." };
+    return { kind: "refuted", title: "Not fixed: the proof shows this patch does not close the finding." };
   }
   if (fix.status === "closed") {
     return { kind: "review", title: `Needs review: ${pullRequest(fix.prNumber)} was closed without merging.` };
@@ -76,12 +76,12 @@ export function statusFor(progress: FindingProgress | null | undefined): Finding
   if (proof?.status === "failed") return { kind: "review", title: "Needs review: the proof could not run." };
   if (proof?.status === "settled") {
     if (proof.verdict === "proven") {
-      return { kind: "proven", title: "Proven: path closed, checked against the data itself." };
+      return { kind: "proven", title: "Confirmed: the finding is closed." };
     }
     if (proof.verdict === "argued") {
       return {
         kind: "proven",
-        title: "Argued: the replayed attack no longer works. A model's argument, not a runtime execution.",
+        title: "Checked: the attack no longer works. Not yet confirmed by running it.",
       };
     }
     if (proof.verdict === "incomplete") {

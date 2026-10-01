@@ -30,6 +30,7 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "scan_failed",
   "advisory",
   "fix_pr_opened",
+  "immunity",
 ];
 
 export const NOTIFICATION_CADENCES: readonly NotificationCadence[] = ["every", "daily"];

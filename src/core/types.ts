@@ -502,6 +502,7 @@ export interface PlanDefinition {
   pullRequestScans: boolean;
   imageScanning: boolean;
   immunityWatch: boolean;
+  immunityHyper: boolean;
   ssoAndAudit: boolean;
   scanIntervalFloor: string | null;
   features: string[];
@@ -560,7 +561,8 @@ export type NotificationKind =
   | "scan_report"
   | "scan_failed"
   | "advisory"
-  | "fix_pr_opened";
+  | "fix_pr_opened"
+  | "immunity";
 
 export type NotificationCadence = "every" | "daily";
 

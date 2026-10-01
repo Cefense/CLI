@@ -70,10 +70,11 @@ test("a refuted proof outranks an open pull request", () => {
   assert.equal(status.kind, "refuted");
 });
 
-test("an argued proof reads as proven, and says it is an argument", () => {
+test("an argued proof reads as proven, and says it was not run", () => {
   const status = statusFor({ fix: { status: "ready", prNumber: null }, proof: { status: "settled", verdict: "argued" } });
   assert.equal(status.kind, "proven");
-  assert.match(status.title, /^Argued/);
+  assert.match(status.title, /^Checked/);
+  assert.match(status.title, /Not yet confirmed by running it/);
 });
 
 test("progress falls back to the fix when an older API sends none", () => {

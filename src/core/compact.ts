@@ -62,10 +62,10 @@ export function compactFix(fix: Fix, options: { diff?: boolean } = {}): Record<s
  * dashboard and an agent reading the CLI are told the same word.
  */
 export function verdictLabel(verdict: ProofVerdict | string): string {
-  if (verdict === "proven") return "Proven";
-  if (verdict === "argued") return "Argued";
-  if (verdict === "incomplete") return "Incomplete";
-  if (verdict === "refuted") return "Refuted";
+  if (verdict === "proven") return "Confirmed";
+  if (verdict === "argued") return "Checked";
+  if (verdict === "incomplete") return "Needs you";
+  if (verdict === "refuted") return "Not fixed";
   if (verdict === "unprovable") return "Nothing to prove";
   return verdict;
 }

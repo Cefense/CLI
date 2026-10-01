@@ -167,6 +167,23 @@ test("billing plans match the product's shared vocabulary", { skip }, () => {
   assert.deepEqual([...PAID_BILLING_PLANS], constArray(schema, "PAID_BILLING_PLANS"));
 });
 
+function planFlags(source: string): string[] {
+  const match = source.match(/export interface PlanDefinition \{([\s\S]*?)\n\}/);
+  if (!match) throw new Error("PlanDefinition not found");
+  return [...match[1]!.matchAll(/^\s*([a-zA-Z]+): boolean;/gm)].map((entry) => entry[1]!).sort();
+}
+
+test("plan capability flags match the product's plan definition", { skip }, () => {
+  const real = planFlags(billingSchema());
+  assert.ok(real.includes("immunityWatch"), "PlanDefinition moved, so this test is asserting nothing");
+  assert.ok(real.includes("immunityHyper"), "PlanDefinition moved, so this test is asserting nothing");
+  const cli = planFlags(readFileSync(cliSource("core", "types.ts"), "utf8"));
+  assert.deepEqual(cli, real, "the product's plans carry capability flags the CLI does not model");
+  const compact = readFileSync(cliSource("commands", "plan.ts"), "utf8");
+  const missing = real.filter((flag) => !compact.includes(`${flag}: entry.${flag}`));
+  assert.deepEqual(missing, [], "cf plan --agent drops capability flags from the catalogue");
+});
+
 test("billing intervals match the product's shared vocabulary", { skip }, () => {
   assert.deepEqual([...BILLING_INTERVALS], constArray(billingSchema(), "BILLING_INTERVALS"));
 });

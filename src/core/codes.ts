@@ -513,7 +513,7 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     exitCode: EXIT_USAGE,
     meaning: "The notification named is not one the product sends.",
     remedy:
-      "Use connection, scan_report, scan_failed, advisory, or fix_pr_opened. Run cf notifications --agent to read the current settings and their exact names.",
+      "Use connection, scan_report, scan_failed, advisory, fix_pr_opened, or immunity. Run cf notifications --agent to read the current settings and their exact names.",
     retry: "never",
   },
   {
@@ -530,7 +530,7 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     exitCode: EXIT_USAGE,
     meaning: "That notification does not carry findings, so it has no severity floor.",
     remedy:
-      "Only scan_report and advisory take --severity. The others are single events: a scan stopped, a pull request opened, an account was connected.",
+      "Only scan_report, advisory and immunity take --severity. The others are single events: a scan stopped, a pull request opened, an account was connected.",
     retry: "never",
   },
   {
