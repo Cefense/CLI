@@ -8,8 +8,6 @@ import { isAgentMode } from "../ui/mode.js";
 import type {
   Article,
   AuditResponse,
-  ArticleDetail,
-  ArticlesResponse,
   BillingInterval,
   BillingResponse,
   BranchesResponse,
@@ -22,7 +20,6 @@ import type {
   GithubRepo,
   GithubReposResponse,
   GithubStatus,
-  HealthResponse,
   MergeResult,
   MeResponse,
   NotificationKindRow,
@@ -271,10 +268,6 @@ export class CefenseClient {
       });
     }
     return new CefenseError(message ?? `${url.pathname} returned ${response.status}.`);
-  }
-
-  health(): Promise<HealthResponse> {
-    return this.request<HealthResponse>("GET", "/health", { allowUnauthenticated: true });
   }
 
   me(): Promise<MeResponse> {
@@ -528,14 +521,6 @@ export class CefenseClient {
       "DELETE",
       `/api/proof/repositories/${encodeURIComponent(repositoryId)}/env/${encodeURIComponent(name)}`,
     );
-  }
-
-  articles(query: { limit?: number; offset?: number; githubRepoId?: string } = {}): Promise<ArticlesResponse> {
-    return this.request<ArticlesResponse>("GET", "/api/articles", { query });
-  }
-
-  article(id: string): Promise<{ article: ArticleDetail }> {
-    return this.request("GET", `/api/articles/${encodeURIComponent(id)}`);
   }
 
   /**

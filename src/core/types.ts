@@ -41,22 +41,6 @@ export interface MeResponse {
   dbConfigured: boolean;
 }
 
-export interface HealthResponse {
-  ok: boolean;
-  service: string;
-  authConfigured: boolean;
-  dbConfigured: boolean;
-  githubConfigured: boolean;
-  githubAppConfigured: boolean;
-  githubWebhookConfigured: boolean;
-  clerkWebhookConfigured?: boolean;
-  scannerConfigured: boolean;
-  cacheConfigured?: boolean;
-  embeddingsConfigured: boolean;
-  scannerPipelineConfigured: boolean;
-  scanRunner: string;
-}
-
 /**
  * A code host account, as every provider's status route reports it.
  *
@@ -409,21 +393,6 @@ export interface Article {
   technologies: string[];
   matched?: boolean;
   stackRelevant?: boolean;
-}
-
-export interface ArticlesResponse {
-  articles: Article[];
-  total: number;
-  locked: boolean;
-  limit: number;
-  offset: number;
-  hasMore: boolean;
-}
-
-export interface ArticleDetail extends Article {
-  content?: string | null;
-  contentText?: string | null;
-  knowledge?: unknown;
 }
 
 export interface CefenseProfile {
