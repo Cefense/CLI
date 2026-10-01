@@ -488,7 +488,7 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
   {
     code: "allowance_exhausted",
     exitCode: EXIT_API,
-    meaning: "The organization has spent its token allowance for the period.",
+    meaning: "The organization has spent its allowance for the period.",
     remedy:
       "Run cf plan --agent to see what is left and when it resets. Nothing you run will start a scan until the period resets or the plan changes, and only the user can pay for a plan.",
     retry: "never",
@@ -623,6 +623,34 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     retry: "transient",
   },
   {
+    code: "rate_limited",
+    exitCode: EXIT_API,
+    meaning: "Too many requests in a short window.",
+    remedy: "Wait a minute, then retry once. Do not retry in a loop.",
+    retry: "transient",
+  },
+  {
+    code: "auth_unavailable",
+    exitCode: EXIT_API,
+    meaning: "The sign-in service is briefly unreachable, so the session could not be checked.",
+    remedy: "Wait about 30 seconds and retry. The session itself is fine, so do not ask the user to sign in again.",
+    retry: "transient",
+  },
+  {
+    code: "scan_in_flight",
+    exitCode: EXIT_API,
+    meaning: "The repository already has as many scans running as it is allowed.",
+    remedy: "Run cf status --agent and wait for a running scan to finish before starting another.",
+    retry: "transient",
+  },
+  {
+    code: "billing_failed",
+    exitCode: EXIT_API,
+    meaning: "The payment provider did not open the checkout or the billing portal.",
+    remedy: "Retry once. If it fails again, report it.",
+    retry: "transient",
+  },
+  {
     code: "internal_error",
     exitCode: EXIT_API,
     meaning: "The CLI itself threw something it did not expect.",
@@ -737,6 +765,15 @@ export const WIRE_ERROR_CODES: Record<string, string> = {
   organization_required: "organization_required",
   organization_not_found: "organization_not_found",
   organization_forbidden: "organization_forbidden",
+  not_published: "fix_not_published",
+  provider_reconnect: "provider_reconnect_required",
+  branch_not_found: "branch_not_found",
+  sbom_unavailable: "sbom_unavailable",
+  scan_in_flight: "scan_in_flight",
+  rate_limited: "rate_limited",
+  auth_unavailable: "auth_unavailable",
+  checkout_failed: "billing_failed",
+  portal_failed: "billing_failed",
 };
 
 export function translateWireCode(value: unknown): ErrorCodeEntry | null {

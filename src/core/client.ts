@@ -237,8 +237,16 @@ export class CefenseClient {
     // specific code.
     const wire = translateWireCode(payload.code);
     if (wire) {
+      const provider = typeof payload.provider === "string" ? payload.provider : null;
+      const wait = typeof payload.retryAfterSeconds === "number" ? payload.retryAfterSeconds : null;
+      const remedy =
+        wire.code === "provider_reconnect_required" && provider
+          ? `Reconnect it with cf provider connect ${provider}.`
+          : wire.code === "rate_limited" && wait !== null
+            ? `Wait ${wait} seconds, then retry once.`
+            : wire.remedy;
       return new CefenseError(message ?? wire.meaning, {
-        remedy: wire.remedy,
+        remedy,
         exitCode: wire.exitCode,
         code: wire.code,
       });
