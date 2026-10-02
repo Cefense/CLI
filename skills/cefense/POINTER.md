@@ -6,6 +6,9 @@ Use it when asked to scan this repository for vulnerabilities or CVEs, triage or
 
 ```sh
 cf scan --repo <owner/name> --wait --agent
+cf scan batch ./manifest.json --dry-run --agent
+cf scan batch ./manifest.json --status --agent
+cf scan batch ./manifest.json --yes --agent
 cf reproduced --repo <owner/name> --severity critical,high --agent
 cf reproduced show <finding-id> --repo <owner/name> --agent
 cf fix generate <finding-id> --wait --agent

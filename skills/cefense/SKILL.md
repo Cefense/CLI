@@ -265,6 +265,43 @@ It refuses rather than forcing its way past anything: `pull_request_blocked` whe
 cf scan --repo acme/api --wait --agent
 ```
 
+For an authorized set of public GitHub repositories, use a JSON manifest with a
+`repositories` array. Each entry needs `url` and may include the matching
+`repo` name and `default_head_sha`. The batch command saves scan IDs and results beside the manifest,
+limits simultaneous scans, and resumes from the same state file.
+`--max-active` accepts 1-25; start low and raise it only after the scanner
+service has been measured at that load.
+
+```sh
+cf scan batch ./manifest.json --dry-run --agent
+cf scan batch ./manifest.json --max-active 3 --yes --agent
+cf scan batch ./manifest.json --status --agent
+cf scan batch ./manifest.json --yes --agent
+cf scan batch ./manifest.json --continue-on-partial --yes --agent
+cf scan batch ./manifest.json --continue-on-partial --continue-on-sha-mismatch --yes --agent
+```
+
+The first command verifies the account and manifest without submitting scans.
+The status command reads the checkpoint without submitting scans.
+The other commands connect and scan repositories and spend the organization's
+allowance, so obtain owner authorization and the user's approval before adding
+`--yes`. Agent mode emits one JSON result on stdout and progress events on
+stderr. If a submission has an unknown outcome, the state says `submitting` and
+the command stops: inspect that repository before resuming to avoid duplicate
+scans. A completed scan may still have partial coverage, so inspect
+`coverageGaps` before making a security claim. After reviewing a known gap,
+`--continue-on-partial` keeps the cohort moving but retains partial outcomes
+and a nonzero final exit code. After inspecting an actual commit that differs
+from the manifest, `--continue-on-sha-mismatch` also allows pending entries
+while retaining the mismatch, both SHAs, and a nonzero final exit code. Both
+options still stop on failures, unknown coverage, and unknown scanned commits.
+No command promises that 100
+full scans finish in a fixed number of minutes. The expected SHA is a research
+reference, not a pin: this API scans the branch tip when the job clones. The
+batch result records `actualSha` and marks each expected commit `match`,
+`mismatch`, or `unknown`. A mismatch or unknown commit exits nonzero; do not
+attribute findings to the manifest commit in either case.
+
 `--wait` blocks until the scan settles, up to about ten minutes, and returns `status`, `findings`, and `error`. A scan settles as `completed`, `failed`, or `cancelled`, and it is `cancelled` when someone stops it from the workspace, so rescan rather than reading its findings. Add `--progress` to get one JSON progress line per poll on stderr, which keeps a supervisor from treating a long scan as a hang. Without `--wait` you get the `scanId` immediately and have to poll `cf status --agent` yourself.
 
 Rescan after merging a fix, not before. Finding ids belong to a scan, so after a rescan list again rather than reusing old ids.

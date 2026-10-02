@@ -127,6 +127,7 @@ export interface ScanSummary {
   fileCount: number | null;
   filesScanned: number | null;
   findingCount: number;
+  commitSha?: string | null;
   stage: string | null;
   error: string | null;
   createdAt: string;
