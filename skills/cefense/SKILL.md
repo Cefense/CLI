@@ -275,6 +275,7 @@ cf scan batch ./manifest.json --dry-run --agent
 cf scan batch ./manifest.json --max-active 3 --yes --agent
 cf scan batch ./manifest.json --status --agent
 cf scan batch ./manifest.json --yes --agent
+cf scan batch ./manifest.json --continue-on-partial --yes --agent
 ```
 
 The first command verifies the account and manifest without submitting scans.
@@ -285,7 +286,10 @@ allowance, so obtain owner authorization and the user's approval before adding
 stderr. If a submission has an unknown outcome, the state says `submitting` and
 the command stops: inspect that repository before resuming to avoid duplicate
 scans. A completed scan may still have partial coverage, so inspect
-`coverageGaps` before making a security claim. No command promises that 100
+`coverageGaps` before making a security claim. After reviewing a known gap,
+`--continue-on-partial` keeps the cohort moving but retains partial outcomes
+and a nonzero final exit code. It still stops on failures, unknown coverage,
+and expected-SHA mismatches. No command promises that 100
 full scans finish in a fixed number of minutes. The expected SHA is a research
 reference, not a pin: this API scans the branch tip when the job clones. The
 batch result records `actualSha` and marks each expected commit `match`,

@@ -98,6 +98,59 @@ test("a partial pilot holds pending scans instead of flooding the cohort", async
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test("an explicit batch option continues after partial coverage and still exits nonzero", async () => {
+  const { dir, statePath, state } = fixture();
+  try {
+    const scans = new Map<string, string>();
+    const client = {
+      projects: async () => ({ projects: [...scans].map(([repo, id]) => project(repo, id, "completed", "partial")) }),
+      scanPublicRepo: async (url: string) => {
+        const repo = url.replace("https://github.com/", "");
+        const id = `scan-${scans.size + 1}`;
+        scans.set(repo, id);
+        return { project: project(repo, id, "running"), scanId: id };
+      },
+    } as Pick<CefenseClient, "projects" | "scanPublicRepo">;
+    const outcome = await runBatch(client, state, statePath, {
+      maxActive: 1, pollSeconds: 0, timeoutMinutes: 1, continueOnPartial: true,
+    });
+    assert.equal(outcome.exitCode, 4);
+    assert.equal(scans.size, 2);
+    assert.deepEqual(state.entries.map((entry) => entry.status), ["completed", "completed"]);
+    assert.deepEqual((outcome.data as { coverage: object }).coverage,
+      { noReportedGaps: 0, partial: 2, unknown: 0 });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("continue-on-partial still holds a repository whose scanned SHA moved", async () => {
+  const { dir, statePath, state } = fixture();
+  try {
+    const scans = new Map<string, string>();
+    state.entries[0]!.expectedSha = "a".repeat(40);
+    const client = {
+      projects: async () => ({ projects: [...scans].map(([repo, id]) => {
+        const observed = project(repo, id, "completed", "partial");
+        if (observed.scan) observed.scan.commitSha = "b".repeat(40);
+        return observed;
+      }) }),
+      scanPublicRepo: async (url: string) => {
+        const repo = url.replace("https://github.com/", "");
+        const id = `scan-${scans.size + 1}`;
+        scans.set(repo, id);
+        return { project: project(repo, id, "running"), scanId: id };
+      },
+    } as Pick<CefenseClient, "projects" | "scanPublicRepo">;
+    const outcome = await runBatch(client, state, statePath, {
+      maxActive: 1, pollSeconds: 0, timeoutMinutes: 1, continueOnPartial: true,
+    });
+    assert.equal(outcome.exitCode, 4);
+    assert.equal(scans.size, 1);
+    assert.deepEqual(state.entries.map((entry) => entry.status), ["completed", "pending"]);
+    const saved = JSON.parse(readFileSync(statePath, "utf8")) as { entries: Array<{ inputStatus?: string }> };
+    assert.equal(saved.entries[0]?.inputStatus, "mismatch");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("uncertain submission stops the batch and does not submit another repository", async () => {
   const { dir, statePath, state } = fixture();
   try {

@@ -352,6 +352,7 @@ withGlobals(scan.command("batch"))
   .description("scan a repository cohort with checkpoints and bounded concurrency")
   .option("--state <path>", "checkpoint file; defaults beside the manifest")
   .option("--max-active <n>", "maximum simultaneous scans, 1-25", Number)
+  .option("--continue-on-partial", "continue submitting after incomplete scans, while reporting every gap")
   .option("--poll-seconds <n>", "seconds between status checks, 2-120", Number)
   .option("--timeout-minutes <n>", "stop and save after this many minutes, 1-1440", Number)
   .option("--dry-run", "validate the manifest and account without submitting scans")
@@ -359,6 +360,7 @@ withGlobals(scan.command("batch"))
   .action(run((globals, command) => scanBatchCommand(globals, String(command.args[0]), {
     state: command.opts().state,
     maxActive: command.opts().maxActive,
+    continueOnPartial: Boolean(command.opts().continueOnPartial),
     pollSeconds: command.opts().pollSeconds,
     timeoutMinutes: command.opts().timeoutMinutes,
     dryRun: Boolean(command.opts().dryRun),
