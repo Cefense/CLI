@@ -239,7 +239,8 @@ export function compactProject(project: Project): Record<string, unknown> {
           status: project.scan.status,
           findings: project.scan.findingCount,
           ...coverageEnvelope(project.scan),
-          finishedAt: project.scan.finishedAt ?? project.scan.createdAt,
+          createdAt: project.scan.createdAt,
+          finishedAt: project.scan.finishedAt,
         })
       : null,
   });
