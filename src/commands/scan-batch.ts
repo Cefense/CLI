@@ -180,6 +180,23 @@ function progress(entry: BatchEntry): void {
   process.stderr.write(`${JSON.stringify({ event: "batch.scan", repository: entry.repo, status: entry.status, scanId: entry.scanId })}\n`);
 }
 
+function holdForResult(entry: BatchEntry): string | null {
+  if (["failed", "cancelled", "displaced"].includes(entry.status)) {
+    return `${entry.repo} ended as ${entry.status}; inspect the scan before submitting more repositories.`;
+  }
+  if (entry.status !== "completed") return null;
+  if (entry.outcome === "partial" || entry.coverageGaps?.length) {
+    return `${entry.repo} reported partial coverage; inspect the missing lanes before submitting more repositories.`;
+  }
+  if (entry.outcome !== "clean") {
+    return `${entry.repo} did not report complete coverage; inspect the scanner before submitting more repositories.`;
+  }
+  if (entry.expectedSha && entry.inputStatus !== "match") {
+    return `${entry.repo} did not confirm the expected commit; inspect the scanned SHA before submitting more repositories.`;
+  }
+  return null;
+}
+
 export async function runBatch(
   client: Pick<CefenseClient, "projects" | "scanPublicRepo">,
   state: BatchState,
@@ -188,6 +205,7 @@ export async function runBatch(
 ): Promise<{ data: object; exitCode: number }> {
   const deadline = Date.now() + options.timeoutMinutes * 60_000;
   let stopReason: string | null = null;
+  let submissionHold = state.entries.map(holdForResult).find((reason) => reason !== null) ?? null;
   if (state.entries.some((entry) => entry.status === "submitting")) {
     stopReason = "A previous submission has no recorded response. Inspect the workspace and state file before resuming.";
   }
@@ -219,8 +237,9 @@ export async function runBatch(
       progress(entry);
     }
     if (stopReason) break;
+    submissionHold ??= state.entries.map(holdForResult).find((reason) => reason !== null) ?? null;
     let active = state.entries.filter((entry) => entry.status === "running").length;
-    while (active < options.maxActive) {
+    while (!submissionHold && active < options.maxActive) {
       const entry = state.entries.find((candidate) => candidate.status === "pending");
       if (!entry) break;
       entry.status = "submitting";
@@ -250,6 +269,7 @@ export async function runBatch(
     }
     if (stopReason) break;
     const totals = count(state);
+    if (submissionHold && totals.running === 0) { stopReason = submissionHold; break; }
     if (totals.pending === 0 && totals.running === 0) break;
     if (Date.now() >= deadline) { stopReason = "Time limit reached. Re-run with the same state file to resume."; break; }
     await new Promise((resolveSleep) => setTimeout(resolveSleep, options.pollSeconds * 1000));

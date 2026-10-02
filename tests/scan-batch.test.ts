@@ -77,6 +77,27 @@ test("partial coverage is visible in the batch result and returns a nonzero exit
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test("a partial pilot holds pending scans instead of flooding the cohort", async () => {
+  const { dir, statePath, state } = fixture();
+  try {
+    const scans = new Map<string, string>();
+    const client = {
+      projects: async () => ({ projects: [...scans].map(([repo, id]) => project(repo, id, "completed", "partial")) }),
+      scanPublicRepo: async (url: string) => {
+        const repo = url.replace("https://github.com/", "");
+        const id = `scan-${scans.size + 1}`;
+        scans.set(repo, id);
+        return { project: project(repo, id, "running"), scanId: id };
+      },
+    } as Pick<CefenseClient, "projects" | "scanPublicRepo">;
+    const outcome = await runBatch(client, state, statePath, { maxActive: 1, pollSeconds: 0, timeoutMinutes: 1 });
+    assert.equal(outcome.exitCode, 4);
+    assert.equal(scans.size, 1);
+    assert.deepEqual(state.entries.map((entry) => entry.status), ["completed", "pending"]);
+    assert.match(JSON.stringify(outcome.data), /partial coverage/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("uncertain submission stops the batch and does not submit another repository", async () => {
   const { dir, statePath, state } = fixture();
   try {

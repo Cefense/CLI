@@ -120,6 +120,7 @@ Repositories live on GitHub, GitLab, or Bitbucket. Once one is connected it is a
 | `cf scan` | rescan a repository, `--wait` to block until it settles |
 | `cf scan --branch <name>` | scan a branch other than the default |
 | `cf scan --url <repository-url>` | connect a public GitHub repository by URL and scan it |
+| `cf scan batch <manifest.json>` | scan a reviewed list of public GitHub repositories with a resumable checkpoint |
 | `cf branches` | every branch, and the last scan of each |
 | `cf commits` | the commit history, and what each scanned commit introduced or resolved |
 | `cf triage <finding-id> <decision>` | record a finding as `false-positive`, `accepted-risk`, or `open` |
@@ -138,6 +139,8 @@ Repositories live on GitHub, GitLab, or Bitbucket. Once one is connected it is a
 `cf reproduced --matched` narrows the list to the findings joined to security research, which is the same set `cf matched` shows: use whichever reads better in the command you are already running.
 
 `cf status --watch` keeps the dashboard polling even when nothing is scanning, so it stays open as a live view instead of drawing once and exiting.
+
+For a larger, owner-authorized cohort, put GitHub URLs in `{"repositories":[{"url":"https://github.com/acme/api","default_head_sha":"<40-character SHA>"}]}`. Run `cf scan batch manifest.json --dry-run` to confirm the account and input, then `cf scan batch manifest.json --max-active 1 --yes` for a pilot. The CLI writes a checkpoint beside the manifest and resumes it on the next invocation. Increase `--max-active` only after the pilot reports complete coverage and the expected commit. A failed scan, partial or unknown coverage, or an unverified commit holds pending submissions so the cohort cannot silently accumulate unusable results. `--agent` emits JSON for automation.
 
 `cf fix merge --no-delete-branch` merges the pull request and leaves the branch in place. Without it the branch is deleted, which is the default.
 
