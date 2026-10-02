@@ -1,6 +1,6 @@
 import type { CefenseClient } from "../core/client.js";
 import type { Project, ScanSummary } from "../core/types.js";
-import { coverageEnvelope } from "../core/compact.js";
+import { coverageEnvelope, prune } from "../core/compact.js";
 import { coverageLines, isPartialScan } from "../core/coverage.js";
 import { openSession, type GlobalOptions, type Session } from "../core/session.js";
 import { resolveLinkedProject } from "./link.js";
@@ -9,8 +9,18 @@ import { spinner } from "../ui/prompts.js";
 import { elapsed, progressBar } from "../ui/format.js";
 import { c } from "../ui/theme.js";
 import { isAgentMode } from "../ui/mode.js";
+import { allowanceMessage, assertScanAllowance, type AllowanceNotice } from "../core/allowance.js";
 
 const POLL_MS = 2000;
+
+function allowanceEnvelope(notice: AllowanceNotice | null): { allowance?: Record<string, unknown> } {
+  if (!notice) return {};
+  return { allowance: prune({ state: notice.state, percentUsed: notice.percentUsed, resetsAt: notice.resetsAt }) };
+}
+
+function warnAllowance(notice: AllowanceNotice | null): void {
+  if (notice) out.warn(allowanceMessage(notice));
+}
 
 function terminal(scan: ScanSummary | null): boolean {
   if (!scan) return true;
@@ -158,11 +168,12 @@ async function scanUrl(
   url: string,
   options: { watch?: boolean; wait?: boolean; progress?: boolean },
 ): Promise<number> {
+  const allowance = await assertScanAllowance(session.client);
   const { project, scanId } = await session.client.scanPublicRepo(url);
 
   if (isAgentMode()) {
     if (!options.wait) {
-      out.agentEmit({ repository: project.fullName, scanId }, [
+      out.agentEmit({ repository: project.fullName, scanId, ...allowanceEnvelope(allowance) }, [
         `cf reproduced --repo ${project.fullName} --agent`,
       ]);
       return 0;
@@ -178,6 +189,7 @@ async function scanUrl(
       {
         repository: project.fullName,
         scanId,
+        ...allowanceEnvelope(allowance),
         status: settled?.status ?? "running",
         findings: settled?.findingCount ?? null,
         ...coverageEnvelope(settled),
@@ -212,6 +224,7 @@ async function scanUrl(
   }
 
   out.line();
+  warnAllowance(allowance);
   out.success(`Connected ${c.bold(project.fullName)}`);
   if (options.watch === false) {
     out.hint(`scan ${scanId}`);
@@ -246,11 +259,12 @@ export async function scanCommand(
   const label = ref && ref !== project.defaultBranch ? `${project.fullName}#${ref}` : project.fullName;
 
   const running = project.scan && !terminal(project.scan);
+  const allowance = await assertScanAllowance(session.client);
   const { scanId } = await session.client.startScan(project.githubRepoId, ref);
 
   if (isAgentMode()) {
     if (!options.wait) {
-      out.agentEmit({ repository: project.fullName, branch: ref, scanId }, [
+      out.agentEmit({ repository: project.fullName, branch: ref, scanId, ...allowanceEnvelope(allowance) }, [
         `cf scan --repo ${project.fullName} --wait --agent`,
         `cf reproduced --repo ${project.fullName} --agent`,
       ]);
@@ -268,6 +282,7 @@ export async function scanCommand(
         repository: project.fullName,
         branch: ref,
         scanId,
+        ...allowanceEnvelope(allowance),
         status: settled?.status ?? "running",
         findings: settled?.findingCount ?? null,
         ...coverageEnvelope(settled),
@@ -303,6 +318,7 @@ export async function scanCommand(
   }
 
   out.line();
+  warnAllowance(allowance);
   if (running) {
     out.warn("Abandoned the scan already in progress and started a new one.");
   }

@@ -123,6 +123,8 @@ Ask the user before running `cf plan upgrade`, exactly as you would before openi
 
 `allowance_exhausted` means the allowance is gone and no scan will start until the plan changes, or until the period rolls over on a paid plan. `repository_limit` means the plan covers fewer repositories than the account is trying to connect, and it is counted when one is added, so nothing already connected is at risk and disconnecting someone's repository to make room is not yours to offer. `depth_unavailable` means max depth is not included on this plan, so re-run at default depth. `no_subscription` means nothing has ever been bought, so there is no portal to open. `billing_unavailable` means this deployment has no billing configured at all. None of them are retryable, and none of them are yours to solve: report and stop.
 
+From 80% used, `cf scan --agent` and `cf status --agent` carry `data.allowance` with `state` (`low` or `exhausted`), `percentUsed`, and `resetsAt`. When it says `low`, tell the user before you start a batch of scans that may not finish.
+
 ## The loop
 
 ### List
@@ -296,7 +298,7 @@ batch result records `actualSha` and marks each expected commit `match`,
 `mismatch`, or `unknown`. A mismatch or unknown commit exits nonzero; do not
 attribute findings to the manifest commit in either case.
 
-`--wait` blocks until the scan settles, up to about ten minutes, and returns `status`, `findings`, and `error`. A scan settles as `completed`, `failed`, or `cancelled`. Add `--progress` to get one JSON progress line per poll on stderr, which keeps a supervisor from treating a long scan as a hang. Without `--wait` you get the `scanId` immediately and have to poll `cf status --agent` yourself.
+`--wait` blocks until the scan settles, up to about ten minutes, and returns `status`, `findings`, and `error`. A scan settles as `completed`, `failed`, or `cancelled`, and it is `cancelled` when someone stops it from the workspace, so rescan rather than reading its findings. Add `--progress` to get one JSON progress line per poll on stderr, which keeps a supervisor from treating a long scan as a hang. Without `--wait` you get the `scanId` immediately and have to poll `cf status --agent` yourself.
 
 Rescan after merging a fix, not before. Finding ids belong to a scan, so after a rescan list again rather than reusing old ids.
 
