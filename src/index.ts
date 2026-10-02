@@ -27,6 +27,7 @@ import {
 } from "./commands/notifications.js";
 import { statusCommand } from "./commands/status.js";
 import { scanCommand } from "./commands/scan.js";
+import { scanBatchCommand } from "./commands/scan-batch.js";
 import { branchesCommand } from "./commands/branches.js";
 import { commitsCommand } from "./commands/commits.js";
 import {
@@ -327,7 +328,7 @@ withGlobals(program.command("status"))
   .option("--watch", "keep polling even when nothing is scanning")
   .action(run((globals, command) => statusCommand(globals, { watch: Boolean(command.opts().watch) })));
 
-withGlobals(program.command("scan"))
+const scan = withGlobals(program.command("scan"))
   .description("rescan a repository")
   .option("--branch <name>", "scan a branch other than the default")
   .option("--url <repository-url>", "connect a GitHub repository by URL and scan it")
@@ -345,6 +346,24 @@ withGlobals(program.command("scan"))
       }),
     ),
   );
+
+withGlobals(scan.command("batch"))
+  .argument("<manifest>", "JSON file with a repositories array of GitHub URLs")
+  .description("scan a repository cohort with checkpoints and bounded concurrency")
+  .option("--state <path>", "checkpoint file; defaults beside the manifest")
+  .option("--max-active <n>", "maximum simultaneous scans, 1-25", Number)
+  .option("--poll-seconds <n>", "seconds between status checks, 2-120", Number)
+  .option("--timeout-minutes <n>", "stop and save after this many minutes, 1-1440", Number)
+  .option("--dry-run", "validate the manifest and account without submitting scans")
+  .option("--status", "read the saved batch state without submitting scans")
+  .action(run((globals, command) => scanBatchCommand(globals, String(command.args[0]), {
+    state: command.opts().state,
+    maxActive: command.opts().maxActive,
+    pollSeconds: command.opts().pollSeconds,
+    timeoutMinutes: command.opts().timeoutMinutes,
+    dryRun: Boolean(command.opts().dryRun),
+    status: Boolean(command.opts().status),
+  })));
 
 withGlobals(program.command("branches"))
   .description("every branch, and the last scan of each")

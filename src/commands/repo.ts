@@ -193,7 +193,7 @@ export async function repoConnect(
     for (const entry of connected) {
       if (!entry.scanId) continue;
       out.line();
-      await watchScan(session.client, entry.project.githubRepoId, entry.project.fullName);
+      await watchScan(session.client, entry.project.githubRepoId, entry.project.fullName, entry.scanId);
     }
   }
 

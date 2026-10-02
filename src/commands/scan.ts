@@ -31,6 +31,7 @@ export async function watchScan(
   client: CefenseClient,
   githubRepoId: string,
   label: string,
+  scanId: string | null = null,
 ): Promise<ScanSummary | null> {
   const progress = spinner();
   progress.start(`Scanning ${label}`);
@@ -49,9 +50,10 @@ export async function watchScan(
         return latest;
       }
       const { projects } = await client.projects();
-      latest = projects.find((project) => project.githubRepoId === githubRepoId)?.scan ?? null;
-      if (terminal(latest)) break;
-      progress.message(describe(latest!));
+      const observed = projects.find((project) => project.githubRepoId === githubRepoId)?.scan ?? null;
+      if (observed && (!scanId || observed.id === scanId)) latest = observed;
+      if (latest && terminal(latest)) break;
+      progress.message(latest ? describe(latest) : "Waiting for scan to appear");
       await new Promise((resolve) => setTimeout(resolve, POLL_MS));
     }
   } finally {
@@ -113,11 +115,13 @@ function emitProgress(scan: ScanSummary | null, scanId: string): void {
   );
 }
 
-async function awaitScan(
+export async function awaitScan(
   session: Session,
   githubRepoId: string,
+  scanId: string,
   attempts = 300,
   progress: ((scan: ScanSummary | null) => void) | null = null,
+  pollMs = POLL_MS,
 ): Promise<ScanSummary | null> {
   let latest: ScanSummary | null = null;
   // A transient poll failure is tolerated, but a run of consecutive failures
@@ -125,7 +129,7 @@ async function awaitScan(
   // silently for the full ten minutes and then exit 0 as "still running".
   let consecutiveFailures = 0;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
     let projects: Project[];
     try {
       projects = (await session.client.projects()).projects;
@@ -136,7 +140,7 @@ async function awaitScan(
       continue;
     }
     const project = projects.find((entry) => entry.githubRepoId === githubRepoId);
-    latest = project?.scan ?? latest;
+    if (project?.scan?.id === scanId) latest = project.scan;
     progress?.(latest);
     if (latest && terminal(latest)) return latest;
   }
@@ -166,6 +170,7 @@ async function scanUrl(
     const settled = await awaitScan(
       session,
       project.githubRepoId,
+      scanId,
       300,
       options.progress ? (scan) => emitProgress(scan, scanId) : null,
     );
@@ -180,12 +185,30 @@ async function scanUrl(
       },
       [`cf reproduced --repo ${project.fullName} --severity critical,high --agent`],
     );
-    return settled?.status === "failed" ? 4 : 0;
+    return settled?.status === "completed" ? 0 : 4;
   }
 
   if (out.isJsonMode()) {
-    out.json({ repository: project.fullName, scanId });
-    return 0;
+    if (!options.wait) {
+      out.json({ repository: project.fullName, scanId });
+      return 0;
+    }
+    const settled = await awaitScan(
+      session,
+      project.githubRepoId,
+      scanId,
+      300,
+      options.progress ? (scan) => emitProgress(scan, scanId) : null,
+    );
+    out.json({
+      repository: project.fullName,
+      scanId,
+      status: settled?.status ?? "running",
+      findings: settled?.findingCount ?? null,
+      ...coverageEnvelope(settled),
+      error: settled?.error ?? null,
+    });
+    return settled?.status === "completed" ? 0 : 4;
   }
 
   out.line();
@@ -195,7 +218,7 @@ async function scanUrl(
     out.line();
     return 0;
   }
-  const scan = await watchScan(session.client, project.githubRepoId, project.fullName);
+  const scan = await watchScan(session.client, project.githubRepoId, project.fullName, scanId);
   out.line();
   if (scan?.status === "completed") {
     out.info("Next: review the findings");
@@ -236,6 +259,7 @@ export async function scanCommand(
     const settled = await awaitScan(
       session,
       project.githubRepoId,
+      scanId,
       300,
       options.progress ? (scan) => emitProgress(scan, scanId) : null,
     );
@@ -251,12 +275,31 @@ export async function scanCommand(
       },
       [`cf reproduced --repo ${project.fullName} --severity critical,high --agent`],
     );
-    return settled?.status === "failed" ? 4 : 0;
+    return settled?.status === "completed" ? 0 : 4;
   }
 
   if (out.isJsonMode()) {
-    out.json({ repository: project.fullName, branch: ref, scanId });
-    return 0;
+    if (!options.wait) {
+      out.json({ repository: project.fullName, branch: ref, scanId });
+      return 0;
+    }
+    const settled = await awaitScan(
+      session,
+      project.githubRepoId,
+      scanId,
+      300,
+      options.progress ? (scan) => emitProgress(scan, scanId) : null,
+    );
+    out.json({
+      repository: project.fullName,
+      branch: ref,
+      scanId,
+      status: settled?.status ?? "running",
+      findings: settled?.findingCount ?? null,
+      ...coverageEnvelope(settled),
+      error: settled?.error ?? null,
+    });
+    return settled?.status === "completed" ? 0 : 4;
   }
 
   out.line();
@@ -271,7 +314,7 @@ export async function scanCommand(
     return 0;
   }
 
-  const scan = await watchScan(session.client, project.githubRepoId, label);
+  const scan = await watchScan(session.client, project.githubRepoId, label, scanId);
   out.line();
   if (scan?.status === "completed" && scan.findingCount > 0) {
     out.info("Next: review the findings");
@@ -282,4 +325,3 @@ export async function scanCommand(
   }
   return scan?.status === "failed" ? 4 : 0;
 }
-
