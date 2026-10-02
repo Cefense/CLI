@@ -12,6 +12,7 @@ import { spinner } from "../ui/prompts.js";
 import { isAgentMode } from "../ui/mode.js";
 import { compactProject, prune } from "../core/compact.js";
 import { openIfRequested } from "../ui/open.js";
+import { allowanceMessage, readAllowanceNotice } from "../core/allowance.js";
 
 function isActive(project: Project): boolean {
   return project.scan?.status === "queued" || project.scan?.status === "running";
@@ -51,10 +52,11 @@ export async function statusCommand(
 ): Promise<number> {
   const session = await openSession(globals, { auth: true });
 
-  const [me, connections, initial] = await Promise.all([
+  const [me, connections, initial, allowance] = await Promise.all([
     session.client.me(),
     loadConnections(session),
     session.client.projects(),
+    readAllowanceNotice(session.client),
   ]);
 
   let projects = initial.projects;
@@ -90,8 +92,13 @@ export async function statusCommand(
         ),
         repositories: projects.map(compactProject),
         availableToConnect: available.length,
+        allowance: allowance
+          ? prune({ state: allowance.state, percentUsed: allowance.percentUsed, resetsAt: allowance.resetsAt })
+          : undefined,
       },
-      ["cf reproduced --agent", "cf scan --agent"],
+      allowance?.state === "exhausted"
+        ? ["cf reproduced --agent", "cf plan --agent"]
+        : ["cf reproduced --agent", "cf scan --agent"],
     );
     return 0;
   }
@@ -103,6 +110,7 @@ export async function statusCommand(
       providers: connections,
       projects,
       available: available.length,
+      allowance,
     });
     return 0;
   }
@@ -125,6 +133,11 @@ export async function statusCommand(
   }
 
   if (!out.isPiped()) out.lines(headerLines(connections, projects, me.user.email, session.apiUrl));
+  if (allowance) {
+    out.warn(allowanceMessage(allowance));
+    out.hint("  cf plan for usage and plans");
+    out.line();
+  }
 
   const first = projects[0];
 
