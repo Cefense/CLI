@@ -42,6 +42,7 @@ export interface BatchOptions {
   pollSeconds?: number;
   timeoutMinutes?: number;
   continueOnPartial?: boolean;
+  continueOnShaMismatch?: boolean;
   dryRun?: boolean;
   status?: boolean;
 }
@@ -181,7 +182,7 @@ function progress(entry: BatchEntry): void {
   process.stderr.write(`${JSON.stringify({ event: "batch.scan", repository: entry.repo, status: entry.status, scanId: entry.scanId })}\n`);
 }
 
-function holdForResult(entry: BatchEntry, continueOnPartial: boolean): string | null {
+function holdForResult(entry: BatchEntry, continueOnPartial: boolean, continueOnShaMismatch: boolean): string | null {
   if (["failed", "cancelled", "displaced"].includes(entry.status)) {
     return `${entry.repo} ended as ${entry.status}; inspect the scan before submitting more repositories.`;
   }
@@ -193,7 +194,8 @@ function holdForResult(entry: BatchEntry, continueOnPartial: boolean): string | 
   if (entry.outcome !== "clean" && !(partial && continueOnPartial)) {
     return `${entry.repo} did not report complete coverage; inspect the scanner before submitting more repositories.`;
   }
-  if (entry.expectedSha && entry.inputStatus !== "match") {
+  if (entry.expectedSha && entry.inputStatus !== "match" &&
+      !(entry.inputStatus === "mismatch" && continueOnShaMismatch)) {
     return `${entry.repo} did not confirm the expected commit; inspect the scanned SHA before submitting more repositories.`;
   }
   return null;
@@ -203,11 +205,13 @@ export async function runBatch(
   client: Pick<CefenseClient, "projects" | "scanPublicRepo">,
   state: BatchState,
   statePath: string,
-  options: Required<Pick<BatchOptions, "maxActive" | "pollSeconds" | "timeoutMinutes">> & Pick<BatchOptions, "continueOnPartial">,
+  options: Required<Pick<BatchOptions, "maxActive" | "pollSeconds" | "timeoutMinutes">> &
+    Pick<BatchOptions, "continueOnPartial" | "continueOnShaMismatch">,
 ): Promise<{ data: object; exitCode: number }> {
   const deadline = Date.now() + options.timeoutMinutes * 60_000;
   let stopReason: string | null = null;
-  let submissionHold = state.entries.map((entry) => holdForResult(entry, options.continueOnPartial === true)).find((reason) => reason !== null) ?? null;
+  let submissionHold = state.entries.map((entry) => holdForResult(entry,
+    options.continueOnPartial === true, options.continueOnShaMismatch === true)).find((reason) => reason !== null) ?? null;
   if (state.entries.some((entry) => entry.status === "submitting")) {
     stopReason = "A previous submission has no recorded response. Inspect the workspace and state file before resuming.";
   }
@@ -239,7 +243,8 @@ export async function runBatch(
       progress(entry);
     }
     if (stopReason) break;
-    submissionHold ??= state.entries.map((entry) => holdForResult(entry, options.continueOnPartial === true)).find((reason) => reason !== null) ?? null;
+    submissionHold ??= state.entries.map((entry) => holdForResult(entry,
+      options.continueOnPartial === true, options.continueOnShaMismatch === true)).find((reason) => reason !== null) ?? null;
     let active = state.entries.filter((entry) => entry.status === "running").length;
     while (!submissionHold && active < options.maxActive) {
       const entry = state.entries.find((candidate) => candidate.status === "pending");
@@ -316,7 +321,7 @@ export async function scanBatchCommand(globals: GlobalOptions, manifestPath: str
   }
   const state = loadState(statePath, manifest, session.apiUrl, email);
   const outcome = await runBatch(session.client, state, statePath, { maxActive, pollSeconds, timeoutMinutes,
-    continueOnPartial: options.continueOnPartial });
+    continueOnPartial: options.continueOnPartial, continueOnShaMismatch: options.continueOnShaMismatch });
   emit(outcome.data);
   return outcome.exitCode;
 }

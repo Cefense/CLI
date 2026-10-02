@@ -151,6 +151,40 @@ test("continue-on-partial still holds a repository whose scanned SHA moved", asy
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test("an explicit option continues after a reviewed SHA mismatch without hiding it", async () => {
+  const { dir, statePath, state } = fixture();
+  try {
+    state.entries[0]!.expectedSha = "a".repeat(40);
+    const scans = new Map<string, string>();
+    const client = {
+      projects: async () => ({ projects: [...scans].map(([repo, id]) => {
+        const observed = project(repo, id, "completed", "partial");
+        if (observed.scan) observed.scan.commitSha = "b".repeat(40);
+        return observed;
+      }) }),
+      scanPublicRepo: async (url: string) => {
+        const repo = url.replace("https://github.com/", "");
+        const id = `scan-${scans.size + 1}`;
+        scans.set(repo, id);
+        return { project: project(repo, id, "running"), scanId: id };
+      },
+    } as Pick<CefenseClient, "projects" | "scanPublicRepo">;
+    const outcome = await runBatch(client, state, statePath, {
+      maxActive: 1, pollSeconds: 0, timeoutMinutes: 1,
+      continueOnPartial: true, continueOnShaMismatch: true,
+    });
+    const saved = JSON.parse(readFileSync(statePath, "utf8")) as {
+      entries: Array<{ status: string; expectedSha?: string; actualSha?: string; inputStatus?: string }>;
+    };
+    assert.equal(outcome.exitCode, 4);
+    assert.equal(scans.size, 2);
+    assert.deepEqual(saved.entries.map((entry) => entry.status), ["completed", "completed"]);
+    assert.equal(saved.entries[0]?.expectedSha, "a".repeat(40));
+    assert.equal(saved.entries[0]?.actualSha, "b".repeat(40));
+    assert.equal(saved.entries[0]?.inputStatus, "mismatch");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("uncertain submission stops the batch and does not submit another repository", async () => {
   const { dir, statePath, state } = fixture();
   try {

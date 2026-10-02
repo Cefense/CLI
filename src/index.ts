@@ -353,6 +353,7 @@ withGlobals(scan.command("batch"))
   .option("--state <path>", "checkpoint file; defaults beside the manifest")
   .option("--max-active <n>", "maximum simultaneous scans, 1-25", Number)
   .option("--continue-on-partial", "continue submitting after incomplete scans, while reporting every gap")
+  .option("--continue-on-sha-mismatch", "continue after an observed SHA differs, while recording both commits")
   .option("--poll-seconds <n>", "seconds between status checks, 2-120", Number)
   .option("--timeout-minutes <n>", "stop and save after this many minutes, 1-1440", Number)
   .option("--dry-run", "validate the manifest and account without submitting scans")
@@ -361,6 +362,7 @@ withGlobals(scan.command("batch"))
     state: command.opts().state,
     maxActive: command.opts().maxActive,
     continueOnPartial: Boolean(command.opts().continueOnPartial),
+    continueOnShaMismatch: Boolean(command.opts().continueOnShaMismatch),
     pollSeconds: command.opts().pollSeconds,
     timeoutMinutes: command.opts().timeoutMinutes,
     dryRun: Boolean(command.opts().dryRun),
