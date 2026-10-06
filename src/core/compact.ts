@@ -67,10 +67,6 @@ export const PROJECT_ROW: RowShape = {
   nested: { scan: ["id", "status", "findings", "coverage", "finishedAt"] },
 };
 
-export const ATTENTION_ROW: RowShape = {
-  keys: ["repository", "scan"],
-  nested: { scan: ["id", "status", "findings", "coverage", "error", "finishedAt"] },
-};
 
 export const FIX_ROW: RowShape = {
   keys: ["id", "findingId", "status", "file", "prNumber", "prUrl", "behaviorChange", "hasDiff"],
@@ -349,18 +345,6 @@ export function latestWithFindings(projects: Project[]): Project | null {
   );
 }
 
-export function repositoryCounts(projects: Project[]): Record<string, number> {
-  const count = (test: (project: Project) => boolean): number => projects.filter(test).length;
-  return {
-    repositories: projects.length,
-    scanning: count((project) => project.scan?.status === "queued" || project.scan?.status === "running"),
-    failed: count((project) => project.scan?.status === "failed"),
-    cancelled: count((project) => project.scan?.status === "cancelled"),
-    neverScanned: count((project) => !project.scan),
-    partial: count((project) => project.scan?.outcome === "partial"),
-    findings: projects.reduce((sum, project) => sum + (project.scan?.findingCount ?? 0), 0),
-  };
-}
 
 export function compactFindingDetail(
   finding: Finding,

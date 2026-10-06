@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import {
   ATTENTION_LIMIT,
-  ATTENTION_ROW,
   AUDIT_ROW,
   FINDING_ROW,
   FIX_ROW,
@@ -16,7 +15,6 @@ import {
   compactFindingDetail,
   compactProject,
   latestWithFindings,
-  repositoryCounts,
   shapeRow,
 } from "../src/core/compact.js";
 import { CefenseError, UsageError } from "../src/core/errors.js";
@@ -185,7 +183,6 @@ test("list shapes never name a key the full row does not have", () => {
   for (const key of FINDING_ROW.keys) assert.ok(findingKeys.has(key), `finding row names ${key}`);
   const projectKeys = new Set(Object.keys(compactProject(project("acme/api", scan()))));
   for (const key of PROJECT_ROW.keys) assert.ok(projectKeys.has(key), `project row names ${key}`);
-  for (const key of ATTENTION_ROW.keys) assert.ok(projectKeys.has(key), `attention row names ${key}`);
   for (const shape of [FIX_ROW, PROOF_ROW, AUDIT_ROW]) assert.ok(shape.keys.length > 0);
 });
 
@@ -212,7 +209,7 @@ test("agentEmit leans the named lists and --fields reaches past the lean row", (
   }
 });
 
-test("status counts every repository and lists only the ones that need attention", () => {
+test("status points its next hint at the repositories that need attention first", () => {
   const projects = [
     project("acme/done", scan({ findingCount: 3, finishedAt: "2026-10-02T00:00:00Z" })),
     project("acme/older", scan({ findingCount: 9, finishedAt: "2026-09-02T00:00:00Z" })),
@@ -221,19 +218,9 @@ test("status counts every repository and lists only the ones that need attention
     project("acme/busy", scan({ status: "running", finishedAt: null })),
     project("acme/partial", scan({ outcome: "partial", findingCount: 0 })),
   ];
-  assert.deepEqual(repositoryCounts(projects), {
-    repositories: 6,
-    scanning: 1,
-    failed: 1,
-    cancelled: 0,
-    neverScanned: 1,
-    partial: 1,
-    findings: 3 + 9 + 4 + 4 + 0,
-  });
   const attention = attentionList(projects).map((entry) => entry.fullName);
   assert.deepEqual(attention, ["acme/busy", "acme/broken", "acme/new"]);
-  const failed = shapeRow(compactProject(projects[2]!), ATTENTION_ROW);
-  assert.equal((failed.scan as Record<string, unknown>).error, "Scan timed out");
+  assert.equal((compactProject(projects[2]!).scan as Record<string, unknown>).error, "Scan timed out");
   assert.equal(latestWithFindings(projects)?.fullName, "acme/done");
   const many = Array.from({ length: 30 }, (_, index) => project(`acme/r${index}`, null));
   assert.equal(attentionList(many).length, ATTENTION_LIMIT);

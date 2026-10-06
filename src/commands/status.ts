@@ -10,14 +10,7 @@ import { padEnd, relativeTime } from "../ui/format.js";
 import { c, scanStatusLabel } from "../ui/theme.js";
 import { spinner } from "../ui/prompts.js";
 import { isAgentMode } from "../ui/mode.js";
-import {
-  ATTENTION_ROW,
-  attentionList,
-  compactProject,
-  latestWithFindings,
-  prune,
-  repositoryCounts,
-} from "../core/compact.js";
+import { attentionList, compactProject, latestWithFindings, prune } from "../core/compact.js";
 import { openIfRequested } from "../ui/open.js";
 import { allowanceMessage, readAllowanceNotice } from "../core/allowance.js";
 
@@ -101,8 +94,7 @@ export async function statusCommand(
             statusUnavailable: entry.unreachable || undefined,
           }),
         ),
-        counts: repositoryCounts(projects),
-        attention: attention.map(compactProject),
+        repositories: projects.map(compactProject),
         availableToConnect: available.length,
         allowance: allowance
           ? prune({ state: allowance.state, percentUsed: allowance.percentUsed, resetsAt: allowance.resetsAt })
@@ -115,7 +107,6 @@ export async function statusCommand(
         latest ? `cf reproduced --repo ${latest.fullName} --severity critical,high --agent` : "",
         projects.length > 0 ? "cf repo list --agent" : "cf agent check --agent",
       ],
-      { attention: ATTENTION_ROW },
     );
     return 0;
   }

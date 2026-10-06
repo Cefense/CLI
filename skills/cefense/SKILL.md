@@ -33,7 +33,7 @@ cf status --agent
 cf repo list --agent
 ```
 
-`cf status` returns `counts` and `attention`: repositories whose scan is running, failed, cancelled, or missing. A running scan stays there until it settles. `cf repo list` returns every repository with its last `scan`.
+`cf status` returns every connected repository with its last `scan`, plus the code hosts and the allowance. A scan is `queued` or `running` until it settles as `completed`, `failed`, or `cancelled`. `cf repo list` returns the same repositories without the account detail.
 
 ## 2. Find what is wrong
 
