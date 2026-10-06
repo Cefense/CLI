@@ -6,7 +6,7 @@ import * as out from "../ui/output.js";
 import { shortId } from "../ui/format.js";
 import { c, displaySeverity, severityColor, severityRank } from "../ui/theme.js";
 import { isAgentMode } from "../ui/mode.js";
-import { compactFix } from "../core/compact.js";
+import { FIX_ROW, compactFix } from "../core/compact.js";
 
 interface Row {
   finding: Finding;
@@ -37,13 +37,17 @@ export async function fixCommand(globals: GlobalOptions): Promise<number> {
   const { rows, scanId } = await loadRows(session, project);
 
   if (isAgentMode()) {
-    out.agentEmit({
-      repository: project.fullName,
-      scanId,
-      fixes: rows
-        .filter((row) => row.fix)
-        .map((row) => compactFix(row.fix as Fix, { diff: true })),
-    });
+    const fixes = rows.filter((row) => row.fix).map((row) => row.fix as Fix);
+    const ready = fixes.find((fix) => fix.status === "ready") ?? fixes[0];
+    out.agentEmit(
+      {
+        repository: project.fullName,
+        scanId,
+        fixes: fixes.map((fix) => compactFix(fix, { diff: true })),
+      },
+      [ready ? `cf fix show ${ready.findingId} --repo ${project.fullName} --agent` : ""],
+      { fixes: FIX_ROW },
+    );
     return 0;
   }
 

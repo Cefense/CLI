@@ -35,6 +35,78 @@ export function prune<T extends Record<string, unknown>>(value: T): Record<strin
   return result;
 }
 
+export interface RowShape {
+  keys: readonly string[];
+  nested?: Readonly<Record<string, readonly string[]>>;
+}
+
+export const FINDING_ROW: RowShape = {
+  keys: [
+    "id",
+    "severity",
+    "severityLabel",
+    "title",
+    "file",
+    "line",
+    "category",
+    "cve",
+    "cwe",
+    "rule",
+    "reachability",
+    "status",
+    "package",
+    "fixedIn",
+    "matchedSources",
+    "fix",
+  ],
+  nested: { fix: ["status", "prNumber", "prUrl"] },
+};
+
+export const PROJECT_ROW: RowShape = {
+  keys: ["repository", "provider", "scan"],
+  nested: { scan: ["id", "status", "findings", "coverage", "finishedAt"] },
+};
+
+export const ATTENTION_ROW: RowShape = {
+  keys: ["repository", "scan"],
+  nested: { scan: ["id", "status", "findings", "coverage", "error", "finishedAt"] },
+};
+
+export const FIX_ROW: RowShape = {
+  keys: ["id", "findingId", "status", "file", "prNumber", "prUrl", "behaviorChange", "hasDiff"],
+};
+
+export const PROOF_ROW: RowShape = {
+  keys: ["id", "findingId", "kind", "status", "verdict", "verdictLabel", "blocksPublish", "updatedAt"],
+};
+
+export const AUDIT_ROW: RowShape = {
+  keys: ["at", "action", "category", "outcome", "actor", "target", "summary", "changes"],
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function shapeRow(entry: Record<string, unknown>, shape: RowShape): Record<string, unknown> {
+  const keep = new Set(shape.keys);
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(entry)) {
+    if (!keep.has(key)) continue;
+    const inner = shape.nested?.[key];
+    if (inner && isRecord(value)) {
+      const narrowed: Record<string, unknown> = {};
+      for (const [innerKey, innerValue] of Object.entries(value)) {
+        if (inner.includes(innerKey)) narrowed[innerKey] = innerValue;
+      }
+      result[key] = narrowed;
+      continue;
+    }
+    result[key] = value;
+  }
+  return result;
+}
+
 export function compactFix(fix: Fix, options: { diff?: boolean } = {}): Record<string, unknown> {
   return prune({
     id: fix.id,
@@ -239,10 +311,55 @@ export function compactProject(project: Project): Record<string, unknown> {
           status: project.scan.status,
           findings: project.scan.findingCount,
           ...coverageEnvelope(project.scan),
+          error: project.scan.status === "failed" ? project.scan.error : null,
           finishedAt: project.scan.finishedAt ?? project.scan.createdAt,
         })
       : null,
   });
+}
+
+export const ATTENTION_LIMIT = 10;
+
+function attentionRank(project: Project): number {
+  const status = project.scan?.status;
+  if (status === "queued" || status === "running") return 0;
+  if (status === "failed") return 1;
+  if (status === "cancelled") return 2;
+  if (!status) return 3;
+  return 4;
+}
+
+function scanTime(project: Project): number {
+  const at = project.scan?.finishedAt ?? project.scan?.createdAt;
+  return at ? Date.parse(at) : 0;
+}
+
+export function attentionList(projects: Project[], limit = ATTENTION_LIMIT): Project[] {
+  return projects
+    .filter((project) => attentionRank(project) < 4)
+    .sort((left, right) => attentionRank(left) - attentionRank(right) || scanTime(right) - scanTime(left))
+    .slice(0, limit);
+}
+
+export function latestWithFindings(projects: Project[]): Project | null {
+  return (
+    projects
+      .filter((project) => project.scan?.status === "completed" && project.scan.findingCount > 0)
+      .sort((left, right) => scanTime(right) - scanTime(left))[0] ?? null
+  );
+}
+
+export function repositoryCounts(projects: Project[]): Record<string, number> {
+  const count = (test: (project: Project) => boolean): number => projects.filter(test).length;
+  return {
+    repositories: projects.length,
+    scanning: count((project) => project.scan?.status === "queued" || project.scan?.status === "running"),
+    failed: count((project) => project.scan?.status === "failed"),
+    cancelled: count((project) => project.scan?.status === "cancelled"),
+    neverScanned: count((project) => !project.scan),
+    partial: count((project) => project.scan?.outcome === "partial"),
+    findings: projects.reduce((sum, project) => sum + (project.scan?.findingCount ?? 0), 0),
+  };
 }
 
 export function compactFindingDetail(

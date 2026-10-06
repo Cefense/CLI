@@ -195,7 +195,7 @@ export async function notificationsShow(globals: GlobalOptions): Promise<number>
   const response = await session.client.notifications();
 
   if (isAgentMode()) {
-    out.agentEmit(payload(response), ["cf notifications set <kind> --off --agent"]);
+    out.agentEmit(payload(response));
     return 0;
   }
   if (out.isJsonMode()) {

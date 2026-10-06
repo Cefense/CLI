@@ -52,6 +52,7 @@ export async function applyTriage(
   findingId: string,
   status: TriageStatus,
   note?: string,
+  repository?: string,
 ): Promise<TriageStatus> {
   try {
     const result = await session.client.triageFinding(findingId, status, note);
@@ -66,7 +67,7 @@ export async function applyTriage(
     if (error instanceof CefenseError && /finding not found/i.test(error.message)) {
       throw new UsageError(
         `${findingId} is not a finding on any repository you own.`,
-        "Run cf reproduced to list finding ids.",
+        `Run cf reproduced${repository ? ` --repo ${repository}` : ""} to list finding ids.`,
         "finding_not_found",
       );
     }
@@ -84,11 +85,11 @@ export async function triageCommand(
   const session = await openSession(globals, { auth: true });
   const { project } = await resolveLinkedProject(session, globals);
   findingId = await resolveFindingId(session, project, findingId);
-  const applied = await applyTriage(session, findingId, status, options.note);
+  const applied = await applyTriage(session, findingId, status, options.note, project.fullName);
 
   if (isAgentMode()) {
     out.agentEmit({ findingId, status: applied, note: options.note ?? null }, [
-      "cf reproduced --agent",
+      `cf reproduced --repo ${project.fullName} --agent`,
     ]);
     return 0;
   }
