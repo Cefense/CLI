@@ -9,7 +9,7 @@ process.stderr.on("error", ignoreEpipe);
 import { Command, CommanderError, Option } from "commander";
 import { CancelledError, EXIT_INTERRUPTED, isCefenseError } from "./core/errors.js";
 import type { GlobalOptions } from "./core/session.js";
-import { setColorEnabled } from "./ui/theme.js";
+import { c, glyph, setColorEnabled } from "./ui/theme.js";
 import { isAgentMode, setAgentMode } from "./ui/mode.js";
 import { setOrganizationFlag } from "./core/organizations.js";
 import * as out from "./ui/output.js";
@@ -151,9 +151,7 @@ function run(handler: (globals: GlobalOptions, command: Command) => Promise<numb
       }
       if (error instanceof CancelledError) {
         process.exitCode = EXIT_INTERRUPTED;
-        out.line();
-        out.line("  Cancelled.");
-        out.line();
+        out.line(`${c.dim(glyph.cross)} Cancelled.`);
         return;
       }
       out.renderError(error);

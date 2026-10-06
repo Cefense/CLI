@@ -253,7 +253,7 @@ export function renderError(error: unknown): void {
   const emit = (value: string) => stream.write(`${sanitizeForTerminal(value)}\n`);
   if (error instanceof CefenseError) {
     emit(`${c.red(glyph.cross)} ${error.message}`);
-    if (error.remedy) emit(c.dim(error.remedy));
+    if (error.remedy) emit(c.dim(`Hint: ${error.remedy}`));
     return;
   }
   const message = error instanceof Error ? error.message : String(error);

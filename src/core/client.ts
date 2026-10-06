@@ -275,7 +275,12 @@ export class CefenseClient {
         remedy: "Run cf status to see what is missing.",
       });
     }
-    return new CefenseError(message ?? `${url.pathname} returned ${response.status}.`);
+    if (response.status >= 500) {
+      return new CefenseError(message ?? `Cefense could not finish that request (HTTP ${response.status}).`, {
+        remedy: "Try again in a minute.",
+      });
+    }
+    return new CefenseError(message ?? `Cefense refused that request (HTTP ${response.status}).`);
   }
 
   me(): Promise<MeResponse> {
