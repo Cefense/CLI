@@ -54,16 +54,16 @@ export async function branchesCommand(globals: GlobalOptions): Promise<number> {
         value: (branch) =>
           branch.name === listing.defaultBranch ? `${branch.name} ${c.cyan("*")}` : branch.name,
         min: 12,
-        max: 44,
+        flex: true,
       },
-      { header: "status", value: (branch) => scanStatusLabel(branch.scanStatus), min: 8 },
+      { header: "status", value: (branch) => scanStatusLabel(branch.scanStatus), overflow: "never" },
       {
         header: "findings",
         value: (branch) => (branch.findingCount === null ? c.dim("-") : String(branch.findingCount)),
         align: "right",
         min: 5,
       },
-      { header: "last scan", value: (branch) => c.dim(relativeTime(branch.scannedAt)), min: 9 },
+      { header: "last scan", value: (branch) => c.dim(relativeTime(branch.scannedAt)), overflow: "never" },
     ],
     pipeColumns: [
       { header: "branch", value: (branch) => branch.name },

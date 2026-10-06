@@ -6,7 +6,8 @@ import { openSession, type GlobalOptions, type Session } from "../core/session.j
 import { resolveLinkedProject } from "./link.js";
 import * as out from "../ui/output.js";
 import { spinner } from "../ui/prompts.js";
-import { elapsed, progressBar } from "../ui/format.js";
+import { countOf, durationBetween, formatCount, progressBar } from "../ui/format.js";
+import { hintLines } from "../ui/list.js";
 import { c } from "../ui/theme.js";
 import { isAgentMode } from "../ui/mode.js";
 import { allowanceMessage, assertScanAllowance, type AllowanceNotice } from "../core/allowance.js";
@@ -27,14 +28,18 @@ function terminal(scan: ScanSummary | null): boolean {
   return scan.status === "completed" || scan.status === "failed" || scan.status === "cancelled";
 }
 
-function describe(scan: ScanSummary): string {
-  const stage = (scan.stage ?? scan.status).padEnd(10);
+function describe(scan: ScanSummary, label: string): string {
+  const stage = scan.stage ?? (scan.status === "queued" ? "queued" : "starting");
   const done = scan.filesScanned ?? 0;
   const total = scan.fileCount ?? 0;
-  const bar = total > 0 ? `${progressBar(done, total)}  ${done} / ${total} files` : "starting";
-  const clock = elapsed(scan.createdAt);
-  const findings = scan.findingCount > 0 ? `   ${scan.findingCount} so far` : "";
-  return `${stage} ${bar}   ${clock}${findings}`;
+  const parts = [
+    `Scanning ${label}`,
+    c.dim(stage),
+    total > 0 ? `${c.cyan(progressBar(done, total, 16))} ${c.dim(`${formatCount(done)}/${formatCount(total)} files`)}` : "",
+    c.dim(durationBetween(scan.createdAt)),
+    scan.findingCount > 0 ? c.dim(`${countOf(scan.findingCount, "finding")} so far`) : "",
+  ];
+  return parts.filter(Boolean).join("  ");
 }
 
 export async function watchScan(
@@ -61,7 +66,7 @@ export async function watchScan(
       const { projects } = await client.projects();
       latest = projects.find((project) => project.githubRepoId === githubRepoId)?.scan ?? null;
       if (terminal(latest)) break;
-      progress.message(describe(latest!));
+      progress.message(describe(latest!, label));
       await new Promise((resolve) => setTimeout(resolve, POLL_MS));
     }
   } finally {
@@ -81,7 +86,7 @@ export async function watchScan(
     return latest;
   }
   progress.stop(
-    `Scanned ${label} in ${elapsed(latest.createdAt, latest.finishedAt)} · ${latest.findingCount} ${latest.findingCount === 1 ? "finding" : "findings"}`,
+    `Scanned ${label} in ${durationBetween(latest.createdAt, latest.finishedAt) || "under a second"}, ${countOf(latest.findingCount, "finding")}`,
   );
   reportCoverage(latest);
   return latest;
@@ -98,8 +103,8 @@ function reportCoverage(scan: ScanSummary | null): void {
   if (!isPartialScan(scan)) return;
   out.line();
   out.warn("This scan did not cover the whole repository.");
-  for (const detail of coverageLines(scan)) out.line(`    ${c.dim(detail)}`);
-  out.line(`    ${c.dim("Findings here are a statement about what was read, not about the repository.")}`);
+  for (const detail of coverageLines(scan)) out.line(`  ${c.dim(detail)}`);
+  out.line(`  ${c.dim("Findings here are a statement about what was read, not about the repository.")}`);
 }
 
 /**
@@ -209,12 +214,10 @@ async function scanUrl(
     return 0;
   }
   const scan = await watchScan(session.client, project.githubRepoId, project.fullName);
-  out.line();
   if (scan?.status === "completed") {
-    out.info("Next: review the findings");
-    out.line(`    ${c.dim(`cf reproduced --repo ${project.fullName}`)}`);
-    out.line();
+    out.lines(hintLines([{ command: `cf reproduced --repo ${project.fullName}`, purpose: "read the findings" }]));
   }
+  out.line();
   return scan?.status === "failed" ? 4 : 0;
 }
 
@@ -283,19 +286,20 @@ export async function scanCommand(
   if (options.watch === false) {
     out.success(`Scan queued for ${c.bold(label)}`);
     out.hint(`scan ${scanId}`);
+    out.lines(hintLines([{ command: `cf status --watch`, purpose: "follow it" }]));
     out.line();
     return 0;
   }
 
   const scan = await watchScan(session.client, project.githubRepoId, label);
-  out.line();
   if (scan?.status === "completed" && scan.findingCount > 0) {
-    out.info("Next: review the findings");
-    out.line(
-      `    ${c.dim(`cf reproduced --repo ${project.fullName}${ref ? ` --branch ${ref}` : ""}`)}`,
-    );
-    out.line();
+    const flag = globals.repo ? ` --repo ${project.fullName}` : "";
+    out.lines(hintLines([{ command: `cf reproduced${flag}${ref ? ` --branch ${ref}` : ""}`, purpose: "read the findings" }]));
   }
+  if (scan?.status === "failed") {
+    out.lines(hintLines([{ command: `cf scan${globals.repo ? ` --repo ${project.fullName}` : ""}`, purpose: "try again" }]));
+  }
+  out.line();
   return scan?.status === "failed" ? 4 : 0;
 }
 

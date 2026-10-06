@@ -193,13 +193,13 @@ function headerLines(project: Project): string[] {
     `${(project.coverages ?? []).length} of ${AVAILABLE.length} checks`,
   ]
     .filter(Boolean)
-    .join(c.dim("  ·  "));
+    .join(c.dim(` ${glyph.sep} `));
 
   return [
     "",
-    `  ${c.bold(project.fullName)}   ${c.dim("scan settings")}`,
-    `  ${c.dim(padEnd("Branch", 9))}${project.defaultBranch ?? "default"}`,
-    `  ${c.dim(padEnd("Now", 9))}${summary}`,
+    `${c.bold(project.fullName)} ${c.dim("scan settings")}`,
+    `${c.dim(padEnd("Branch", 8))}${project.defaultBranch ?? "default"}`,
+    `${c.dim(padEnd("Now", 8))}${summary}`,
     "",
   ];
 }
@@ -220,12 +220,12 @@ function optionRows(
 function printSettings(project: Project): void {
   out.lines(headerLines(project));
 
-  out.line(`  ${c.dim("TRIGGER")}`);
+  out.line(c.bold("Trigger"));
   out.lines(optionRows(SCAN_MODES, project.scanMode ?? "manual"));
 
   if (project.scanMode === "scheduled") {
     out.line();
-    out.line(`  ${c.dim("SCHEDULE")}`);
+    out.line(c.bold("Schedule"));
     out.lines(
       optionRows(
         SCAN_INTERVALS.map((entry) => ({ ...entry, detail: entry.id })),
@@ -235,12 +235,12 @@ function printSettings(project: Project): void {
   }
 
   out.line();
-  out.line(`  ${c.dim("DEPTH")}`);
+  out.line(c.bold("Depth"));
   out.lines(optionRows(SCAN_DEPTHS, project.scanDepth ?? "default"));
 
   const active = new Set(project.coverages ?? []);
   out.line();
-  out.line(`  ${c.dim("CHECKS")}`);
+  out.line(c.bold("Checks"));
   out.lines(
     CHECKS.map((check) => {
       const box = !check.available
@@ -254,11 +254,7 @@ function printSettings(project: Project): void {
     }),
   );
 
-  nextSteps([
-    { command: "cf settings mode push", purpose: "change what triggers a scan" },
-    { command: "cf settings depth max", purpose: "change how hard each scan looks" },
-    { command: "cf settings checks sast,sca,secrets", purpose: "change which analyses run" },
-  ]);
+  nextSteps([{ command: "cf settings mode push", purpose: "scan on every push" }]);
   out.line();
 }
 

@@ -75,19 +75,69 @@ export const glyph = {
 };
 
 
-export function scanStatusLabel(status: string | null | undefined): string {
+export type Tone = "done" | "open" | "running" | "queued" | "attention" | "failed" | "none";
+
+const TONES: Record<Tone, { mark: string; style: Style }> = {
+  done: { mark: glyph.check, style: c.green },
+  open: { mark: glyph.ring, style: c.green },
+  running: { mark: glyph.pulse, style: c.cyan },
+  queued: { mark: glyph.ring, style: c.cyan },
+  attention: { mark: glyph.warn, style: c.yellow },
+  failed: { mark: glyph.cross, style: c.red },
+  none: { mark: glyph.track, style: c.dim },
+};
+
+export function toneStyle(tone: Tone): Style {
+  return TONES[tone].style;
+}
+
+export function toneMark(tone: Tone): string {
+  return TONES[tone].style(TONES[tone].mark);
+}
+
+export function badge(tone: Tone, label: string): string {
+  return TONES[tone].style(`${TONES[tone].mark} ${label}`);
+}
+
+export function stateWord(tone: Tone, label: string): string {
+  const word = label.charAt(0).toUpperCase() + label.slice(1);
+  return tone === "none" ? c.dim(word) : badge(tone, word);
+}
+
+export function scanTone(status: string | null | undefined): Tone {
   switch (status) {
     case "queued":
-      return c.cyan(`${glyph.ring} queued`);
+      return "queued";
     case "running":
-      return c.cyan(`${glyph.pulse} scanning`);
+      return "running";
     case "completed":
-      return c.green(`${glyph.check} ready`);
+      return "done";
     case "failed":
-      return c.red(`${glyph.cross} failed`);
+      return "failed";
     case "cancelled":
-      return c.yellow(`${glyph.cross} cancelled`);
+      return "attention";
     default:
-      return c.dim(`${glyph.track} never`);
+      return "none";
   }
+}
+
+export function scanWord(status: string | null | undefined): string {
+  switch (status) {
+    case "queued":
+      return "queued";
+    case "running":
+      return "scanning";
+    case "completed":
+      return "ready";
+    case "failed":
+      return "failed";
+    case "cancelled":
+      return "cancelled";
+    default:
+      return "never";
+  }
+}
+
+export function scanStatusLabel(status: string | null | undefined): string {
+  return badge(scanTone(status), scanWord(status));
 }

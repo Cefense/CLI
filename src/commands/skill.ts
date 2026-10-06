@@ -10,7 +10,8 @@ import { isAgentMode } from "../ui/mode.js";
 import * as out from "../ui/output.js";
 import { confirm } from "../ui/prompts.js";
 import { renderTable } from "../ui/table.js";
-import { c, glyph } from "../ui/theme.js";
+import { badge, c, glyph } from "../ui/theme.js";
+import { hintLines } from "../ui/list.js";
 
 const BLOCK_START = "<!-- cefense:start -->";
 const BLOCK_END = "<!-- cefense:end -->";
@@ -495,25 +496,19 @@ export async function skillList(globals: GlobalOptions): Promise<number> {
     renderTable(
       rows,
       [
-        { header: "agent", value: (row) => row.target.id, min: 12 },
-        { header: "writes", value: (row) => c.dim(row.target.path), min: 24 },
+        { header: "agent", value: (row) => row.target.id },
+        { header: "writes", value: (row) => c.dim(row.target.path), flex: true, overflow: "path" },
         {
           header: "here",
           value: (row) =>
-            row.installed
-              ? c.green(`${glyph.check} installed`)
-              : row.detected
-                ? c.yellow("detected")
-                : c.dim(""),
-          min: 12,
+            row.installed ? badge("done", "installed") : row.detected ? badge("open", "detected") : "",
+          overflow: "never",
         },
       ],
-      { width: terminalWidth() - 4 },
-    ).map((line) => `  ${line}`),
+      { width: terminalWidth() },
+    ),
   );
-  out.line();
-  out.info("Install into every agent detected here");
-  out.line(`    ${c.dim("cf skill install")}`);
+  out.lines(hintLines([{ command: "cf skill install", purpose: "install into every agent detected here" }]));
   out.line();
   return 0;
 }

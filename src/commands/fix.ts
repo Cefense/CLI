@@ -3,7 +3,7 @@ import type { Finding, Fix, Project } from "../core/types.js";
 import { printGrouped } from "../ui/list.js";
 import { resolveLinkedProject } from "./link.js";
 import * as out from "../ui/output.js";
-import { shortId } from "../ui/format.js";
+import { pathFloor, relativeTime, shortId, terminalWidth } from "../ui/format.js";
 import { c, displaySeverity, severityColor, severityRank } from "../ui/theme.js";
 import { isAgentMode } from "../ui/mode.js";
 import { FIX_ROW, compactFix } from "../core/compact.js";
@@ -61,57 +61,58 @@ export async function fixCommand(globals: GlobalOptions): Promise<number> {
     { key: "opened", label: "Pull request open", tint: c.green },
     { key: "merged", label: "Merged", tint: c.green },
     { key: "publishing", label: "Publishing", tint: c.cyan },
-    { key: "generating", label: "Generating", tint: c.cyan },
+    { key: "generating", label: "Writing", tint: c.cyan },
     { key: "failed", label: "Failed", tint: c.red },
-    { key: "closed", label: "Closed", tint: c.yellow },
+    { key: "skipped", label: "No automatic patch", tint: c.yellow },
+    { key: "closed", label: "Closed without merging", tint: c.yellow },
     { key: "none", label: "No patch yet", tint: c.dim },
   ];
 
+  const flag = globals.repo ? ` --repo ${project.fullName}` : "";
   const ready = rows.find((row) => row.fix?.status === "ready");
+  const opened = rows.find((row) => row.fix?.status === "opened");
   const bare = rows.find((row) => !row.fix);
-  const next: Array<{ command: string; purpose: string }> = [];
-  if (bare) {
-    next.push({
-      command: `cf fix generate ${shortId(bare.finding.id)}`,
-      purpose: "write a patch for a finding",
-    });
-  }
-  if (ready) {
-    next.push({
-      command: `cf fix show ${shortId(ready.finding.id)}`,
-      purpose: "read the patch before publishing",
-    });
-    next.push({
-      command: `cf fix publish ${shortId(ready.finding.id)}`,
-      purpose: "open a pull request with it",
-    });
-  }
+  const patched = rows.filter((row) => row.fix).length;
+  const next: Array<{ command: string; purpose: string }> = ready
+    ? [{ command: `cf fix show ${shortId(ready.finding.id)}${flag}`, purpose: "read a patch before publishing it" }]
+    : opened
+      ? [{ command: `cf fix show ${shortId(opened.finding.id)}${flag}`, purpose: "read an open pull request's patch" }]
+      : bare
+        ? [{ command: `cf fix generate ${shortId(bare.finding.id)}${flag}`, purpose: "write a patch for the most severe finding" }]
+        : [];
 
   printGrouped<Row>({
     noun: "finding",
     scope: project.fullName,
-    footnote: `${rows.filter((row) => row.fix).length} of ${rows.length} have a patch.`,
+    footnote: `${patched} of ${rows.length} have a patch.`,
     groups: groups.map((group) => ({
       label: group.label,
       tint: group.tint,
       rows: rows.filter((row) => (row.fix?.status ?? "none") === group.key),
+      collapsed: group.key === "none" ? `run cf reproduced${flag} to see them` : undefined,
     })),
     columns: [
-      { header: "id", value: (row) => c.dim(shortId(row.finding.id)), min: 8, max: 8 },
+      { header: "id", value: (row) => c.dim(shortId(row.finding.id)), overflow: "never" },
       {
         header: "severity",
         value: (row) =>
           severityColor(row.finding.severity)(displaySeverity(row.finding.severity).toLowerCase()),
-        min: 8,
-        max: 8,
+        overflow: "never",
       },
-      { header: "file", value: (row) => row.finding.filePath, min: 16, max: 34 },
-      { header: "title", value: (row) => row.finding.title, min: 28 },
+      { header: "title", value: (row) => row.finding.title, flex: true, min: 16 },
+      {
+        header: "file",
+        value: (row) => row.finding.filePath,
+        max: 40,
+        min: pathFloor(rows.map((row) => row.finding.filePath), Math.round(terminalWidth() / 4)),
+        overflow: "path",
+      },
       {
         header: "pr",
         value: (row) => (row.fix?.prNumber ? c.cyan(`#${row.fix.prNumber}`) : ""),
-        min: 1,
+        overflow: "never",
       },
+      { header: "updated", value: (row) => (row.fix ? c.dim(relativeTime(row.fix.updatedAt)) : ""), overflow: "never" },
     ],
     pipeColumns: [
       { header: "severity", value: (row) => displaySeverity(row.finding.severity).toLowerCase() },

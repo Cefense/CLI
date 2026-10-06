@@ -11,10 +11,11 @@ import type {
   PlanDefinition,
 } from "../core/types.js";
 import * as out from "../ui/output.js";
-import { keyValue } from "../ui/table.js";
-import { nextSteps } from "../ui/list.js";
-import { absoluteDate, progressBar, relativeTime } from "../ui/format.js";
-import { c, glyph } from "../ui/theme.js";
+import { details } from "../ui/table.js";
+import { hintLines, nextSteps } from "../ui/list.js";
+import { absoluteDate, formatCount, progressBar, relativeTime } from "../ui/format.js";
+import { c, stateWord, toneMark, type Tone } from "../ui/theme.js";
+import { joinDots, titleLine } from "../ui/detail.js";
 import { isAgentMode } from "../ui/mode.js";
 import { openIfRequested } from "../ui/open.js";
 
@@ -82,14 +83,6 @@ function statusLabel(status: BillingStatus): string {
 
 function intervalLabel(interval: BillingInterval): string {
   return interval === "year" ? "yearly" : "monthly";
-}
-
-function statusTint(billing: BillingResponse): (value: string) => string {
-  const { status } = billing.subscription;
-  if (status === "past_due" || status === "unpaid" || status === "incomplete") return c.yellow;
-  if (billing.usage.exhausted) return c.red;
-  if (billing.subscription.entitled) return c.green;
-  return c.dim;
 }
 
 function definitionOf(billing: BillingResponse, plan: BillingPlan): PlanDefinition | null {
@@ -212,8 +205,8 @@ function seatsLine(billing: BillingResponse): string {
   const { subscription } = billing;
   const included = definitionOf(billing, subscription.plan)?.seatsIncluded ?? subscription.seats;
   const extra = subscription.extraSeats;
-  return `${subscription.seats}   ${c.dim(
-    extra > 0 ? `${included} included, ${extra} extra` : `${included} included`,
+  return `${subscription.seats} ${c.dim(
+    extra > 0 ? `(${included} included, ${extra} extra)` : `(${included} included)`,
   )}`;
 }
 
@@ -258,68 +251,73 @@ function periodRow(billing: BillingResponse): [string, string] {
   ];
 }
 
+function planTone(billing: BillingResponse): Tone {
+  const { status } = billing.subscription;
+  if (status === "past_due" || status === "unpaid" || status === "incomplete") return "attention";
+  if (billing.usage.exhausted) return "failed";
+  if (billing.subscription.entitled) return "done";
+  return "none";
+}
+
 function printPlan(billing: BillingResponse, organization: string | null): void {
   const { subscription, usage } = billing;
   const definition = definitionOf(billing, subscription.plan);
-  const tint = statusTint(billing);
+  const lines: string[] = [];
 
-  out.line();
-  out.line(
-    `  ${c.bold(definition?.name ?? subscription.plan)}   ${tint(
-      `${glyph.dot} ${statusLabel(subscription.status)}`,
-    )}${subscription.entitled ? c.dim(`, billed ${intervalLabel(subscription.interval)}`) : ""}${
-      organization ? c.dim(`   ${organization}`) : ""
-    }`,
+  lines.push(titleLine(`${definition?.name ?? subscription.plan} plan`, organization));
+  lines.push(
+    joinDots([
+      stateWord(planTone(billing), statusLabel(subscription.status)),
+      subscription.entitled ? `billed ${intervalLabel(subscription.interval)}` : null,
+      definition?.tagline ? c.dim(definition.tagline) : null,
+    ]),
   );
-  if (definition?.tagline) out.line(`  ${c.dim(definition.tagline)}`);
-  out.line();
+  lines.push("");
 
-  const rows: Array<[string, string]> = [
-    ["seats", seatsLine(billing)],
-    ["usage", usageLine(billing)],
-    ["scans", String(usage.scans)],
-    periodRow(billing),
-    renewalRow(billing),
-  ];
-  if (definition) {
-    rows.splice(1, 0, [
-      "repositories",
-      definition.repositories === null ? "unlimited" : String(definition.repositories),
-    ]);
-    rows.push([
-      "max depth",
-      definition.maxDepthRuns === null
-        ? "unlimited"
-        : definition.maxDepthRuns === 0
-          ? c.dim("not included")
-          : `${definition.maxDepthRuns} scans a month`,
-    ]);
-  }
-  out.lines(keyValue(rows).map((row) => `  ${row}`));
+  const [renewLabel, renewValue] = renewalRow(billing);
+  lines.push(
+    ...details([
+      ["Usage", usageLine(billing)],
+      ["Scans", `${formatCount(usage.scans)} this period`],
+      ["Period", periodRow(billing)[1]],
+      [renewLabel.charAt(0).toUpperCase() + renewLabel.slice(1), renewValue],
+      ["Seats", seatsLine(billing)],
+      [
+        "Repositories",
+        definition ? (definition.repositories === null ? "unlimited" : String(definition.repositories)) : null,
+      ],
+      [
+        "Max depth",
+        definition
+          ? definition.maxDepthRuns === null
+            ? "unlimited"
+            : definition.maxDepthRuns === 0
+              ? c.dim("not included")
+              : `${definition.maxDepthRuns} scans a month`
+          : null,
+      ],
+    ]),
+  );
 
   if (!isUnlimited(billing)) {
     const percent = percentOf(billing);
     const bar = progressBar(percent, 100, 32);
     const tone = usage.exhausted ? c.red : percent >= 80 ? c.yellow : c.cyan;
-    out.line();
-    out.line(`  ${tone(bar)}   ${c.dim(`${Math.max(0, 100 - percent)}% left`)}`);
+    lines.push("", `${tone(bar)}  ${c.dim(`${Math.max(0, 100 - percent)}% left`)}`);
   }
 
+  const warnings: string[] = [];
   if (usage.exhausted) {
-    out.line();
-    out.warn(
+    warnings.push(
       subscription.plan === "free"
         ? "The free grant is spent. Scans are paused until you choose a plan."
         : "The allowance for this period is spent. Scans are paused until it resets or the plan changes.",
     );
   }
-  if (subscription.cancelAtPeriodEnd) {
-    out.line();
-    out.warn("This subscription is set to end and will not renew.");
-  }
-  if (!billing.configured) {
-    out.line();
-    out.warn("Billing is not configured on this deployment, so nothing can be bought here.");
+  if (subscription.cancelAtPeriodEnd) warnings.push("This subscription is set to end and will not renew.");
+  if (!billing.configured) warnings.push("Billing is not configured on this deployment, so nothing can be bought here.");
+  if (warnings.length > 0) {
+    lines.push("", ...warnings.map((warning) => `${toneMark("attention")} ${warning}`));
   }
 
   const steps: Array<{ command: string; purpose: string }> = [];
@@ -328,14 +326,13 @@ function printPlan(billing: BillingResponse, organization: string | null): void 
     steps.push({ command: `cf plan upgrade ${above}`, purpose: "move up a plan" });
   }
   if (subscription.hasCustomer && billing.configured) {
-    steps.push({ command: "cf plan portal", purpose: "invoices, payment method, cancel" });
+    steps.push({ command: "cf plan portal", purpose: "manage invoices, the payment method, or cancel" });
   }
   if (!billing.canAdminister && steps.length > 0) {
-    out.line();
-    out.hint("Only an owner or admin of this organization can change what it pays.");
+    lines.push("", c.dim("Only an owner or admin of this organization can change what it pays."));
   }
-  nextSteps(steps);
-  out.line();
+  lines.push(...hintLines(steps), "");
+  out.lines(lines);
 }
 
 export async function planShow(globals: GlobalOptions): Promise<number> {

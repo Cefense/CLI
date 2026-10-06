@@ -1,50 +1,100 @@
 import type { Fix } from "../core/types.js";
-import { STATUS_WORDS, type FindingStatus } from "../core/findingStatus.js";
-import { shortId, wrapText } from "../ui/format.js";
-import { c, glyph } from "../ui/theme.js";
+import type { FindingStatus, StatusKind } from "../core/findingStatus.js";
+import { relativeTime, truncate, wrapText } from "../ui/format.js";
+import { BODY_INDENT, heading, joinDots, readingWidth } from "../ui/detail.js";
+import { badge, c, glyph, stateWord, type Tone } from "../ui/theme.js";
 
-export function fixLabel(fix: Fix | null): string {
-  if (!fix) return c.dim("no fix yet");
+function pr(prNumber: number | null | undefined, rest: string, bare: string): string {
+  return prNumber ? `PR #${prNumber} ${rest}` : bare;
+}
+
+export function fixTone(fix: Fix | null): Tone {
+  if (!fix) return "none";
   switch (fix.status) {
     case "generating":
-      return c.cyan(`${glyph.pulse} generating`);
-    case "ready":
-      return c.green(`${glyph.check} fix ready`);
     case "publishing":
-      return c.cyan(`${glyph.pulse} publishing`);
+      return "running";
+    case "ready":
     case "opened":
-      return c.green(fix.prNumber ? `${glyph.check} PR #${fix.prNumber}` : `${glyph.check} PR open`);
+      return "open";
     case "merged":
-      return c.green(fix.prNumber ? `${glyph.check} PR #${fix.prNumber} merged` : `${glyph.check} merged`);
+      return "done";
     case "closed":
-      return c.yellow(fix.prNumber ? `${glyph.ring} PR #${fix.prNumber} closed` : `${glyph.ring} PR closed`);
+    case "skipped":
+      return "attention";
     case "failed":
-      return c.red(`${glyph.cross} fix failed`);
+      return "failed";
     default:
-      return c.dim(fix.status);
+      return "none";
   }
 }
 
-export function statusLabel(status: FindingStatus, prNumber?: number | null): string {
-  const word = STATUS_WORDS[status.kind];
-  switch (status.kind) {
-    case "working":
-      return c.cyan(`${glyph.pulse} ${word}`);
+export function fixWord(fix: Fix | null): string {
+  if (!fix) return "no patch yet";
+  switch (fix.status) {
+    case "generating":
+      return "writing patch";
     case "ready":
-      return c.green(`${glyph.ring} ${word}`);
-    case "proven":
-      return c.green(`${glyph.check} ${word}`);
-    case "pr":
-      return c.green(prNumber ? `${glyph.check} PR #${prNumber} open` : `${glyph.check} ${word}`);
+      return "patch ready";
+    case "publishing":
+      return "opening PR";
+    case "opened":
+      return pr(fix.prNumber, "open", "PR open");
     case "merged":
-      return c.green(prNumber ? `${glyph.check} PR #${prNumber} merged` : `${glyph.check} ${word}`);
-    case "refuted":
-      return c.red(`${glyph.cross} ${word}`);
-    case "review":
-      return c.yellow(`${glyph.warn} ${word}`);
+      return pr(fix.prNumber, "merged", "merged");
+    case "closed":
+      return pr(fix.prNumber, "closed", "PR closed");
+    case "failed":
+      return "patch failed";
+    case "skipped":
+      return "no automatic patch";
     default:
-      return c.dim(word);
+      return fix.status;
   }
+}
+
+export function fixLabel(fix: Fix | null): string {
+  return badge(fixTone(fix), fixWord(fix));
+}
+
+const KIND_TONES: Record<StatusKind, Tone> = {
+  none: "none",
+  working: "running",
+  ready: "open",
+  proven: "done",
+  pr: "open",
+  merged: "done",
+  refuted: "failed",
+  review: "attention",
+};
+
+const KIND_WORDS: Record<StatusKind, string> = {
+  none: "no patch yet",
+  working: "in progress",
+  ready: "patch ready",
+  proven: "proven",
+  pr: "PR open",
+  merged: "merged",
+  refuted: "not fixed",
+  review: "needs review",
+};
+
+export function statusTone(status: FindingStatus): Tone {
+  return KIND_TONES[status.kind];
+}
+
+export function statusWord(status: FindingStatus, prNumber?: number | null): string {
+  if (status.kind === "pr") return pr(prNumber, "open", KIND_WORDS.pr);
+  if (status.kind === "merged") return pr(prNumber, "merged", KIND_WORDS.merged);
+  return KIND_WORDS[status.kind];
+}
+
+export function statusLabel(status: FindingStatus, prNumber?: number | null): string {
+  return badge(statusTone(status), statusWord(status, prNumber));
+}
+
+export function statusState(status: FindingStatus, prNumber?: number | null): string {
+  return stateWord(statusTone(status), statusWord(status, prNumber));
 }
 
 export function behaviorLine(fix: Fix): string | null {
@@ -57,72 +107,79 @@ export function behaviorLine(fix: Fix): string | null {
   return null;
 }
 
-export function renderDiff(diff: string): string[] {
-  return diff.split("\n").map((line) => {
-    if (line.startsWith("+++") || line.startsWith("---")) return c.dim(line);
-    if (line.startsWith("@@")) return c.cyan(line);
-    if (line.startsWith("+")) return c.green(line);
-    if (line.startsWith("-")) return c.red(line);
-    return line;
-  });
+export function renderDiff(diff: string, width?: number): string[] {
+  return diff
+    .replace(/\s+$/, "")
+    .split("\n")
+    .map((raw) => {
+      const line = raw.replace(/\t/g, "  ");
+      const clipped = width ? truncate(line, width) : line;
+      if (line.startsWith("+++") || line.startsWith("---")) return c.dim(clipped);
+      if (line.startsWith("@@")) return c.cyan(clipped);
+      if (line.startsWith("+")) return c.green(clipped);
+      if (line.startsWith("-")) return c.red(clipped);
+      return clipped;
+    });
 }
 
-export function renderFixSection(fix: Fix | null, width: number, findingId?: string): string[] {
-  const lines: string[] = [];
-  const head = (value = "") => lines.push(value);
-  const push = (value = "") => lines.push(value ? `  ${value}` : "");
-  const body = Math.min(96, width - 2);
-  const marker = findingId ? shortId(findingId) : "<finding-id>";
+export function fixFiles(fix: Fix): string[] {
+  const files = (fix.files ?? []).map((file) => file.path);
+  return files.length > 0 ? files : [fix.filePath];
+}
 
-  head();
-  head(c.bold("Fix"));
+export function fixSummary(fix: Fix): string {
+  const files = fixFiles(fix);
+  return joinDots([
+    fixLabel(fix),
+    files.length > 1 ? `${files.length} files` : files[0],
+    c.dim(`base ${fix.baseSha.slice(0, 7)}`),
+    c.dim(relativeTime(fix.updatedAt)),
+  ]);
+}
+
+export function renderFixSection(fix: Fix | null, width: number, status?: FindingStatus): string[] {
+  const body = readingWidth(width);
+  const lines: string[] = ["", heading("Fix")];
+  const push = (value = "") => lines.push(value ? `${BODY_INDENT}${value}` : "");
 
   if (!fix) {
     push(c.dim("No patch has been generated."));
-    push(c.dim(`cf fix generate ${marker}`));
     return lines;
   }
 
-  const files = (fix.files ?? []).map((file) => file.path);
-  push(
-    c.dim(
-      files.length > 1
-        ? `${files.length} files ${glyph.sep} base ${fix.baseSha.slice(0, 7)}`
-        : `${fix.filePath} ${glyph.sep} base ${fix.baseSha.slice(0, 7)}`,
-    ),
-  );
-  if (files.length > 1) for (const path of files) push(c.dim(`  ${path}`));
-  push();
+  push(fixSummary(fix));
+  if (status && status.kind !== "none") push(c.dim(status.title));
 
   if (fix.status === "failed") {
-    push(c.red(fix.error ?? "Generation failed."));
-    push(c.dim(`cf fix generate ${marker}`));
+    push();
+    push(c.red(fix.error ?? "The patch could not be written."));
     return lines;
   }
   if (fix.status === "generating" || fix.status === "publishing") {
-    push(c.cyan(`${fix.status}, this can take a minute.`));
-    push(c.dim(`cf fix show ${marker}`));
+    push();
+    push(c.cyan(fix.status === "generating" ? "Writing the patch, this can take a minute." : "Opening the pull request."));
     return lines;
   }
 
   if (fix.diff) {
-    for (const line of renderDiff(fix.diff).slice(0, 120)) push(line);
     push();
+    const diff = renderDiff(fix.diff, body);
+    for (const line of diff.slice(0, 120)) push(line);
+    if (diff.length > 120) push(c.dim(`${diff.length - 120} more lines, run cf fix show to read the whole patch`));
   }
   if (fix.explanation) {
-    for (const wrapped of wrapText(fix.explanation, body)) push(c.dim(wrapped));
     push();
+    for (const wrapped of wrapText(fix.explanation, body)) push(wrapped);
   }
   const behavior = behaviorLine(fix);
   if (behavior) {
+    push();
     push(behavior);
     if (fix.behaviorNote) for (const wrapped of wrapText(fix.behaviorNote, body - 2)) push(c.dim(`  ${wrapped}`));
-    push();
   }
   if (fix.prUrl) {
-    push(`${c.dim("pull request")}  ${c.cyan(fix.prUrl)}`);
-  } else {
-    push(c.dim(`cf fix publish ${marker}   open a pull request with this patch`));
+    push();
+    push(`${c.dim("Pull request")}  ${fix.prUrl}`);
   }
   return lines;
 }

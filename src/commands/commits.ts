@@ -84,12 +84,12 @@ export async function commitsCommand(
     rows: commits,
     columns: [
       { header: "commit", value: (commit) => c.dim(commit.sha.slice(0, 7)), min: 7, max: 7 },
-      { header: "subject", value: subject, min: 20 },
+      { header: "subject", value: subject, min: 20, flex: true },
       {
         header: "author",
         value: (commit) => c.dim(commit.authorLogin ?? commit.authorName),
         min: 8,
-        max: 18,
+        max: 20,
       },
       {
         header: "findings",
@@ -97,8 +97,8 @@ export async function commitsCommand(
         align: "right",
         min: 5,
       },
-      { header: "delta", value: delta, min: 9 },
-      { header: "when", value: (commit) => c.dim(relativeTime(commit.committedAt)), min: 9 },
+      { header: "delta", value: delta, overflow: "never" },
+      { header: "when", value: (commit) => c.dim(relativeTime(commit.committedAt)), overflow: "never" },
     ],
     pipeColumns: [
       { header: "commit", value: (commit) => commit.sha },
@@ -121,7 +121,7 @@ export async function commitsCommand(
       ? [
           {
             command: `cf reproduced --scan ${scanned.scanId}`,
-            purpose: `findings at ${scanned.sha.slice(0, 7)}`,
+            purpose: `read the findings at ${scanned.sha.slice(0, 7)}`,
           },
         ]
       : [],

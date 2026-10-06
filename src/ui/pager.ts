@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { terminalHeight } from "./format.js";
+import { sanitizeForTerminal, terminalHeight } from "./format.js";
 import { isAgentMode } from "./mode.js";
 import { isPiped, lines } from "./output.js";
 
@@ -29,7 +29,7 @@ export function page(content: string[]): void {
   }
 
   const result = spawnSync(command[0]!, command.slice(1), {
-    input: `${content.join("\n")}\n`,
+    input: `${content.map(sanitizeForTerminal).join("\n")}\n`,
     stdio: ["pipe", "inherit", "inherit"],
     env: { ...process.env, LESSCHARSET: "utf-8" },
   });

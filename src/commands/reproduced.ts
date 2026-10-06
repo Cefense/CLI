@@ -3,12 +3,24 @@ import { UsageError } from "../core/errors.js";
 import type { Finding, Fix, Project } from "../core/types.js";
 import type { Session } from "../core/session.js";
 import { blobUrl, providerLabel, providerOf } from "../core/providers.js";
-import { printGrouped } from "../ui/list.js";
+import { hintLine, printGrouped, type NextStep } from "../ui/list.js";
 import { resolveBranch, resolveLinkedProject } from "./link.js";
-import { renderFixSection, statusLabel } from "./fixactions.js";
+import { renderFixSection, statusLabel, statusState } from "./fixactions.js";
 import * as out from "../ui/output.js";
-import { relativeTime, shortId, terminalWidth, wrapText } from "../ui/format.js";
-import { c, displaySeverity, glyph, severityColor, severityRank } from "../ui/theme.js";
+import { datedLabel, pathFloor, shortId, terminalWidth } from "../ui/format.js";
+import { c, displaySeverity, glyph, severityColor, severityRank, toneMark } from "../ui/theme.js";
+import { details } from "../ui/table.js";
+import {
+  BODY_INDENT,
+  codeBlock,
+  heading,
+  indent,
+  joinDots,
+  paragraph,
+  readingWidth,
+  titleLine,
+  viewOn,
+} from "../ui/detail.js";
 import { isAgentMode } from "../ui/mode.js";
 import { FINDING_ROW, compactFinding, compactFindingDetail, coverageEnvelope, progressOf } from "../core/compact.js";
 import { REACHABILITY_LEDES, isReachabilityVerdict, reachabilityLabel, statusFor } from "../core/findingStatus.js";
@@ -74,16 +86,36 @@ function rowStatus(row: Row): string {
   return statusLabel(statusFor(progress), progress.fix?.prNumber ?? null);
 }
 
+function listStatus(row: Row): string {
+  const progress = progressOf(row.finding, row.fix);
+  const status = statusFor(progress);
+  return status.kind === "none" ? "" : statusLabel(status, progress.fix?.prNumber ?? null);
+}
+
+function fileFloor(rows: Row[], width: number): number {
+  return pathFloor(rows.map((row) => locationOf(row.finding)), Math.round(width / 4));
+}
+
+function reachStyle(finding: Finding): (value: string) => string {
+  if (finding.reachability === "reachable") return c.red;
+  if (finding.reachability === "imported") return c.yellow;
+  return c.dim;
+}
+
 function reachCell(finding: Finding, full = false): string {
-  const label = full ? reachabilityLabel(finding.reachability)?.toLowerCase() : finding.reachability;
-  if (!label || !isReachabilityVerdict(finding.reachability)) return c.dim("-");
-  if (finding.reachability === "reachable") return c.red(label);
-  if (finding.reachability === "imported") return c.yellow(label);
-  return c.dim(label);
+  if (!isReachabilityVerdict(finding.reachability)) return c.dim("-");
+  const label = full ? reachabilityLabel(finding.reachability) ?? finding.reachability : finding.reachability;
+  return reachStyle(finding)(label);
 }
 
 function locationOf(finding: Finding): string {
   return finding.startLine ? `${finding.filePath}:${finding.startLine}` : finding.filePath;
+}
+
+function spanOf(finding: Finding): string {
+  if (!finding.startLine) return finding.filePath;
+  const end = finding.endLine && finding.endLine !== finding.startLine ? `-${finding.endLine}` : "";
+  return `${finding.filePath}:${finding.startLine}${end}`;
 }
 
 function sourceUrlFor(project: Project, finding: Finding, ref?: string | null): string | null {
@@ -94,147 +126,152 @@ function sourceUrlFor(project: Project, finding: Finding, ref?: string | null): 
   });
 }
 
-function renderDetail(project: Project, row: Row, width: number, ref?: string | null): string[] {
-  const finding = row.finding;
-  const wrap = Math.min(96, width - 2);
-  const lines: string[] = [];
-  const head = (value = "") => lines.push(value);
-  const body = (value = "") => lines.push(value ? `  ${value}` : "");
-  const dotted = (parts: Array<string | null | undefined>) =>
-    parts.filter(Boolean).join(c.dim(` ${glyph.sep} `));
+function repoFlag(globals: GlobalOptions, project: Project): string {
+  return globals.repo ? ` --repo ${project.fullName}` : "";
+}
 
-  head(`${c.bold(finding.title)} ${c.dim(shortId(finding.id))}`);
-  head(
-    dotted([
+function originLabel(origin: NonNullable<Finding["introducedIn"]>): string {
+  return `${origin.sha.slice(0, 7)} by ${origin.authorName}, ${datedLabel(origin.committedAt)}`;
+}
+
+function originLine(dependency: NonNullable<Finding["dependency"]>): string {
+  if (dependency.direct === true) return "Declared by this project";
+  if (dependency.direct === false) return "Pulled in by another package";
+  return "Not established";
+}
+
+function detailNext(finding: Finding, fix: Fix | null, flag: string): NextStep {
+  const id = shortId(finding.id);
+  if (!fix) return { command: `cf fix generate ${id}${flag}`, purpose: "write a patch for this finding" };
+  if (fix.status === "ready") return { command: `cf fix publish ${id}${flag}`, purpose: "open a pull request with this patch" };
+  if (fix.status === "failed") return { command: `cf fix generate ${id}${flag}`, purpose: "try writing the patch again" };
+  if (fix.status === "opened" && fix.prUrl) return { command: `cf fix merge ${id}${flag}`, purpose: "merge the pull request" };
+  return { command: `cf fix show ${id}${flag}`, purpose: "read the patch" };
+}
+
+function renderDetail(
+  project: Project,
+  row: Row,
+  width: number,
+  ref: string | null | undefined,
+  flag: string,
+): string[] {
+  const finding = row.finding;
+  const wrap = readingWidth(width);
+  const status = statusFor(progressOf(finding, row.fix));
+  const lines: string[] = [];
+  const push = (...values: string[]) => lines.push(...values);
+
+  push(titleLine(finding.title, shortId(finding.id)));
+  push(
+    joinDots([
       severityColor(finding.severity)(displaySeverity(finding.severity)),
-      locationOf(finding),
-      finding.ruleId,
-      finding.confidence !== null ? `confidence ${finding.confidence.toFixed(2)}` : null,
-      finding.symbol ? `in ${finding.symbol}` : null,
+      isReachabilityVerdict(finding.reachability) ? reachCell(finding, true) : null,
+      statusState(status, row.fix?.prNumber ?? null),
     ]),
   );
-  const refs = dotted([
-    finding.cveId ? c.yellow(finding.cveId) : null,
-    finding.cwe ? c.yellow(finding.cwe) : null,
-    finding.category,
-    finding.state && finding.state !== "CANDIDATE" ? finding.state.toLowerCase() : null,
-    finding.introducedIn
-      ? `introduced in ${finding.introducedIn.sha.slice(0, 7)} by ${finding.introducedIn.authorName}, ${relativeTime(finding.introducedIn.committedAt)}`
-      : null,
-  ]);
-  if (refs) head(c.dim(refs));
+  push("");
+  push(
+    ...details([
+      ["Location", `${spanOf(finding)}${finding.symbol ? c.dim(` in ${finding.symbol}`) : ""}`],
+      ["Category", finding.category],
+      ["Advisory", finding.cveId],
+      ["Weakness", finding.cwe],
+      ["Rule", finding.ruleId],
+      ["Confidence", finding.confidence !== null ? finding.confidence.toFixed(2) : null],
+      ["State", finding.state && finding.state !== "CANDIDATE" ? finding.state.toLowerCase() : null],
+      ["Introduced", finding.introducedIn ? originLabel(finding.introducedIn) : null],
+      ["Found", datedLabel(finding.createdAt)],
+    ]),
+  );
 
-  if (finding.description) {
-    head();
-    for (const wrapped of wrapText(finding.description, wrap)) body(wrapped);
-  }
+  if (finding.description) push("", ...paragraph(finding.description, wrap));
 
   if (finding.vulnerableCode?.trim()) {
-    head();
-    head(c.bold("Code"));
-    const start = finding.startLine ?? 1;
-    finding.vulnerableCode
-      .split("\n")
-      .slice(0, 20)
-      .forEach((codeLine, index) => {
-        body(`${c.dim(String(start + index).padStart(4))} ${c.dim("|")} ${codeLine}`);
-      });
+    push("", heading("Code"), ...codeBlock(finding.vulnerableCode, finding.startLine, wrap));
   }
 
   if (finding.dependency) {
     const dependency = finding.dependency;
-    head();
-    head(c.bold("Package"));
-    body(`${c.dim("package")}    ${dependency.name} ${c.dim(`(${dependency.ecosystem})`)}`);
-    body(`${c.dim("installed")}  ${dependency.installedVersion}`);
-    body(`${c.dim("fixed in")}   ${dependency.fixedVersion ?? "No fixed release published yet"}`);
-    body(
-      `${c.dim("origin")}     ${
-        dependency.direct === true
-          ? "Declared by this project"
-          : dependency.direct === false
-            ? "Pulled in by another package"
-            : "Not established"
-      }`,
+    push("", heading("Package"));
+    push(
+      ...indent(
+        details([
+          ["Package", `${dependency.name} ${c.dim(`(${dependency.ecosystem})`)}`],
+          ["Installed", dependency.installedVersion],
+          ["Fixed in", dependency.fixedVersion ?? c.dim("no fixed release published yet")],
+          ["Origin", originLine(dependency)],
+          [
+            "Required by",
+            dependency.direct === false && dependency.requiredBy.length > 0
+              ? dependency.requiredBy.slice(0, 5).join(", ")
+              : null,
+          ],
+        ]),
+      ),
     );
-    if (dependency.direct === false && dependency.requiredBy.length > 0) {
-      body(`${c.dim("required by")} ${dependency.requiredBy.slice(0, 5).join(", ")}`);
-    }
-    for (const chain of dependency.paths.slice(0, 3)) {
-      body(c.dim(`  ${chain.join(` ${glyph.arrow} `)}`));
+    for (const chain of dependency.paths.filter((entry) => entry.length > 1).slice(0, 3)) {
+      push(`${BODY_INDENT}${c.dim(chain.join(` ${glyph.arrow} `))}`);
     }
   }
 
   if (isReachabilityVerdict(finding.reachability)) {
     const evidence = finding.reachabilityEvidence;
-    head();
-    head(`${c.bold("Reachability")}  ${reachCell(finding, true)}`);
-    for (const wrapped of wrapText(evidence?.why ?? REACHABILITY_LEDES[finding.reachability], wrap)) body(wrapped);
+    push("", heading("Reachability"));
+    push(...paragraph(evidence?.why ?? REACHABILITY_LEDES[finding.reachability], wrap));
     const path = evidence?.path ?? [];
     if (path.length > 1) {
       for (const step of path) {
-        body(`  ${c.dim(glyph.arrow)} ${step.path}${step.symbol ? c.dim(` ${step.symbol}`) : ""}`);
+        push(`${BODY_INDENT}${c.dim(glyph.arrow)} ${step.path}${step.symbol ? c.dim(` ${step.symbol}`) : ""}`);
       }
     }
     if (evidence && evidence.symbols.length > 0) {
-      body(c.dim(`vulnerable ${evidence.symbols.length === 1 ? "export" : "exports"}: ${evidence.symbols.join(", ")}`));
+      push(
+        `${BODY_INDENT}${c.dim(`vulnerable ${evidence.symbols.length === 1 ? "export" : "exports"}: ${evidence.symbols.join(", ")}`)}`,
+      );
     }
   }
 
-  if (finding.exploitPath) {
-    head();
-    head(c.bold("Exploit path"));
-    for (const wrapped of wrapText(finding.exploitPath, wrap)) body(wrapped);
-  }
+  if (finding.exploitPath) push("", heading("Exploit path"), ...paragraph(finding.exploitPath, wrap));
 
   if (finding.dataflow) {
-    head();
-    head(c.bold("Data flow"));
-    body(`${c.dim("source")}  ${finding.dataflow.sourceKind}`);
+    push("", heading("Data flow"));
+    push(`${BODY_INDENT}${c.dim("source")}  ${finding.dataflow.sourceKind}`);
     for (const step of finding.dataflow.steps ?? []) {
       const where = step.location ? c.dim(`${step.location.file}:${step.location.startLine}`) : "";
-      body(`  ${c.dim(glyph.arrow)} ${step.label}   ${c.dim(step.role)}   ${where}`);
+      push(`${BODY_INDENT}${c.dim(glyph.arrow)} ${joinDots([step.label, c.dim(step.role), where])}`);
     }
-    body(`${c.dim("sink")}    ${finding.dataflow.sinkKind}`);
+    push(`${BODY_INDENT}${c.dim("sink")}    ${finding.dataflow.sinkKind}`);
     if (finding.dataflow.ineffectiveSanitizers?.length) {
-      body(c.yellow(`ineffective: ${finding.dataflow.ineffectiveSanitizers.join(", ")}`));
+      push(`${BODY_INDENT}${c.yellow(`ineffective: ${finding.dataflow.ineffectiveSanitizers.join(", ")}`)}`);
     }
   }
 
   if (finding.intelligenceSources.length > 0) {
-    head();
-    head(c.bold("Research"));
+    push("", heading("Research"));
     for (const source of finding.intelligenceSources) {
-      body(
-        dotted([c.magenta(source.source), source.title ?? "untitled", c.dim(`${source.confidence}%`)]),
-      );
-      for (const wrapped of wrapText(source.rationale, wrap - 2, "  ")) body(c.dim(wrapped));
-      body(c.dim(`  ${source.sourceUrl}`));
+      push(`${BODY_INDENT}${joinDots([c.magenta(source.source), source.title ?? "untitled", c.dim(`${source.confidence}% match`)])}`);
+      push(...paragraph(source.rationale, wrap - 2, c.dim).map((value) => `  ${value}`));
+      push(`${BODY_INDENT}  ${c.dim(source.sourceUrl)}`);
     }
   }
 
   if (finding.remediation?.summary || finding.remediation?.guidance) {
-    head();
-    head(c.bold("Remediation"));
-    for (const wrapped of wrapText(finding.remediation.summary ?? "", wrap)) body(wrapped);
+    push("", heading("Remediation"));
+    push(...paragraph(finding.remediation.summary, wrap));
     if (finding.remediation.guidance && finding.remediation.guidance !== finding.remediation.summary) {
-      body();
-      for (const wrapped of wrapText(finding.remediation.guidance, wrap)) body(c.dim(wrapped));
+      push("", ...paragraph(finding.remediation.guidance, wrap, c.dim));
     }
   }
 
-  head();
-  head(`${c.bold("Status")}  ${rowStatus(row)}`);
-  body(c.dim(statusFor(progressOf(finding, row.fix)).title));
+  push(...renderFixSection(row.fix, width, status));
 
-  for (const fixLine of renderFixSection(row.fix, width, finding.id)) lines.push(fixLine);
-
-  const link = sourceUrlFor(project, finding, ref);
-  if (link) {
-    head();
-    head(`View this finding on ${providerLabel(providerOf(project))}: ${c.cyan(link)}`);
-  }
-  head();
+  push("");
+  const hint = hintLine(detailNext(finding, row.fix, flag));
+  if (hint) push(hint);
+  const view = viewOn("finding", providerLabel(providerOf(project)), sourceUrlFor(project, finding, ref));
+  if (view) push(view);
+  push("");
   return lines;
 }
 
@@ -337,7 +374,7 @@ export async function reproducedCommand(
   }
 
   const head = rows[0];
-  const marker = head ? shortId(head.finding.id) : "<finding-id>";
+  const flag = repoFlag(globals, project);
 
   const empty = !first.scanId
     ? `${project.fullName} has not been scanned yet.`
@@ -345,29 +382,29 @@ export async function reproducedCommand(
       ? `No findings in ${project.fullName} are joined to research yet.`
       : `No findings in ${project.fullName}.`;
 
-  // Above the list rather than below it: the caveat changes how the whole list
-  // should be read, and a long list would push a footnote out of sight.
-  if (isPartialScan(readScan)) {
-    out.warn("The scan behind these findings did not cover the whole repository.");
-    for (const detail of coverageLines(readScan)) out.line(`    ${c.dim(detail)}`);
-    out.line();
-  }
+  const banner = isPartialScan(readScan)
+    ? [
+        `${toneMark("attention")} The scan behind these findings did not cover the whole repository.`,
+        ...coverageLines(readScan).map((detail) => `  ${c.dim(detail)}`),
+      ]
+    : [];
 
   printGrouped<Row>({
     noun: options.onlyMatched ? "matched finding" : "finding",
     scope: scope.label ? `${project.fullName}#${scope.label}` : project.fullName,
     total: first.total,
+    banner,
     groups: WIRE_SEVERITIES.map((severity) => ({
       label: displaySeverity(severity),
       tint: severityColor(severity),
       rows: rows.filter((row) => row.finding.severity === severity),
     })),
     columns: [
-      { header: "id", value: (row) => c.dim(shortId(row.finding.id)), min: 8, max: 8 },
-      { header: "location", value: (row) => locationOf(row.finding), min: 16, max: 38 },
-      { header: "title", value: (row) => row.finding.title, min: 28 },
-      { header: "reach", value: (row) => reachCell(row.finding), min: 10, max: 10 },
-      { header: "status", value: (row) => rowStatus(row), min: 16 },
+      { header: "id", value: (row) => c.dim(shortId(row.finding.id)), min: 8, overflow: "never" },
+      { header: "title", value: (row) => row.finding.title, min: 16, flex: true },
+      { header: "location", value: (row) => locationOf(row.finding), min: fileFloor(rows, terminalWidth()), max: 40, overflow: "path" },
+      { header: "reach", value: (row) => reachCell(row.finding), min: 7 },
+      { header: "status", value: listStatus, overflow: "never" },
     ],
     pipeColumns: [
       { header: "severity", value: (row) => displaySeverity(row.finding.severity).toLowerCase() },
@@ -382,11 +419,7 @@ export async function reproducedCommand(
     emptyHint: first.scanId ? null : `Run cf scan --repo ${project.fullName}.`,
     footnote: first.hasMore ? `Use --limit ${Math.min(1000, first.total)} to see them all.` : null,
     next: head
-      ? [
-          { command: `cf reproduced show ${marker}`, purpose: "read one in full" },
-          { command: `cf fix generate ${marker}`, purpose: "write a patch for it" },
-          { command: `cf triage ${marker} false-positive`, purpose: "record a decision" },
-        ]
+      ? [{ command: `cf reproduced show ${shortId(head.finding.id)}${flag}`, purpose: "read a finding in full" }]
       : [],
   });
 
@@ -552,6 +585,6 @@ export async function reproducedShow(
     return 0;
   }
 
-  page(renderDetail(project, { finding, fix }, terminalWidth(), scope.label));
+  page(renderDetail(project, { finding, fix }, terminalWidth(), scope.label, repoFlag(globals, project)));
   return 0;
 }
