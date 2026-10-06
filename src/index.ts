@@ -6,7 +6,7 @@ const ignoreEpipe = (error: NodeJS.ErrnoException) => {
 };
 process.stdout.on("error", ignoreEpipe);
 process.stderr.on("error", ignoreEpipe);
-import { Command, Option } from "commander";
+import { Command, CommanderError, Option } from "commander";
 import { CancelledError, EXIT_INTERRUPTED, isCefenseError } from "./core/errors.js";
 import type { GlobalOptions } from "./core/session.js";
 import { setColorEnabled } from "./ui/theme.js";
@@ -15,11 +15,22 @@ import { setOrganizationFlag } from "./core/organizations.js";
 import * as out from "./ui/output.js";
 import { setPagerEnabled } from "./ui/pager.js";
 import { setColumnFilter } from "./ui/list.js";
-import { VERSION } from "./version.js";
+import {
+  CfCommand,
+  anyOf,
+  commandPathFromArgv,
+  oneOf,
+  printVersion,
+  stderrHasColors,
+  stdoutHasColors,
+} from "./ui/help.js";
+import { GLOBAL_FLAGS } from "./ui/helpContent.js";
+import { PROVIDERS } from "./core/providers.js";
 import { authLogin, authLogout, authStatus } from "./commands/auth.js";
 import { repoConnect, repoDisconnect, repoList, repoSetDefault } from "./commands/repo.js";
+import { repoView } from "./commands/repoview.js";
 import { orgList, orgShow, orgUse } from "./commands/org.js";
-import { planPortal, planShow, planUpgrade } from "./commands/plan.js";
+import { PAID_BILLING_PLANS, planPortal, planShow, planUpgrade } from "./commands/plan.js";
 import {
   notificationsRepository,
   notificationsSet,
@@ -30,6 +41,11 @@ import { scanCommand } from "./commands/scan.js";
 import { branchesCommand } from "./commands/branches.js";
 import { commitsCommand } from "./commands/commits.js";
 import {
+  CHECKS,
+  CHECK_PRESETS,
+  SCAN_DEPTHS,
+  SCAN_INTERVALS,
+  SCAN_MODES,
   settingsChecks,
   settingsDepth,
   settingsInterval,
@@ -37,34 +53,29 @@ import {
   settingsShow,
 } from "./commands/settings.js";
 import { providerConnect, providerDisconnect, providerList } from "./commands/provider.js";
-import { auditCommand } from "./commands/audit.js";
+import { AUDIT_CATEGORIES, auditCommand } from "./commands/audit.js";
 import { triageCommand } from "./commands/triage.js";
 import { sbomCommand } from "./commands/sbom.js";
-import { reproducedCommand, reproducedShow, requireLimit } from "./commands/reproduced.js";
+import {
+  FINDING_CATEGORIES,
+  reproducedCommand,
+  reproducedShow,
+  requireLimit,
+} from "./commands/reproduced.js";
 import { fixCommand } from "./commands/fix.js";
 import { fixGenerate, fixMerge, fixPublish, fixShow } from "./commands/fixcmds.js";
 import { proofAttest, proofCommand, proofRun, proofShow } from "./commands/proof.js";
 import { proofEnvList, proofEnvSet, proofEnvUnset } from "./commands/proofenv.js";
 import { skillInstall, skillList, skillShow, skillUninstall } from "./commands/skill.js";
 import { agentCheck, agentSchema } from "./commands/agent.js";
+import { browseCommand } from "./commands/browse.js";
 import { completionScript, SHELLS } from "./commands/completion.js";
 
-const program = new Command();
+const program = new CfCommand();
 
 function withGlobals(command: Command): Command {
-  return command
-    .option("--repo <owner/name>", "repository to act on")
-    .option("--org <slug>", "organization to act on")
-    .option("--json", "emit JSON instead of a rendered view")
-    .option("--agent", "machine mode: compact JSON envelope, structured errors, never interactive")
-    .option("--no-color", "disable colour")
-    .option("--verbose", "show more detail on failure")
-    .option("-y, --yes", "skip confirmation prompts")
-    .option("--columns <list>", "only show these columns, comma separated")
-    .option("--fields <list>", "with --agent: narrow every list to these keys, comma separated")
-    .option("--web", "open the result in a browser instead of printing it")
-    .option("--no-pager", "never page long output")
-    .option("--no-link", "do not remember this directory's repository");
+  for (const flag of GLOBAL_FLAGS) command.option(flag.flags, flag.description);
+  return command;
 }
 
 function globalsFrom(command: Command): GlobalOptions {
@@ -154,55 +165,66 @@ function run(handler: (globals: GlobalOptions, command: Command) => Promise<numb
   };
 }
 
+setAgentMode(process.argv.includes("--agent") || envAgentMode());
+
 program
   .name("cefense")
-  .description("Connect repositories, run scans, and triage security findings from your terminal.")
-  .version(VERSION, "-v, --version")
-  .configureHelp({ sortSubcommands: false })
-  .showHelpAfterError();
+  .description("Scan repositories, read what was found, and fix it with a pull request")
+  .option("-v, --version", "Show cf version")
+  .helpOption("-h, --help", "Show help for command")
+  .showSuggestionAfterError(true)
+  .exitOverride()
+  .configureOutput({
+    getOutHasColors: stdoutHasColors,
+    getErrHasColors: stderrHasColors,
+  })
+  .on("option:version", () => {
+    printVersion();
+    throw new CommanderError(0, "commander.version", "(version)");
+  });
 
 withGlobals(program);
 
-const auth = program.command("auth").description("manage authentication");
+const auth = program.command("auth").description("Sign in to Cefense and out again");
 
 withGlobals(auth.command("login"))
-  .description("sign in to Cefense in your browser")
-  .option("--force", "sign in again even if a token is already stored")
+  .description("Sign in to Cefense in your browser")
+  .option("--force", "Sign in again even if a token is already stored")
   .action(run((globals, command) => authLogin(globals, { force: Boolean(command.opts().force) })));
 
 withGlobals(auth.command("logout"))
-  .description("revoke the stored token and forget it")
-  .option("--all", "sign out of every stored instance")
+  .description("Revoke the stored token and forget it")
+  .option("--all", "Sign out of every stored instance")
   .action(run((globals, command) => authLogout(globals, { all: Boolean(command.opts().all) })));
 
 withGlobals(auth.command("status"))
-  .description("show who you are signed in as")
+  .description("Show who you are signed in as")
   .action(run((globals) => authStatus(globals)));
 
-const org = program.command("org").description("choose which organization commands act on");
+const org = program.command("org").description("Choose the organization commands act on");
 
 withGlobals(org.command("list", { isDefault: true }))
-  .description("organizations this account belongs to")
+  .description("List the organizations this account belongs to")
   .action(run((globals) => orgList(globals)));
 
 withGlobals(org.command("use"))
-  .argument("<slug>", "the organization every command should act on")
-  .description("remember an organization for this Cefense instance")
+  .argument("<slug>", "The organization every command should act on")
+  .description("Remember an organization for this Cefense instance")
   .action(run((globals, command) => orgUse(globals, command.args[0])));
 
 withGlobals(org.command("show"))
-  .description("show the organization commands are acting on, and where it came from")
+  .description("Show the organization commands act on, and where that choice came from")
   .action(run(() => orgShow()));
 
 const plan = withGlobals(program.command("plan"))
-  .description("the organization's plan, its token allowance, and what is left of it")
+  .description("Show the organization's plan and what is left of its allowance")
   .action(run((globals) => planShow(globals)));
 
 withGlobals(plan.command("upgrade"))
-  .argument("<plan>", "plus, pro, or max")
-  .description("start a checkout for a plan and print the URL that completes it")
-  .option("--yearly", "bill yearly instead of monthly")
-  .option("--seats <n>", "seats beyond the ones the plan includes")
+  .argument("<plan>", oneOf(PAID_BILLING_PLANS))
+  .description("Start a checkout for a plan and print the URL that completes it")
+  .option("--yearly", "Bill yearly instead of monthly")
+  .option("--seats <n>", "Seats beyond the ones the plan includes")
   .action(
     run((globals, command) =>
       planUpgrade(globals, command.args[0], {
@@ -213,21 +235,21 @@ withGlobals(plan.command("upgrade"))
   );
 
 withGlobals(plan.command("portal"))
-  .description("print the billing portal URL: invoices, payment method, seats, cancellation")
+  .description("Print the billing portal URL for invoices, payment method, seats, and cancellation")
   .action(run((globals) => planPortal(globals)));
 
 const notifications = withGlobals(program.command("notifications"))
   .alias("notify")
-  .description("what Cefense emails you about, and which repositories are exceptions")
+  .description("Choose what Cefense emails you about")
   .action(run((globals) => notificationsShow(globals)));
 
 withGlobals(notifications.command("set"))
-  .argument("<kind>", "scan_report, scan_failed, advisory, fix_pr_opened, or immunity")
-  .description("turn a notification on or off, or change its severity floor")
-  .option("--on", "send this one")
-  .option("--off", "stop sending this one")
-  .option("--severity <level>", "only send at this severity or above")
-  .option("--cadence <rate>", "every, or daily for at most one a day")
+  .argument("<kind>", "One of scan_report, scan_failed, advisory, fix_pr_opened, or immunity")
+  .description("Turn a notification on or off, or change its severity floor")
+  .option("--on", "Send this one")
+  .option("--off", "Stop sending this one")
+  .option("--severity <level>", "Only send at this severity or above")
+  .option("--cadence <rate>", "One of every, or daily for at most one a day")
   .action(
     run((globals, command) =>
       notificationsSet(globals, command.args[0], {
@@ -240,16 +262,16 @@ withGlobals(notifications.command("set"))
   );
 
 withGlobals(notifications.command("mute"))
-  .argument("<repository>", "owner/name to silence")
-  .description("stop emailing about one repository without changing anything else")
+  .argument("<repository>", "The owner/name to silence")
+  .description("Stop emailing about one repository without changing anything else")
   .action(run((globals, command) => notificationsRepository(globals, command.args[0], { mute: true })));
 
 withGlobals(notifications.command("repo"))
-  .argument("<repository>", "owner/name to make an exception for")
-  .description("give one repository its own severity floor")
-  .option("--severity <level>", "only send at this severity or above")
-  .option("--mute", "send nothing at all for this repository")
-  .option("--reset", "go back to the default settings")
+  .argument("<repository>", "The owner/name to make an exception for")
+  .description("Give one repository its own severity floor")
+  .option("--severity <level>", "Only send at this severity or above")
+  .option("--mute", "Send nothing at all for this repository")
+  .option("--reset", "Go back to the default settings")
   .action(
     run((globals, command) =>
       notificationsRepository(globals, command.args[0], {
@@ -260,13 +282,13 @@ withGlobals(notifications.command("repo"))
     ),
   );
 
-const repo = program.command("repo").description("manage connected repositories");
+const repo = program.command("repo").description("Connect, list, and view repositories");
 
 withGlobals(repo.command("connect"))
-  .argument("[repository]", "owner/name to connect without prompting")
-  .description("connect a repository and start its first scan")
-  .option("--provider <host>", "github, gitlab, or bitbucket")
-  .option("--no-watch", "queue the scan without following its progress")
+  .argument("[repository]", "The owner/name to connect without prompting")
+  .description("Connect a repository and start its first scan")
+  .option("--provider <host>", oneOf(PROVIDERS))
+  .option("--no-watch", "Queue the scan without following its progress")
   .action(
     run((globals, command) =>
       repoConnect(globals, command.args[0], {
@@ -277,13 +299,18 @@ withGlobals(repo.command("connect"))
   );
 
 withGlobals(repo.command("list"))
-  .description("list connected repositories")
+  .description("List connected repositories")
   .action(run((globals) => repoList(globals)));
 
+withGlobals(repo.command("view"))
+  .argument("[repository]", "The owner/name to show, otherwise the one this directory acts on")
+  .description("Show one repository, its last scan, and how it is scanned")
+  .action(run((globals, command) => repoView(globals, command.args[0])));
+
 withGlobals(repo.command("set-default"))
-  .argument("[repository]", "owner/name to use in this directory")
-  .description("choose the repository this directory acts on")
-  .option("--unset", "clear the default for this directory")
+  .argument("[repository]", "The owner/name to use in this directory")
+  .description("Choose the repository this directory acts on")
+  .option("--unset", "Clear the default for this directory")
   .action(
     run((globals, command) =>
       repoSetDefault(globals, command.args[0], { unset: Boolean(command.opts().unset) }),
@@ -291,10 +318,10 @@ withGlobals(repo.command("set-default"))
   );
 
 withGlobals(repo.command("disconnect"))
-  .argument("[repository]", "owner/name to disconnect")
-  .description("disconnect a repository, or a whole code host account")
-  .option("--account", "disconnect the code host account instead of one repository")
-  .option("--provider <host>", "with --account: github, gitlab, or bitbucket")
+  .argument("[repository]", "The owner/name to disconnect")
+  .description("Disconnect a repository, or a whole code host account")
+  .option("--account", "Disconnect the code host account instead of one repository")
+  .option("--provider <host>", `With --account, ${oneOf(PROVIDERS).toLowerCase()}`)
   .action(
     run((globals, command) =>
       repoDisconnect(globals, command.args[0], {
@@ -306,34 +333,34 @@ withGlobals(repo.command("disconnect"))
 
 const provider = program
   .command("provider")
-  .description("connect the code hosts your repositories live on");
+  .description("Connect the code hosts your repositories live on");
 
 withGlobals(provider.command("list", { isDefault: true }))
-  .description("show GitHub, GitLab, and Bitbucket, and which are connected")
+  .description("Show GitHub, GitLab, and Bitbucket, and which are connected")
   .action(run((globals) => providerList(globals)));
 
 withGlobals(provider.command("connect"))
-  .argument("[host]", "github, gitlab, or bitbucket")
-  .description("connect a code host account")
+  .argument("[host]", oneOf(PROVIDERS))
+  .description("Connect a code host account")
   .action(run((globals, command) => providerConnect(globals, command.args[0])));
 
 withGlobals(provider.command("disconnect"))
-  .argument("[host]", "github, gitlab, or bitbucket")
-  .description("disconnect a code host account")
+  .argument("[host]", oneOf(PROVIDERS))
+  .description("Disconnect a code host account")
   .action(run((globals, command) => providerDisconnect(globals, command.args[0])));
 
 withGlobals(program.command("status"))
-  .description("the workspace dashboard: repositories, scans, findings")
-  .option("--watch", "keep polling even when nothing is scanning")
+  .description("Show repositories, scans, and findings at a glance")
+  .option("--watch", "Keep polling even when nothing is scanning")
   .action(run((globals, command) => statusCommand(globals, { watch: Boolean(command.opts().watch) })));
 
 withGlobals(program.command("scan"))
-  .description("rescan a repository")
-  .option("--branch <name>", "scan a branch other than the default")
-  .option("--url <repository-url>", "connect a GitHub repository by URL and scan it")
-  .option("--no-watch", "queue the scan without following its progress")
-  .option("--wait", "block until the scan finishes")
-  .option("--progress", "with --wait: write one JSON progress line per poll to stderr")
+  .description("Rescan a repository")
+  .option("--branch <name>", "Scan a branch other than the default")
+  .option("--url <repository-url>", "Connect a GitHub repository by URL and scan it")
+  .option("--no-watch", "Queue the scan without following its progress")
+  .option("--wait", "Block until the scan finishes")
+  .option("--progress", "With --wait, write one JSON progress line per poll to stderr")
   .action(
     run((globals, command) =>
       scanCommand(globals, {
@@ -347,13 +374,13 @@ withGlobals(program.command("scan"))
   );
 
 withGlobals(program.command("branches"))
-  .description("every branch, and the last scan of each")
+  .description("Show every branch and the last scan of each")
   .action(run((globals) => branchesCommand(globals)));
 
 withGlobals(program.command("commits"))
-  .description("the commit history, and what each scanned commit introduced")
-  .option("--branch <name>", "read the history of a branch other than the default")
-  .option("--limit <n>", "show at most this many commits", requireLimit)
+  .description("Show commits and what each scanned commit introduced")
+  .option("--branch <name>", "Read the history of a branch other than the default")
+  .option("--limit <n>", "Show at most this many commits", requireLimit)
   .action(
     run((globals, command) =>
       commitsCommand(globals, {
@@ -364,10 +391,10 @@ withGlobals(program.command("commits"))
   );
 
 withGlobals(program.command("triage"))
-  .argument("<finding-id>", "the finding to record a decision about")
-  .argument("<decision>", "open, false-positive, or accepted-risk")
-  .description("record whether a finding is real, and whether you accept it")
-  .option("--note <text>", "why, kept with the decision")
+  .argument("<finding-id>", "The finding to record a decision about")
+  .argument("<decision>", "One of open, false-positive, or accepted-risk")
+  .description("Record whether a finding is real, and whether you accept it")
+  .option("--note <text>", "Why, kept with the decision")
   .action(
     run((globals, command) =>
       triageCommand(globals, command.args[0] as string, command.args[1] as string, {
@@ -377,10 +404,10 @@ withGlobals(program.command("triage"))
   );
 
 withGlobals(program.command("audit"))
-  .description("everything that has happened on this account, newest first")
-  .option("--limit <n>", "maximum events to fetch", requireLimit)
-  .option("--before <timestamp>", "only events older than this ISO timestamp")
-  .option("--category <list>", "scan,finding,fix,proof,repository,settings,export,account,integration")
+  .description("Show what has happened on this account, newest first")
+  .option("--limit <n>", "Maximum events to fetch", requireLimit)
+  .option("--before <timestamp>", "Only events older than this ISO timestamp")
+  .option("--category <list>", `${anyOf(AUDIT_CATEGORIES)}, comma separated`)
   .action(
     run((globals, command) =>
       auditCommand(globals, {
@@ -393,74 +420,90 @@ withGlobals(program.command("audit"))
 
 function findingsOptions(command: Command): Command {
   return withGlobals(command)
-    .addOption(new Option("--severity <list>", "critical,high,watch,info (medium and low also accepted)"))
-    .addOption(new Option("--category <list>", "code,dependency,secret,misconfig,os-package"))
-    .option("--branch <name>", "read the findings of a branch's last scan")
-    .option("--scan <id>", "read the findings of one scan")
-    .option("--limit <n>", "maximum findings to fetch", requireLimit)
-    .option("--exit-code", "exit 1 when a critical or high finding is present");
+    .addOption(
+      new Option(
+        "--severity <list>",
+        "Any of critical, high, watch, or info, comma separated (medium and low work too)",
+      ),
+    )
+    .addOption(new Option("--category <list>", `${anyOf(FINDING_CATEGORIES)}, comma separated`))
+    .option("--branch <name>", "Read the findings of a branch's last scan")
+    .option("--scan <id>", "Read the findings of one scan")
+    .option("--limit <n>", "Maximum findings to fetch", requireLimit)
+    .option("--exit-code", "Exit 1 when a critical or high finding is present");
 }
 
-const reproduced = findingsOptions(program.command("reproduced"))
-  .description("browse the findings in your code")
-  .option("--matched", "only findings joined to security research")
-  .action(
-    run((globals, command) =>
-      reproducedCommand(globals, {
-        severity: command.opts().severity,
-        category: command.opts().category,
-        limit: command.opts().limit,
-        matched: command.opts().matched,
-        branch: command.opts().branch,
-        scanId: command.opts().scan,
-        exitCode: Boolean(command.opts().exitCode),
-      }),
-    ),
+function listFindings(onlyMatched: boolean) {
+  return run((globals, command) =>
+    reproducedCommand(globals, {
+      severity: command.opts().severity,
+      category: command.opts().category,
+      limit: command.opts().limit,
+      matched: onlyMatched ? undefined : command.opts().matched,
+      branch: command.opts().branch,
+      scanId: command.opts().scan,
+      exitCode: Boolean(command.opts().exitCode),
+      ...(onlyMatched ? { onlyMatched: true } : {}),
+    }),
   );
+}
 
-withGlobals(reproduced.command("show"))
-  .argument("<finding-id>", "the finding to show in full")
-  .description("show one finding with its research, data flow and fix")
-  .option("--branch <name>", "read the finding from a branch's last scan")
-  .option("--scan <id>", "read the finding from one scan")
-  .action(
-    run((globals, command) =>
-      reproducedShow(globals, command.args[0] as string, {
-        branch: command.opts().branch,
-        scanId: command.opts().scan,
-      }),
-    ),
-  );
+function viewFinding(command: Command): Command {
+  return withGlobals(command)
+    .argument("<finding-id>", "A finding id, or its first few characters")
+    .option("--branch <name>", "Read the finding from a branch's last scan")
+    .option("--scan <id>", "Read the finding from one scan")
+    .action(
+      run((globals, command) =>
+        reproducedShow(globals, command.args[0] as string, {
+          branch: command.opts().branch,
+          scanId: command.opts().scan,
+        }),
+      ),
+    );
+}
 
-findingsOptions(program.command("matched"))
-  .description("findings joined to the research that explains them")
-  .action(
-    run((globals, command) =>
-      reproducedCommand(globals, {
-        severity: command.opts().severity,
-        category: command.opts().category,
-        limit: command.opts().limit,
-        branch: command.opts().branch,
-        scanId: command.opts().scan,
-        exitCode: Boolean(command.opts().exitCode),
-        onlyMatched: true,
-      }),
-    ),
-  );
+const finding = program.command("finding").description("List and read the findings in your code");
+
+findingsOptions(finding.command("list"))
+  .description("List the findings in a repository, worst first")
+  .option("--matched", "Only findings joined to security research")
+  .action(listFindings(false));
+
+viewFinding(finding.command("view"))
+  .alias("show")
+  .description("Show one finding with its research, data flow, and fix");
+
+findingsOptions(finding.command("matched"))
+  .description("List only the findings joined to the research that explains them")
+  .action(listFindings(true));
+
+const reproduced = findingsOptions(program.command("reproduced", { hidden: true }))
+  .description("Browse the findings in your code, the same as cf finding list")
+  .option("--matched", "Only findings joined to security research")
+  .action(listFindings(false));
+
+viewFinding(reproduced.command("show")).description(
+  "Show one finding with its research, data flow, and fix, the same as cf finding view",
+);
+
+findingsOptions(program.command("matched", { hidden: true }))
+  .description("Findings joined to the research that explains them, the same as cf finding matched")
+  .action(listFindings(true));
 
 const fix = withGlobals(program.command("fix"))
-  .description("generate patches for findings and open pull requests")
+  .description("Generate patches for findings and open pull requests")
   .action(run((globals) => fixCommand(globals)));
 
 withGlobals(fix.command("show"))
-  .argument("<finding-id>", "the finding whose patch you want")
-  .description("show the patch generated for one finding")
+  .argument("<finding-id>", "The finding whose patch you want")
+  .description("Show the patch generated for one finding")
   .action(run((globals, command) => fixShow(globals, command.args[0] as string)));
 
 withGlobals(fix.command("generate"))
-  .argument("<finding-id>", "the finding to patch")
-  .description("generate a patch for one finding")
-  .option("--wait", "poll until the patch is ready or fails")
+  .argument("<finding-id>", "The finding to patch")
+  .description("Generate a patch for one finding")
+  .option("--wait", "Poll until the patch is ready or fails")
   .action(
     run((globals, command) =>
       fixGenerate(globals, command.args[0] as string, { wait: Boolean(command.opts().wait) }),
@@ -468,15 +511,15 @@ withGlobals(fix.command("generate"))
   );
 
 withGlobals(fix.command("publish"))
-  .argument("<finding-id>", "the finding whose patch to open a pull request for")
-  .description("open a pull request with a generated patch")
+  .argument("<finding-id>", "The finding whose patch to open a pull request for")
+  .description("Open a pull request with a generated patch")
   .action(run((globals, command) => fixPublish(globals, command.args[0] as string)));
 
 withGlobals(fix.command("merge"))
-  .argument("[finding-id]", "the finding whose pull request to merge")
-  .description("merge the pull request and delete its branch")
-  .addOption(new Option("--method <method>", "merge, squash, or rebase").default("squash"))
-  .option("--no-delete-branch", "keep the branch after merging")
+  .argument("[finding-id]", "The finding whose pull request to merge")
+  .description("Merge the pull request and delete its branch")
+  .addOption(new Option("--method <method>", "One of merge, squash, or rebase").default("squash"))
+  .option("--no-delete-branch", "Keep the branch after merging")
   .action(
     run((globals, command) =>
       fixMerge(globals, command.args[0], {
@@ -487,18 +530,18 @@ withGlobals(fix.command("merge"))
   );
 
 const proof = withGlobals(program.command("proof"))
-  .description("replay the evidence against a patch and record the verdict")
+  .description("Replay the evidence against a patch and record the verdict")
   .action(run((globals) => proofCommand(globals)));
 
 withGlobals(proof.command("show"))
-  .argument("<finding-id>", "the finding whose proof you want")
-  .description("show one proof with its checks and witness")
+  .argument("<finding-id>", "The finding whose proof you want")
+  .description("Show one proof with its checks and witness")
   .action(run((globals, command) => proofShow(globals, command.args[0] as string)));
 
 withGlobals(proof.command("run"))
-  .argument("<finding-id>", "the finding whose patch to prove")
-  .description("replay the recorded evidence against the generated patch")
-  .option("--wait", "poll until the proof settles or fails")
+  .argument("<finding-id>", "The finding whose patch to prove")
+  .description("Replay the recorded evidence against the generated patch")
+  .option("--wait", "Poll until the proof settles or fails")
   .action(
     run((globals, command) =>
       proofRun(globals, command.args[0] as string, { wait: Boolean(command.opts().wait) }),
@@ -506,9 +549,9 @@ withGlobals(proof.command("run"))
   );
 
 withGlobals(proof.command("attest"))
-  .argument("<finding-id>", "the finding whose credential rotation to attest")
-  .description("record by hand that a leaked credential was rotated")
-  .option("--note <text>", "why you are attesting, kept in the audit log")
+  .argument("<finding-id>", "The finding whose credential rotation to attest")
+  .description("Record by hand that a leaked credential was rotated")
+  .option("--note <text>", "Why you are attesting, kept in the audit log")
   .action(
     run((globals, command) =>
       proofAttest(globals, command.args[0] as string, { note: command.opts().note }),
@@ -516,14 +559,14 @@ withGlobals(proof.command("attest"))
   );
 
 const proofEnv = withGlobals(proof.command("env"))
-  .description("the environment a proof run needs to boot the app, names only")
+  .description("List the environment a proof run needs to boot the app, by name only")
   .action(run((globals) => proofEnvList(globals)));
 
 withGlobals(proofEnv.command("set"))
-  .argument("<name>", "the variable name, for example DATABASE_URL")
-  .description("store a value for a proof run to use, write-only")
-  .option("--stdin", "read the value from stdin")
-  .option("--from-env", "read the value from the variable of the same name in this shell")
+  .argument("<name>", "The variable name, for example DATABASE_URL")
+  .description("Store a value for a proof run to use, write-only")
+  .option("--stdin", "Read the value from stdin")
+  .option("--from-env", "Read the value from the variable of the same name in this shell")
   .action(
     run((globals, command) =>
       proofEnvSet(globals, command.args[0] as string, {
@@ -534,18 +577,21 @@ withGlobals(proofEnv.command("set"))
   );
 
 withGlobals(proofEnv.command("unset"))
-  .argument("<name>", "the variable to delete")
-  .description("delete a stored value")
+  .argument("<name>", "The variable to delete")
+  .description("Delete a stored value")
   .action(run((globals, command) => proofEnvUnset(globals, command.args[0] as string)));
 
 const settings = withGlobals(program.command("settings"))
-  .description("when this repository is scanned, and which checks run")
+  .description("Choose when this repository is scanned and which checks run")
   .action(run((globals) => settingsShow(globals)));
 
+const scanModes = SCAN_MODES.filter((entry) => entry.ready).map((entry) => entry.id);
+const scanIntervals = SCAN_INTERVALS.map((entry) => entry.id);
+
 withGlobals(settings.command("mode"))
-  .argument("[mode]", "manual, push, or scheduled")
-  .description("choose what triggers a scan")
-  .option("--every <interval>", "with scheduled: 1h, 6h, 12h, 24h, or 168h")
+  .argument("[mode]", oneOf(scanModes))
+  .description("Choose what triggers a scan")
+  .option("--every <interval>", `With scheduled, ${oneOf(scanIntervals).toLowerCase()}`)
   .action(
     run((globals, command) =>
       settingsMode(globals, command.args[0], { every: command.opts().every }),
@@ -553,20 +599,23 @@ withGlobals(settings.command("mode"))
   );
 
 withGlobals(settings.command("every"))
-  .argument("[interval]", "1h, 6h, 12h, 24h, or 168h")
-  .description("scan on a schedule, this often")
+  .argument("[interval]", oneOf(scanIntervals))
+  .description("Scan on a schedule, this often")
   .action(run((globals, command) => settingsInterval(globals, command.args[0])));
 
 withGlobals(settings.command("depth"))
-  .argument("[depth]", "default or max")
-  .description("how hard each scan looks")
+  .argument("[depth]", oneOf(SCAN_DEPTHS.map((entry) => entry.id)))
+  .description("Choose how hard each scan looks")
   .action(run((globals, command) => settingsDepth(globals, command.args[0])));
 
 withGlobals(settings.command("checks"))
-  .argument("[checks...]", "sast, sca, secrets, iac, quality, sbom, or a preset")
-  .description("choose which checks run on each scan")
-  .option("--add", "turn these on and leave the rest alone")
-  .option("--remove", "turn these off and leave the rest alone")
+  .argument(
+    "[checks...]",
+    `${anyOf(CHECKS.filter((check) => check.available).map((check) => check.id))}, or a preset: ${Object.keys(CHECK_PRESETS).join(", ")}`,
+  )
+  .description("Choose which checks run on each scan")
+  .option("--add", "Turn these on and leave the rest alone")
+  .option("--remove", "Turn these off and leave the rest alone")
   .action(
     run((globals, command) =>
       settingsChecks(globals, command.args, {
@@ -577,10 +626,10 @@ withGlobals(settings.command("checks"))
   );
 
 withGlobals(program.command("sbom"))
-  .description("export the component inventory of the last scan")
-  .addOption(new Option("--format <format>", "cyclonedx or spdx").default("cyclonedx"))
-  .option("--output <file>", "write to a file instead of stdout")
-  .option("--scan <id>", "export one scan rather than the newest with components")
+  .description("Export the component inventory of the last scan")
+  .addOption(new Option("--format <format>", "One of cyclonedx or spdx").default("cyclonedx"))
+  .option("--output <file>", "Write to a file instead of stdout")
+  .option("--scan <id>", "Export one scan rather than the newest with components")
   .action(
     run((globals, command) =>
       sbomCommand(globals, {
@@ -593,13 +642,13 @@ withGlobals(program.command("sbom"))
 
 const skill = program
   .command("skill")
-  .description("teach your coding agent to use Cefense");
+  .description("Teach your coding agent to use Cefense");
 
 withGlobals(skill.command("install", { isDefault: true }))
-  .argument("[agents...]", "claude, cursor, copilot, antigravity, windsurf, devin, cline, gemini, agents")
-  .description("write the Cefense skill into your coding agents")
-  .option("--all", "write it for every supported agent, detected or not")
-  .option("--global", "write it once for your user instead of this repository")
+  .argument("[agents...]", "Any of claude, cursor, copilot, antigravity, windsurf, devin, cline, gemini, or agents")
+  .description("Write the Cefense skill into your coding agents")
+  .option("--all", "Write it for every supported agent, detected or not")
+  .option("--global", "Write it once for your user instead of this repository")
   .action(
     run((globals, command) =>
       skillInstall(globals, command.args, {
@@ -610,19 +659,19 @@ withGlobals(skill.command("install", { isDefault: true }))
   );
 
 withGlobals(skill.command("list"))
-  .description("show every supported agent, and what is installed here")
+  .description("Show every supported agent, and what is installed here")
   .action(run((globals) => skillList(globals)));
 
 withGlobals(skill.command("show"))
-  .argument("[agent]", "render it the way one agent expects")
-  .description("print the skill without writing it anywhere")
+  .argument("[agent]", "Render it the way one agent expects")
+  .description("Print the skill without writing it anywhere")
   .action(run((globals, command) => skillShow(globals, command.args[0])));
 
 withGlobals(skill.command("uninstall"))
-  .argument("[agents...]", "leave empty to remove it everywhere")
-  .description("remove the Cefense skill")
-  .option("--all", "remove it for every supported agent")
-  .option("--global", "remove the user-wide copy instead")
+  .argument("[agents...]", "Leave empty to remove it everywhere")
+  .description("Remove the Cefense skill")
+  .option("--all", "Remove it for every supported agent")
+  .option("--global", "Remove the user-wide copy instead")
   .action(
     run((globals, command) =>
       skillUninstall(globals, command.args, {
@@ -634,23 +683,33 @@ withGlobals(skill.command("uninstall"))
 
 const agent = program
   .command("agent")
-  .description("what an agent needs to drive this CLI without being taught it");
+  .description("Describe this CLI to a coding agent");
 
 withGlobals(agent.command("schema", { isDefault: true }))
-  .description("the whole command surface, envelope, error codes, and gates, as JSON")
+  .description("Print the whole command surface, envelope, error codes, and gates as JSON")
   .action(run((globals) => agentSchema(globals, program)));
 
 withGlobals(agent.command("check"))
-  .description("can an agent proceed here, and if not, what has to happen first")
+  .description("Say whether an agent can proceed here, and if not, what has to happen first")
   .action(run((globals) => agentCheck(globals)));
 
+withGlobals(program.command("browse"))
+  .argument("[finding-id]", "A finding id to open, or its first few characters")
+  .description("Open the workspace, or one finding, in your browser")
+  .option("-n, --no-browser", "Print the address instead of opening it")
+  .option("--code", "Open the repository, or the finding's lines, on its code host instead")
+  .action(
+    run((globals, command) =>
+      browseCommand(globals, command.args[0], {
+        browser: command.opts().browser !== false,
+        code: Boolean(command.opts().code),
+      }),
+    ),
+  );
+
 withGlobals(program.command("completion"))
-  .argument("<shell>", `one of ${SHELLS.join(", ")}`)
-  .description("print a shell completion script")
-  .addHelpText(
-    "after",
-    `\nExamples:\n  cf completion zsh > "\${fpath[1]}/_cf"\n  cf completion bash > /etc/bash_completion.d/cf\n  cf completion fish > ~/.config/fish/completions/cf.fish`,
-  )
+  .argument("<shell>", oneOf(SHELLS))
+  .description("Print a shell completion script")
   .action(
     run(async (_globals, command) => {
       process.stdout.write(completionScript(program, String(command.args[0]), ["cf", "cefense"]));
@@ -658,17 +717,42 @@ withGlobals(program.command("completion"))
     }),
   );
 
+program
+  .command("help", { hidden: true })
+  .argument("[command...]", "The command to explain, for example finding list")
+  .description("Show help for a command")
+  .action((names: string[]) => {
+    let node: Command = program;
+    for (const name of names) {
+      const next = node.commands.find((child) => child.name() === name || child.aliases().includes(name));
+      if (!next) {
+        node.args = [name];
+        node.error(`error: unknown command '${name}'`, { code: "commander.unknownCommand" });
+      }
+      node = next;
+    }
+    node.help();
+  });
+
 function crash(error: unknown): void {
   if (isAgentMode()) out.agentError(error);
   else out.renderError(error);
   // The error envelope is queued on stdout, which is asynchronous on a pipe;
   // exiting immediately truncated it and callers saw exit 4 with no output.
   // An empty write's callback runs only after everything queued has flushed.
-  process.exitCode = 4;
-  process.stdout.write("", () => process.exit(4));
+  const exitCode = isCefenseError(error) ? error.exitCode : 4;
+  process.exitCode = exitCode;
+  process.stdout.write("", () => process.exit(exitCode));
 }
 
 process.on("uncaughtException", crash);
 process.on("unhandledRejection", crash);
 
-await program.parseAsync(process.argv);
+out.setCommandName(commandPathFromArgv(program, process.argv.slice(2)) || "cefense");
+
+try {
+  await program.parseAsync(process.argv);
+} catch (error) {
+  if (error instanceof CommanderError) process.exitCode = error.exitCode;
+  else crash(error);
+}
