@@ -63,13 +63,23 @@ npx -p @cefense-npm/cefense-cli cf status
 ```sh
 cf auth login                 # sign in through your browser
 cf repo connect               # pick a repository and watch its first scan
-cf reproduced                   # browse what the scan found
+cf finding list               # read what the scan found
 cf skill install              # teach your coding agent to do all of the above
 ```
 
 From the findings view, press `g` to generate a patch, `p` to open a pull request, and `m` to merge it. You never leave the finding you are reading.
 
 ## Commands
+
+### Getting help
+
+```sh
+cf --help                     # every command, grouped by what it is for, with examples
+cf finding --help             # one command group
+cf help finding list          # one command: usage, its own flags, real examples
+```
+
+Mistype a command or a flag and the CLI says what you probably meant (`cf findng` suggests `cf finding`, `--severty` suggests `--severity`). A missing argument prints the usage line and an example. Both exit 2. `cf --version` prints the version and the npm page that release was published at.
 
 ### Authentication
 
@@ -97,6 +107,7 @@ Authorization runs in a browser, because the round trip is bound to a cookie the
 | --- | --- |
 | `cf repo connect [owner/name]` | connect a repository and follow its first scan |
 | `cf repo list` | connected repositories, their scan state and finding counts |
+| `cf repo view [owner/name]` | one repository: where it lives, its last scan, and how it is scanned, `--web` opens it on its code host |
 | `cf repo set-default [owner/name]` | choose the repository this directory acts on |
 | `cf repo disconnect [owner/name]` | disconnect one repository |
 | `cf repo disconnect --account` | disconnect a code host account entirely |
@@ -117,18 +128,23 @@ Repositories live on GitHub, GitLab, or Bitbucket. Once one is connected it is a
 | `cf commits` | the commit history, and what each scanned commit introduced or resolved |
 | `cf triage <finding-id> <decision>` | record a finding as `false-positive`, `accepted-risk`, or `open` |
 | `cf audit` | everything that has happened on this account, newest first |
-| `cf reproduced` | browse every finding in your code, `--matched` for only the researched ones |
-| `cf reproduced show <finding-id>` | one finding in full, with research, data flow and references |
-| `cf matched` | only the findings joined to the research that explains them |
+| `cf finding list` | every finding in your code, worst first, `--matched` for only the researched ones |
+| `cf finding view <finding-id>` | one finding in full, with research, data flow and references |
+| `cf finding matched` | only the findings joined to the research that explains them |
+| `cf browse [finding-id]` | open the workspace, or one finding, in your browser |
 | `cf fix` | browse findings and their patches side by side |
 | `cf fix show <finding-id>` | the patch generated for one finding |
 | `cf fix generate <finding-id>` | generate a patch, `--wait` to block until it is ready |
 | `cf fix publish <finding-id>` | open a pull request with a generated patch |
 | `cf fix merge [finding-id]` | merge that pull request and delete its branch, `--no-delete-branch` keeps it, prompts when omitted |
 
-`cf reproduced` and `cf matched` both take `--branch <name>` to read one branch's last scan, and `--scan <id>` to read a scan by id. Without either you get the newest scan of the repository, whichever branch it ran on.
+The older names still work and run the same commands: `cf reproduced` is `cf finding list`, `cf reproduced show` (and `cf finding show`) is `cf finding view`, and `cf matched` is `cf finding matched`. Scripts and agents written against them do not need to change.
 
-`cf reproduced --matched` narrows the list to the findings joined to security research, which is the same set `cf matched` shows: use whichever reads better in the command you are already running.
+`cf finding list` and `cf finding matched` both take `--branch <name>` to read one branch's last scan, and `--scan <id>` to read a scan by id. Without either you get the newest scan of the repository, whichever branch it ran on.
+
+`cf finding list --matched` narrows the list to the findings joined to security research, which is the same set `cf finding matched` shows: use whichever reads better in the command you are already running.
+
+`cf browse` opens the Cefense workspace, and `cf browse <finding-id>` opens that finding in it. `--code` opens the repository, or the finding's lines, on its code host instead, and `-n, --no-browser` prints the address rather than opening it.
 
 `cf status --watch` keeps the dashboard polling even when nothing is scanning, so it stays open as a live view instead of drawing once and exiting.
 
@@ -241,6 +257,14 @@ Failure, on stdout as well, so an agent never has to parse prose from stderr:
 
 The `next` array names real commands that act on what was just returned, so an agent is handed its next step instead of guessing at one.
 
+`command` echoes the name you typed, so `cf finding view` answers `"command": "finding view"` and `cf reproduced show` answers `"command": "reproduced show"`. The two run the same handler and return the same `data`. The bundled skill and the `next` hints use the older names.
+
+A command the parser cannot accept comes back the same way. An unknown command or flag, or a missing argument, is `usage_error` with exit 2, and `remedy` carries the suggestion or the usage line:
+
+```json
+{"schemaVersion":1,"ok":false,"command":"finding list","error":{"code":"usage_error","message":"cf finding list has no flag called --severty.","remedy":"Did you mean --severity? Run cf agent schema --agent for every command and flag.","exitCode":2}}
+```
+
 ### A complete agent workflow
 
 ```sh
@@ -264,7 +288,7 @@ Stable across releases. Match on `error.code`, never on `error.message`.
 | Code | Exit | Meaning |
 | --- | --- | --- |
 | `auth_required` | 3 | not signed in |
-| `usage_error` | 2 | a flag or argument is missing or wrong |
+| `usage_error` | 2 | an unknown command or flag, or a missing or wrong argument |
 | `invalid_severity` | 2 | unrecognised value passed to `--severity` |
 | `invalid_category` | 2 | unrecognised value passed to `--category` |
 | `finding_not_found` | 2 | no such finding in the scan being read |
@@ -311,7 +335,10 @@ Stable across releases. Match on `error.code`, never on `error.message`.
 - **Connecting an account needs a browser.** `cf provider connect` cannot complete under `--agent` and fails with `provider_not_connected` and the URL to send the user to. Connecting a repository on an already-connected account needs no browser.
 - **Triage is the user's decision.** `cf triage` records their judgement about their own risk under their name, so ask before running it, and never run it in bulk to tidy a report.
 - **Scan settings are the user's policy.** `cf settings mode`, `cf settings every`, and `cf settings checks` change what gets scanned and how often. Ask before writing them.
-- **Payloads are compact.** Null and internal fields are stripped, and heavy fields are summarised. The same 32 findings are 45 KB under `--json` and 18 KB under `--agent`.
+- **Payloads are compact.** Null and internal fields are stripped, and heavy fields are summarised.
+- **List rows are lean.** A row in `cf finding list`, `cf repo list`, `cf fix`, `cf proof` or `cf audit` carries ids, names, status, severity and location. The matching view or show command returns one entry in full, and `--fields <keys>` returns exactly those keys of every row, including keys the lean row leaves out. `cf status --agent` still returns every repository in full.
+- **`cf audit` pages.** Under `--agent` it returns 50 events at a time, and when there are older ones `next` names the command that reads them.
+- **A malformed command is not worth retrying.** `usage_error` exits 2, and the same command fails the same way every time. Read `error.remedy`, or `cf agent schema --agent` for every command and flag.
 
 ## Teaching your coding agent
 
@@ -357,16 +384,16 @@ For onboarding an agent that has never seen Cefense at all, point it at <https:/
 Three output modes, in order of precedence:
 
 ```sh
-cf reproduced --agent                    # one line of JSON, envelope, stable contract
-cf reproduced --json                     # pretty-printed raw API response
-cf reproduced | grep critical            # tab-separated lines when piped
+cf finding list --agent                  # one line of JSON, envelope, stable contract
+cf finding list --json                   # pretty-printed raw API response
+cf finding list | grep critical          # tab-separated lines when piped
 ```
 
 `--json` gives you the unmodified API payload for exploration:
 
 ```sh
-cf reproduced --json | jq '.findings[] | select(.severity == "critical") | .filePath'
-cf repo list --json  | jq -r '.[].fullName'
+cf finding list --json | jq '.findings[] | select(.severity == "critical") | .filePath'
+cf repo list --json    | jq -r '.[].fullName'
 ```
 
 Anything that would prompt fails with exit code 2 and names the flag that would have answered it, so nothing hangs.
@@ -382,7 +409,7 @@ Set `CEFENSE_TOKEN` instead of signing in. It is read from the environment and n
   run: |
     npm install -g @cefense-npm/cefense-cli
     cf scan --repo ${{ github.repository }}
-    cf reproduced --repo ${{ github.repository }} --severity critical,high --exit-code
+    cf finding list --repo ${{ github.repository }} --severity critical,high --exit-code
 ```
 
 `--exit-code` returns 1 when a critical or high finding is present, which fails the job.
@@ -412,7 +439,7 @@ Under `--agent`, every finding carries both `severity` (the wire value, so filte
 
 ## Linking a directory to a repository
 
-`reproduced`, `matched`, `fix` and `scan` act on one repository. The first time you run any of them in a directory, the CLI asks which one and remembers the answer:
+`finding`, `fix`, `scan` and the older `reproduced` and `matched` act on one repository. The first time you run any of them in a directory, the CLI asks which one and remembers the answer:
 
 ```
   This directory is not linked to a Cefense repository.
@@ -484,7 +511,7 @@ const session = await openSession({}, { auth: true });
 const { findings } = await session.client.findings(githubRepoId, { severity: "critical" });
 ```
 
-This is the foundation the Cefense MCP server is built on.
+The Cefense MCP server is not built on this. It is a remote server that runs inside the Cefense backend at `https://cefense.com/mcp`, and an MCP client such as Claude, ChatGPT, Cursor or VS Code connects to it directly and signs in through the browser, with no CLI installed. See <https://cefense.com/docs/mcp>.
 
 ## Development
 
