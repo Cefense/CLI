@@ -49,14 +49,113 @@ export function stripAnsi(value: string): string {
 }
 
 export function visibleLength(value: string): number {
-  return stripAnsi(value).length;
+  return [...stripAnsi(value)].length;
+}
+
+export const ELLIPSIS = glyph.ellipsis;
+
+const RESET = `${ESC}[0m`;
+
+function tokens(value: string): Array<{ text: string; escape: boolean }> {
+  const parts: Array<{ text: string; escape: boolean }> = [];
+  let cursor = 0;
+  for (const match of value.matchAll(ANSI)) {
+    const at = match.index ?? 0;
+    if (at > cursor) parts.push({ text: value.slice(cursor, at), escape: false });
+    parts.push({ text: match[0], escape: true });
+    cursor = at + match[0].length;
+  }
+  if (cursor < value.length) parts.push({ text: value.slice(cursor), escape: false });
+  return parts;
+}
+
+function sliceVisible(value: string, start: number, end: number): { text: string; styled: boolean } {
+  let position = 0;
+  let text = "";
+  let styled = false;
+  for (const part of tokens(value)) {
+    if (part.escape) {
+      text += part.text;
+      styled = true;
+      continue;
+    }
+    for (const char of part.text) {
+      if (position >= start && position < end) text += char;
+      position += 1;
+    }
+  }
+  return { text, styled };
 }
 
 export function truncate(value: string, width: number): string {
-  const plain = stripAnsi(value);
-  if (plain.length <= width) return value;
-  if (width <= 3) return plain.slice(0, Math.max(0, width));
-  return plain.slice(0, width - 3) + "...";
+  const length = visibleLength(value);
+  if (length <= width) return value;
+  if (width <= 0) return "";
+  if (width === 1) return ELLIPSIS;
+  const { text, styled } = sliceVisible(value, 0, width - 1);
+  const kept = text.replace(/\s+((?:\u001b\[[0-9;]*m)*)$/, "$1");
+  return `${kept}${ELLIPSIS}${styled ? RESET : ""}`;
+}
+
+export function truncateStart(value: string, width: number): string {
+  const length = visibleLength(value);
+  if (length <= width) return value;
+  if (width <= 0) return "";
+  if (width === 1) return ELLIPSIS;
+  const { text, styled } = sliceVisible(value, length - (width - 1), length);
+  return `${ELLIPSIS}${text}${styled ? RESET : ""}`;
+}
+
+export function shortenPath(path: string, width: number): string {
+  if (path.length <= width) return path;
+  const segments = path.split("/");
+  for (let drop = 1; drop < segments.length; drop += 1) {
+    const candidate = `${ELLIPSIS}/${segments.slice(drop).join("/")}`;
+    if (candidate.length <= width) return candidate;
+  }
+  return truncateStart(path, width);
+}
+
+export function pathFloor(paths: string[], cap: number, least = 12): number {
+  const names = paths.map((path) => [...(path.split("/").pop() ?? "")].length + 2);
+  return Math.min(Math.max(least, cap), Math.max(least, ...names));
+}
+
+export function plural(count: number, singular: string, pluralForm?: string): string {
+  if (count === 1) return singular;
+  if (pluralForm) return pluralForm;
+  if (/[^aeiou]y$/.test(singular)) return `${singular.slice(0, -1)}ies`;
+  if (/(s|x|ch|sh)$/.test(singular)) return `${singular}es`;
+  return `${singular}s`;
+}
+
+export function formatCount(value: number): string {
+  return value.toLocaleString("en-US");
+}
+
+export function countOf(count: number, singular: string, pluralForm?: string): string {
+  return `${formatCount(count)} ${plural(count, singular, pluralForm)}`;
+}
+
+export function duration(milliseconds: number): string {
+  const seconds = Math.max(0, Math.round(milliseconds / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return seconds % 60 === 0 ? `${minutes}m` : `${minutes}m ${seconds % 60}s`;
+  const hours = Math.floor(minutes / 60);
+  return minutes % 60 === 0 ? `${hours}h` : `${hours}h ${minutes % 60}m`;
+}
+
+export function durationBetween(fromIso: string | null | undefined, toIso?: string | null): string {
+  if (!fromIso) return "";
+  const from = new Date(fromIso).getTime();
+  const to = toIso ? new Date(toIso).getTime() : Date.now();
+  if (Number.isNaN(from) || Number.isNaN(to) || to < from) return "";
+  return duration(to - from);
+}
+
+export function firstLine(value: string | null | undefined): string {
+  return (value ?? "").split("\n").map((entry) => entry.trim()).find(Boolean) ?? "";
 }
 
 export function padEnd(value: string, width: number): string {
@@ -69,29 +168,42 @@ export function padStart(value: string, width: number): string {
   return length >= width ? value : " ".repeat(width - length) + value;
 }
 
-export function relativeTime(value: string | null | undefined): string {
+function span(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo`;
+  return `${Math.floor(days / 365)}y`;
+}
+
+export function relativeTime(value: string | null | undefined, now = Date.now()): string {
   if (!value) return "never";
   const then = new Date(value).getTime();
   if (Number.isNaN(then)) return "never";
-  const seconds = Math.round((Date.now() - then) / 1000);
-  if (seconds < 0) return "just now";
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.round(days / 30);
-  if (months < 12) return `${months}mo ago`;
-  return `${Math.round(months / 12)}y ago`;
+  const seconds = Math.round((now - then) / 1000);
+  if (seconds < -30) return `in ${span(-seconds)}`;
+  if (seconds < 10) return "just now";
+  return `${span(seconds)} ago`;
 }
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export function absoluteDate(value: string | null | undefined): string {
   if (!value) return "never";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "never";
-  return date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  return `${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+export function datedLabel(value: string | null | undefined): string {
+  if (!value) return "never";
+  const date = absoluteDate(value);
+  return date === "never" ? date : `${date} (${relativeTime(value)})`;
 }
 
 export function elapsed(fromIso: string | null | undefined, toIso?: string | null): string {

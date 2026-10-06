@@ -5,6 +5,7 @@ import type { Project, ProofEnvResponse } from "../core/types.js";
 import type { Session } from "../core/session.js";
 import { isAgentMode } from "../ui/mode.js";
 import * as out from "../ui/output.js";
+import { hintLines } from "../ui/list.js";
 import { confirm, secret, spinner } from "../ui/prompts.js";
 import { isInteractive } from "../ui/screen.js";
 import { c, glyph } from "../ui/theme.js";
@@ -96,8 +97,8 @@ export async function proofEnvList(globals: GlobalOptions): Promise<number> {
   }
 
   out.line();
-  out.line(`  ${c.bold("Proof environment")}   ${c.dim(project.fullName)}`);
-  out.line(c.dim("  Values a proof run needs to boot the app. Values are write-only and never shown."));
+  out.line(`${c.bold("Proof environment")} ${c.dim(project.fullName)}`);
+  out.line(c.dim("Values a proof run needs to boot the app. Values are write-only and never shown."));
   out.line();
   if (!encryptionConfigured) {
     out.warn("Encryption is not configured on this deployment, so no value can be stored.");
@@ -108,11 +109,10 @@ export async function proofEnvList(globals: GlobalOptions): Promise<number> {
   } else {
     const width = Math.max(...variables.map((variable) => variable.name.length));
     for (const variable of variables) {
-      out.line(`  ${variable.name.padEnd(width)}   ${c.dim(`set ${relativeTime(variable.updatedAt)}`)}`);
+      out.line(`  ${variable.name.padEnd(width)}  ${c.dim(`set ${relativeTime(variable.updatedAt)}`)}`);
     }
   }
-  out.line();
-  if (encryptionConfigured) out.hint("cf proof env set <NAME>");
+  if (encryptionConfigured) out.lines(hintLines([{ command: "cf proof env set <NAME>", purpose: "store a value" }]));
   out.line();
   return 0;
 }
@@ -171,7 +171,7 @@ export async function proofEnvSet(
     return 0;
   }
   out.line();
-  out.success(`${glyph.check} ${name} ${replacing ? "replaced" : "stored"} for ${project.fullName}`);
+  out.success(`${name} ${replacing ? "replaced" : "stored"} for ${project.fullName}`);
   out.line();
   return 0;
 }
@@ -218,7 +218,7 @@ export async function proofEnvUnset(globals: GlobalOptions, rawName: string): Pr
     return 0;
   }
   out.line();
-  out.success(`${glyph.check} ${name} removed from ${project.fullName}`);
+  out.success(`${name} removed from ${project.fullName}`);
   out.line();
   return 0;
 }

@@ -4,7 +4,7 @@ import type { AuditEvent } from "../core/types.js";
 import { printList } from "../ui/list.js";
 import * as out from "../ui/output.js";
 import { relativeTime } from "../ui/format.js";
-import { c, glyph } from "../ui/theme.js";
+import { c, toneMark } from "../ui/theme.js";
 import { isAgentMode } from "../ui/mode.js";
 import { compactAuditEvent } from "../core/compact.js";
 
@@ -58,9 +58,9 @@ export function parseBefore(value: string | undefined): string | undefined {
 }
 
 function outcomeMark(event: AuditEvent): string {
-  if (event.outcome === "failure") return c.red(glyph.cross);
-  if (event.outcome === "warning") return c.yellow(glyph.warn);
-  return c.green(glyph.check);
+  if (event.outcome === "failure") return toneMark("failed");
+  if (event.outcome === "warning") return toneMark("attention");
+  return toneMark("done");
 }
 
 function actor(event: AuditEvent): string {
@@ -141,11 +141,11 @@ export async function auditCommand(
     scope: categories.length > 0 ? categories.join(", ") : "this account",
     rows: events,
     columns: [
-      { header: "when", value: (event) => c.dim(relativeTime(event.at)), min: 8, max: 12 },
-      { header: "", value: (event) => outcomeMark(event), min: 1, max: 1 },
-      { header: "category", value: (event) => c.dim(event.category), min: 8, max: 12 },
-      { header: "event", value: (event) => event.summary || event.action, min: 24 },
-      { header: "actor", value: (event) => c.dim(actor(event)), min: 8, max: 22 },
+      { header: "when", value: (event) => c.dim(relativeTime(event.at)), overflow: "never" },
+      { header: "", value: (event) => outcomeMark(event), overflow: "never" },
+      { header: "category", value: (event) => c.dim(event.category), overflow: "never" },
+      { header: "event", value: (event) => event.summary || event.action, min: 24, flex: true },
+      { header: "actor", value: (event) => c.dim(actor(event)), min: 8, max: 24 },
     ],
     pipeColumns: [
       { header: "when", value: (event) => event.at },

@@ -7,9 +7,10 @@ import { ensureProviderConnected, loadConnections, providerDisconnect } from "./
 import type { GithubRepo, Project } from "../core/types.js";
 import * as out from "../ui/output.js";
 import { confirm, confirmByTyping, multiselect, select } from "../ui/prompts.js";
-import { renderTable } from "../ui/table.js";
-import { relativeTime, terminalWidth } from "../ui/format.js";
-import { c, glyph, scanStatusLabel } from "../ui/theme.js";
+import { hintLines, printList } from "../ui/list.js";
+import { formatCount, relativeTime } from "../ui/format.js";
+import { badge, c, scanStatusLabel } from "../ui/theme.js";
+import { isPartialScan } from "../core/coverage.js";
 import { pickProject } from "./pick.js";
 import { watchScan } from "./scan.js";
 import { isAgentMode } from "../ui/mode.js";
@@ -197,15 +198,44 @@ export async function repoConnect(
     }
   }
 
-  out.line();
-  out.info("Next: review the findings");
-  out.line(`    ${c.dim("cf reproduced")}`);
+  out.lines(
+    hintLines([
+      {
+        command: connected.length === 1 ? `cf reproduced --repo ${connected[0]!.project.fullName}` : "cf status",
+        purpose: connected.length === 1 ? "read the findings" : "see every repository",
+      },
+    ]),
+  );
   out.line();
   return 0;
 }
 
+function repoStatus(project: Project): string {
+  if (project.scan?.status === "completed" && isPartialScan(project.scan)) return badge("attention", "partial");
+  return scanStatusLabel(project.scan?.status);
+}
+
+function severityCount(counts: Map<string, Record<string, number>>, project: Project, key: string, style: (value: string) => string): string {
+  const value = counts.get(project.id)?.[key];
+  if (value === undefined) return c.dim("-");
+  return value > 0 ? style(formatCount(value)) : c.dim("0");
+}
+
 export async function repoList(globals: GlobalOptions): Promise<number> {
   const session = await openSession(globals, { auth: true });
+  const countsRequest =
+    !isAgentMode() && !out.isJsonMode() && !out.isPiped()
+      ? session.client
+          .notifications()
+          .then((response) => {
+            const counts = new Map<string, Record<string, number>>();
+            for (const repository of response.repositories) {
+              if (repository.lastScanCounts) counts.set(repository.id, repository.lastScanCounts);
+            }
+            return counts;
+          })
+          .catch(() => new Map<string, Record<string, number>>())
+      : null;
   const { projects } = await session.client.projects();
 
   if (isAgentMode()) {
@@ -223,60 +253,82 @@ export async function repoList(globals: GlobalOptions): Promise<number> {
     return 0;
   }
 
-  if (projects.length === 0) {
-    out.line();
-    out.info("No repositories are connected.");
-    out.hint("Run cf repo connect.");
-    out.line();
-    return 0;
-  }
-
   const scope = defaultScope();
   const fallback = readRepoDefault(scope);
-  // The host column only earns its width once more than one host is in play.
   const hosts = new Set(projects.map((project) => providerOf(project)));
+  const counts = countsRequest ? await countsRequest : new Map<string, Record<string, number>>();
+  const severities = counts.size > 0;
+  const linked = projects.find((project) => fallback?.githubRepoId === project.githubRepoId);
+  const weight = (project: Project) => {
+    const entry = counts.get(project.id);
+    return entry ? (entry.critical ?? 0) * 1000 + (entry.high ?? 0) : -1;
+  };
+  const ranked = [...projects].sort((left, right) => weight(right) - weight(left));
+  const top = linked ?? (ranked[0] && weight(ranked[0]) > 0 ? ranked[0] : projects.find((project) => (project.scan?.findingCount ?? 0) > 0));
 
-  out.line();
-  out.lines(
-    renderTable(
-      projects,
-      [
-        {
-          header: "",
-          value: (project) =>
-            fallback?.githubRepoId === project.githubRepoId ? c.cyan(glyph.arrow) : " ",
-          min: 1,
-          max: 1,
-        },
-        { header: "repository", value: (project) => project.fullName, min: 16 },
-        ...(hosts.size > 1
-          ? [
-              {
-                header: "host",
-                value: (project: Project) => providerLabel(providerOf(project)),
-                min: 7,
-              },
-            ]
-          : []),
-        { header: "visibility", value: (project) => (project.private ? "private" : "public"), min: 7 },
-        { header: "status", value: (project) => scanStatusLabel(project.scan?.status), min: 8 },
-        {
-          header: "findings",
-          value: (project) => (project.scan ? String(project.scan.findingCount) : "-"),
-          align: "right",
-          min: 5,
-        },
-        {
-          header: "last scan",
-          value: (project) =>
-            project.scan ? relativeTime(project.scan.finishedAt ?? project.scan.createdAt) : "never",
-          min: 9,
-        },
-      ],
-      { width: terminalWidth() - 4 },
-    ).map((row) => `  ${row}`),
-  );
-  out.line();
+  printList<Project>({
+    noun: "repository",
+    scope: new URL(session.apiUrl).host,
+    rows: projects,
+    columns: [
+      {
+        header: "repository",
+        value: (project) =>
+          [
+            project.fullName,
+            fallback?.githubRepoId === project.githubRepoId ? c.cyan("*") : "",
+            project.private ? c.dim("private") : "",
+          ]
+            .filter(Boolean)
+            .join(" "),
+        flex: true,
+        min: 16,
+      },
+      ...(hosts.size > 1
+        ? [{ header: "host", value: (project: Project) => providerLabel(providerOf(project)) }]
+        : []),
+      { header: "status", value: repoStatus, overflow: "never" },
+      ...(severities
+        ? [
+            {
+              header: "critical",
+              value: (project: Project) => severityCount(counts, project, "critical", c.red),
+              align: "right" as const,
+              overflow: "never" as const,
+            },
+            {
+              header: "high",
+              value: (project: Project) => severityCount(counts, project, "high", c.yellow),
+              align: "right" as const,
+              overflow: "never" as const,
+            },
+          ]
+        : []),
+      {
+        header: "findings",
+        value: (project) => (project.scan ? formatCount(project.scan.findingCount) : c.dim("-")),
+        align: "right",
+        overflow: "never",
+      },
+      {
+        header: "last scan",
+        value: (project) => c.dim(project.scan ? relativeTime(project.scan.finishedAt ?? project.scan.createdAt) : "never"),
+        overflow: "never",
+      },
+    ],
+    pipeColumns: [
+      { header: "repository", value: (project) => project.fullName },
+      { header: "visibility", value: (project) => (project.private ? "private" : "public") },
+      { header: "status", value: (project) => project.scan?.status ?? "never" },
+      { header: "findings", value: (project) => (project.scan ? String(project.scan.findingCount) : "") },
+      { header: "last scan", value: (project) => project.scan?.finishedAt ?? project.scan?.createdAt ?? "" },
+    ],
+    empty: "No repositories are connected.",
+    footnote: fallback && linked ? `${c.cyan("*")} linked to this directory` : null,
+    next: top
+      ? [{ command: `cf reproduced${linked ? "" : ` --repo ${top.fullName}`}`, purpose: `read the findings in ${top.fullName}` }]
+      : [{ command: "cf repo connect", purpose: "connect one" }],
+  });
   return 0;
 }
 

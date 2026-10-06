@@ -12,7 +12,8 @@ import * as out from "../ui/output.js";
 import { confirm, confirmByTyping, spinner } from "../ui/prompts.js";
 import { renderTable } from "../ui/table.js";
 import { padEnd, terminalWidth } from "../ui/format.js";
-import { c, glyph } from "../ui/theme.js";
+import { badge, c } from "../ui/theme.js";
+import { hintLines } from "../ui/list.js";
 import { isAgentMode } from "../ui/mode.js";
 import { prune } from "../core/compact.js";
 import { openExternal } from "../ui/open.js";
@@ -70,15 +71,15 @@ export function connectionState(entry: Connection): ConnectionState {
 function statusCell(entry: Connection): string {
   switch (connectionState(entry)) {
     case "unavailable":
-      return c.yellow(`${glyph.warn} status unavailable`);
+      return badge("attention", "status unavailable");
     case "reconnect":
-      return c.yellow(`${glyph.warn} reconnect needed`);
+      return badge("attention", "reconnect needed");
     case "connected":
-      return c.green(`${glyph.check} connected`);
+      return badge("done", "connected");
     case "unconfigured":
-      return c.dim(`${glyph.track} not available here`);
+      return badge("none", "not available here");
     case "not_connected":
-      return c.yellow(`${glyph.ring} not connected`);
+      return badge("none", "not connected");
   }
 }
 
@@ -117,26 +118,33 @@ export async function providerList(globals: GlobalOptions): Promise<number> {
     renderTable(
       connections,
       [
-        { header: "host", value: (entry) => providerLabel(entry.provider), min: 10 },
-        { header: "state", value: (entry) => statusCell(entry), min: 16 },
-        { header: "account", value: (entry) => entry.status.login ?? "-", min: 10 },
+        { header: "host", value: (entry) => providerLabel(entry.provider) },
+        { header: "state", value: (entry) => statusCell(entry), overflow: "never" },
+        { header: "account", value: (entry) => entry.status.login ?? c.dim("-") },
         {
           header: "server",
-          value: (entry) => entry.status.host ?? providerHost(entry.provider),
-          min: 12,
+          value: (entry) => c.dim(entry.status.host ?? providerHost(entry.provider)),
+          flex: true,
         },
       ],
-      { width: terminalWidth() - 4 },
-    ).map((row) => `  ${row}`),
+      { width: terminalWidth() },
+    ),
   );
-  out.line();
   const missing = connections.filter((entry) =>
     ["not_connected", "reconnect"].includes(connectionState(entry)),
   );
   if (missing.length > 0) {
-    out.hint(`cf provider connect ${missing[0]!.provider}`);
-    out.line();
+    const first = missing[0]!;
+    out.lines(
+      hintLines([
+        {
+          command: `cf provider connect ${first.provider}`,
+          purpose: connectionState(first) === "reconnect" ? `reconnect ${providerLabel(first.provider)}` : `connect ${providerLabel(first.provider)}`,
+        },
+      ]),
+    );
   }
+  out.line();
   return 0;
 }
 
@@ -246,7 +254,7 @@ export async function providerConnect(
 
   out.line();
   out.success(`${providerLabel(provider)} is connected${status.login ? ` as ${c.bold(status.login)}` : ""}`);
-  out.hint(`cf repo connect --provider ${provider}`);
+  out.lines(hintLines([{ command: `cf repo connect --provider ${provider}`, purpose: "connect a repository from it" }]));
   out.line();
   return 0;
 }

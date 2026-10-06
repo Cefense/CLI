@@ -6,6 +6,7 @@ import { compactOrganization, prune } from "../core/compact.js";
 import * as out from "../ui/output.js";
 import { keyValue, renderTable } from "../ui/table.js";
 import { terminalWidth } from "../ui/format.js";
+import { hintLines } from "../ui/list.js";
 import { c, glyph } from "../ui/theme.js";
 import { isAgentMode } from "../ui/mode.js";
 
@@ -57,17 +58,14 @@ export async function orgList(globals: GlobalOptions): Promise<number> {
           max: 1,
         },
         { header: "slug", value: (entry) => entry.slug, min: 10 },
-        { header: "name", value: (entry) => entry.name, min: 12 },
-        { header: "role", value: (entry) => entry.role, min: 6 },
+        { header: "name", value: (entry) => entry.name, min: 12, flex: true },
+        { header: "role", value: (entry) => c.dim(entry.role), overflow: "never" },
       ],
-      { width: terminalWidth() - 4 },
+      { width: terminalWidth() - 2 },
     ).map((row) => `  ${row}`),
   );
+  if (!active) out.lines(hintLines([{ command: `cf org use ${organizations[0]!.slug}`, purpose: "choose the organization to act on" }]));
   out.line();
-  if (!active) {
-    out.hint(`cf org use ${organizations[0]!.slug}`);
-    out.line();
-  }
   return 0;
 }
 
@@ -142,7 +140,7 @@ export async function orgShow(): Promise<number> {
   if (!active) {
     out.info(`No organization is selected for ${c.bold(apiUrl)}.`);
     out.hint("Cefense uses the only one your account belongs to, if there is exactly one.");
-    out.hint("cf org list");
+    out.lines(hintLines([{ command: "cf org list", purpose: "see the organizations you belong to" }]));
     out.line();
     return 0;
   }

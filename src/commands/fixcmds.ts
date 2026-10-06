@@ -1,17 +1,22 @@
 import { compactFix, prune } from "../core/compact.js";
 import { UsageError } from "../core/errors.js";
 import { openSession, type GlobalOptions, type Session } from "../core/session.js";
-import type { Finding, Fix } from "../core/types.js";
+import type { Finding, Fix, Project } from "../core/types.js";
 import { isAgentMode } from "../ui/mode.js";
 import * as out from "../ui/output.js";
 import { confirmByTyping, select, spinner } from "../ui/prompts.js";
 import { isInteractive } from "../ui/screen.js";
-import { c, glyph } from "../ui/theme.js";
-import { behaviorLine, renderDiff } from "./fixactions.js";
+import { c, displaySeverity, severityColor, stateWord } from "../ui/theme.js";
+import { behaviorLine, fixFiles, fixTone, fixWord, renderDiff } from "./fixactions.js";
 import { resolveLinkedProject } from "./link.js";
 import { resolveFindingId } from "./reproduced.js";
 import { CODE_HOSTS, openIfRequested } from "../ui/open.js";
-import { shortId } from "../ui/format.js";
+import { datedLabel, relativeTime, shortId, terminalWidth } from "../ui/format.js";
+import { hintLine, hintLines, type NextStep } from "../ui/list.js";
+import { details } from "../ui/table.js";
+import { page } from "../ui/pager.js";
+import { BODY_INDENT, heading, indent, joinDots, paragraph, readingWidth, titleLine, viewOn } from "../ui/detail.js";
+import { providerLabel, providerOf } from "../core/providers.js";
 
 const SETTLED = new Set(["ready", "failed", "skipped", "opened", "merged", "closed"]);
 
@@ -32,37 +37,76 @@ async function waitForFix(
   return latest;
 }
 
-function renderFix(fix: Fix): void {
-  const files = (fix.files ?? []).map((file) => file.path);
-  out.line();
-  out.line(
-    `  ${c.bold(files.length > 1 ? `${files.length} files` : fix.filePath)}   ${c.dim(`base ${fix.baseSha.slice(0, 7)}`)}`,
-  );
-  if (files.length > 1) for (const path of files) out.line(`    ${c.dim(path)}`);
-  out.line();
+function fixNext(fix: Fix, findingId: string, flag: string): NextStep | null {
+  const id = shortId(findingId);
+  if (fix.status === "ready") return { command: `cf fix publish ${id}${flag}`, purpose: "open a pull request with this patch" };
+  if (fix.status === "opened") return { command: `cf fix merge ${id}${flag}`, purpose: "merge the pull request" };
+  if (fix.status === "failed" || fix.status === "closed") return { command: `cf fix generate ${id}${flag}`, purpose: "write the patch again" };
+  if (fix.status === "generating" || fix.status === "publishing") return { command: `cf fix show ${id}${flag}`, purpose: "check on it" };
+  if (fix.status === "merged") return { command: `cf scan${flag}`, purpose: "confirm the finding is gone" };
+  return null;
+}
+
+function fixDetail(
+  fix: Fix,
+  finding: Finding | null,
+  options: { flag: string; host: string; next?: boolean },
+): string[] {
+  const width = terminalWidth();
+  const body = readingWidth(width);
+  const files = fixFiles(fix);
+  const lines: string[] = [
+    titleLine(finding ? `Patch for ${finding.title}` : `Patch for ${fix.filePath}`, shortId(fix.findingId)),
+    joinDots([
+      stateWord(fixTone(fix), fixWord(fix)),
+      finding ? severityColor(finding.severity)(displaySeverity(finding.severity)) : null,
+      files.length > 1 ? `${files.length} files` : files[0],
+      c.dim(`updated ${relativeTime(fix.updatedAt)}`),
+    ]),
+    "",
+    ...details([
+      ["Files", files.join(", ")],
+      ["Base", fix.baseSha.slice(0, 7)],
+      ["Branch", fix.branch],
+      ["Strategy", fix.strategy === "dependency" ? "dependency upgrade" : fix.model ? `model, ${fix.model}` : "model"],
+      ["Updated", datedLabel(fix.updatedAt)],
+    ]),
+  ];
+
   if (fix.status === "failed") {
-    out.line(`  ${c.red(fix.error ?? "Generation failed.")}`);
-    out.line();
-    return;
+    lines.push("", heading("Error"), ...paragraph(fix.error ?? "The patch could not be written.", body, c.red));
+  } else if (fix.status === "generating") {
+    lines.push("", `${BODY_INDENT}${c.cyan("Writing the patch, this can take a minute.")}`);
   }
+
   if (fix.diff) {
-    for (const diffLine of renderDiff(fix.diff).slice(0, 200)) out.line(`  ${diffLine}`);
-    out.line();
+    const diff = renderDiff(fix.diff, body);
+    lines.push("", heading("Diff"), ...indent(diff.slice(0, 400)));
+    if (diff.length > 400) lines.push(`${BODY_INDENT}${c.dim(`${diff.length - 400} more lines`)}`);
   }
-  if (fix.explanation) {
-    out.line(`  ${c.dim(fix.explanation)}`);
-    out.line();
-  }
+  if (fix.explanation) lines.push("", heading("Why this patch"), ...paragraph(fix.explanation, body));
+
   const behavior = behaviorLine(fix);
   if (behavior) {
-    out.line(`  ${behavior}`);
-    if (fix.behaviorNote) out.line(`    ${c.dim(fix.behaviorNote)}`);
-    out.line();
+    lines.push("", `${BODY_INDENT}${behavior}`);
+    if (fix.behaviorNote) lines.push(...paragraph(fix.behaviorNote, body - 2, c.dim).map((value) => `  ${value}`));
   }
-  if (fix.prUrl) {
-    out.line(`  ${c.dim("pull request")}  ${c.cyan(fix.prUrl)}`);
-    out.line();
-  }
+
+  lines.push("");
+  const step = options.next === false ? null : fixNext(fix, fix.findingId, options.flag);
+  const hint = hintLine(step);
+  if (hint) lines.push(hint);
+  const view = viewOn("pull request", options.host, fix.prUrl);
+  if (view) lines.push(view);
+  lines.push("");
+  return lines;
+}
+
+async function findingFor(session: Session, project: Project, findingId: string): Promise<Finding | null> {
+  return session.client
+    .findings(project.githubRepoId)
+    .then((response) => response.findings.find((entry) => entry.id === findingId) ?? null)
+    .catch(() => null);
 }
 
 async function resolveFinding(
@@ -76,7 +120,8 @@ async function resolveFinding(
 
 export async function fixShow(globals: GlobalOptions, findingId: string): Promise<number> {
   const session = await openSession(globals, { auth: true });
-  findingId = await resolveFinding(session, globals, findingId);
+  const { project } = await resolveLinkedProject(session, globals);
+  findingId = await resolveFindingId(session, project, findingId);
   const { fix } = await session.client.fixForFinding(findingId);
 
   if (isAgentMode()) {
@@ -96,10 +141,11 @@ export async function fixShow(globals: GlobalOptions, findingId: string): Promis
     return 0;
   }
 
+  const flag = globals.repo ? ` --repo ${project.fullName}` : "";
   if (!fix) {
     out.line();
-    out.info("No fix has been generated for that finding.");
-    out.hint(`cf fix generate ${shortId(findingId)}`);
+    out.info("No patch has been written for that finding yet.");
+    out.lines(hintLines([{ command: `cf fix generate ${shortId(findingId)}${flag}`, purpose: "write one" }]));
     out.line();
     return 0;
   }
@@ -108,7 +154,8 @@ export async function fixShow(globals: GlobalOptions, findingId: string): Promis
     return 0;
   }
 
-  renderFix(fix);
+  const finding = await findingFor(session, project, findingId);
+  page(fixDetail(fix, finding, { flag, host: providerLabel(providerOf(project)) }));
   return 0;
 }
 
@@ -118,7 +165,8 @@ export async function fixGenerate(
   options: { wait?: boolean } = {},
 ): Promise<number> {
   const session = await openSession(globals, { auth: true });
-  findingId = await resolveFinding(session, globals, findingId);
+  const { project } = await resolveLinkedProject(session, globals);
+  findingId = await resolveFindingId(session, project, findingId);
 
   const existing = await session.client
     .fixForFinding(findingId)
@@ -168,12 +216,9 @@ export async function fixGenerate(
     return 0;
   }
 
-  renderFix(fix);
-  if (fix.status === "ready") {
-    out.info("Next: open a pull request");
-    out.line(`    ${c.dim(`cf fix publish ${findingId}`)}`);
-    out.line();
-  }
+  const finding = await findingFor(session, project, findingId);
+  out.line();
+  page(fixDetail(fix, finding, { flag: globals.repo ? ` --repo ${project.fullName}` : "", host: providerLabel(providerOf(project)) }));
   return 0;
 }
 
@@ -257,7 +302,13 @@ export async function fixPublish(globals: GlobalOptions, findingId: string): Pro
   }
 
   out.line();
-  out.success(`${glyph.check} ${published.prUrl ?? "Pull request opened"}`);
+  out.success(published.prNumber ? `Opened pull request #${published.prNumber}` : "Opened a pull request");
+  if (published.prUrl) out.hint(published.prUrl);
+  out.lines(
+    hintLines([
+      { command: `cf fix merge ${shortId(findingId)}${globals.repo ? ` --repo ${globals.repo}` : ""}`, purpose: "merge it once it is reviewed" },
+    ]),
+  );
   out.line();
   return 0;
 }
@@ -421,9 +472,7 @@ export async function fixMerge(
   );
   if (result.branchDeleted && fix.branch) out.hint(`Deleted ${fix.branch}`);
   if (fix.prUrl) out.hint(fix.prUrl);
-  out.line();
-  out.info("Next: confirm the finding is gone");
-  out.line(`    ${c.dim("cf scan --wait")}`);
+  out.lines(hintLines([{ command: "cf scan --wait", purpose: "confirm the finding is gone" }]));
   out.line();
   return 0;
 }

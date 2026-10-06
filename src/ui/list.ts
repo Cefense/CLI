@@ -1,5 +1,6 @@
-import { padEnd, stripAnsi, terminalWidth } from "./format.js";
-import { isPiped, line, lines } from "./output.js";
+import { formatCount, plural, sanitizeForTerminal, stripAnsi, terminalWidth } from "./format.js";
+import { isPiped, line } from "./output.js";
+import { page } from "./pager.js";
 import { renderTable, type Column } from "./table.js";
 import { c } from "./theme.js";
 import { UsageError } from "../core/errors.js";
@@ -24,7 +25,7 @@ function select<T>(columns: Column<T>[]): Column<T>[] {
   if (missing.length > 0) {
     throw new UsageError(
       `${missing.join(", ")} is not a column here.`,
-      `Columns are ${known.join(", ")}.`,
+      `Columns are ${known.filter(Boolean).join(", ")}.`,
       "unknown_column",
     );
   }
@@ -46,6 +47,7 @@ export interface ListView<T> {
   empty: string;
   emptyHint?: string | null;
   footnote?: string | null;
+  banner?: string[];
   next?: NextStep[];
 }
 
@@ -54,6 +56,7 @@ export interface Group<T> {
   rows: T[];
   total?: number;
   tint?: (value: string) => string;
+  collapsed?: string;
 }
 
 export interface GroupedView<T> {
@@ -66,46 +69,68 @@ export interface GroupedView<T> {
   empty: string;
   emptyHint?: string | null;
   footnote?: string | null;
+  banner?: string[];
   next?: NextStep[];
 }
 
-function pipe<T>(rows: T[], columns: Column<T>[]): void {
+function pipe<T>(rows: T[], columns: Column<T>[], banner: string[] = []): void {
+  for (const value of banner) process.stderr.write(`${sanitizeForTerminal(stripAnsi(value))}\n`);
   for (const row of rows) {
     process.stdout.write(`${columns.map((column) => stripAnsi(column.value(row))).join("\t")}\n`);
   }
 }
 
-function plural(count: number, noun: string): string {
-  if (count === 1) return noun;
-  return noun.endsWith("y") ? `${noun.slice(0, -1)}ies` : `${noun}s`;
+export function summaryLine(shown: number, total: number, noun: string, scope: string): string {
+  return `Showing ${formatCount(shown)} of ${formatCount(total)} ${plural(total, noun)} in ${scope}`;
 }
 
 export function summary(shown: number, total: number, noun: string, scope: string): void {
-  line(`Showing ${shown} of ${total} ${plural(total, noun)} in ${scope}`);
+  line(summaryLine(shown, total, noun, scope));
+}
+
+export function sectionLine(label: string, count?: number | string | null, tint?: (value: string) => string): string {
+  const title = (tint ?? ((value: string) => value))(c.bold(label));
+  if (count === undefined || count === null) return title;
+  return `${title}  ${c.dim(typeof count === "number" ? formatCount(count) : count)}`;
 }
 
 export function section(label: string, tint?: (value: string) => string): void {
-  line((tint ?? ((value: string) => value))(c.bold(label)));
+  line(sectionLine(label, null, tint));
+}
+
+export function hintLine(step: NextStep | null | undefined): string | null {
+  if (!step) return null;
+  return c.dim(`To ${step.purpose}, run ${step.command}`);
+}
+
+export function hintLines(steps: NextStep[] | undefined): string[] {
+  const hint = hintLine(steps?.[0]);
+  return hint ? ["", hint] : [];
 }
 
 export function nextSteps(steps: NextStep[]): void {
-  if (steps.length === 0) return;
-  const width = Math.max(...steps.map((step) => step.command.length));
-  line();
-  for (const step of steps) line(c.dim(`${padEnd(step.command, width)}   ${step.purpose}`));
+  for (const value of hintLines(steps)) line(value);
 }
 
 function nothing<T>(view: ListView<T> | GroupedView<T>): void {
-  line();
-  line(c.dim(view.empty));
-  if (view.emptyHint) line(c.dim(view.emptyHint));
-  nextSteps(view.next ?? []);
-  line();
+  const body = [
+    ...(view.banner ?? []),
+    "",
+    view.empty,
+    ...(view.emptyHint ? [c.dim(view.emptyHint)] : []),
+    ...hintLines(view.next),
+    "",
+  ];
+  for (const value of body) line(value);
+}
+
+function tail(view: { footnote?: string | null; next?: NextStep[] }): string[] {
+  return [...(view.footnote ? ["", c.dim(view.footnote)] : []), ...hintLines(view.next), ""];
 }
 
 export function printList<T>(view: ListView<T>): void {
   if (isPiped()) {
-    pipe(view.rows, view.pipeColumns ?? view.columns);
+    pipe(view.rows, view.pipeColumns ?? view.columns, view.banner);
     return;
   }
   const columns = select(view.columns);
@@ -115,17 +140,14 @@ export function printList<T>(view: ListView<T>): void {
     return;
   }
 
-  line();
-  summary(view.rows.length, view.total ?? view.rows.length, view.noun, view.scope);
-  line();
-  lines(renderTable(view.rows, columns, { width: terminalWidth() }));
-
-  if (view.footnote) {
-    line();
-    line(c.dim(view.footnote));
-  }
-  nextSteps(view.next ?? []);
-  line();
+  page([
+    ...(view.banner ?? []),
+    "",
+    summaryLine(view.rows.length, view.total ?? view.rows.length, view.noun, view.scope),
+    "",
+    ...renderTable(view.rows, columns, { width: terminalWidth() }),
+    ...tail(view),
+  ]);
 }
 
 export function printGrouped<T>(view: GroupedView<T>): void {
@@ -133,7 +155,7 @@ export function printGrouped<T>(view: GroupedView<T>): void {
   const flat = groups.flatMap((group) => group.rows);
 
   if (isPiped()) {
-    pipe(flat, view.pipeColumns ?? view.columns);
+    pipe(flat, view.pipeColumns ?? view.columns, view.banner);
     return;
   }
   const columns = select(view.columns);
@@ -143,26 +165,29 @@ export function printGrouped<T>(view: GroupedView<T>): void {
     return;
   }
 
-  line();
-  summary(flat.length, view.total ?? flat.length, view.noun, view.scope);
-
-  const body = renderTable(flat, columns, {
-    width: terminalWidth() - INDENT.length,
-    header: false,
-  });
+  const open = groups.filter((group) => !group.collapsed);
+  const body = renderTable(
+    open.flatMap((group) => group.rows),
+    columns,
+    { width: terminalWidth() - INDENT.length, header: false },
+  );
+  const content: string[] = [
+    ...(view.banner ?? []),
+    "",
+    summaryLine(flat.length, view.total ?? flat.length, view.noun, view.scope),
+  ];
 
   let cursor = 0;
   for (const group of groups) {
-    line();
-    section(group.label, group.tint);
-    for (const row of body.slice(cursor, cursor + group.rows.length)) line(`${INDENT}${row}`);
+    content.push("");
+    content.push(sectionLine(group.label, group.total ?? group.rows.length, group.tint));
+    if (group.collapsed) {
+      content.push(`${INDENT}${c.dim(group.collapsed)}`);
+      continue;
+    }
+    for (const row of body.slice(cursor, cursor + group.rows.length)) content.push(`${INDENT}${row}`);
     cursor += group.rows.length;
   }
 
-  if (view.footnote) {
-    line();
-    line(c.dim(view.footnote));
-  }
-  nextSteps(view.next ?? []);
-  line();
+  page([...content, ...tail(view)]);
 }

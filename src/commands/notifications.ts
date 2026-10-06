@@ -11,9 +11,10 @@ import type {
 } from "../core/types.js";
 import * as out from "../ui/output.js";
 import { keyValue } from "../ui/table.js";
-import { nextSteps } from "../ui/list.js";
-import { padEnd } from "../ui/format.js";
-import { c, glyph } from "../ui/theme.js";
+import { hintLines } from "../ui/list.js";
+import { padEnd, wrapText } from "../ui/format.js";
+import { c, toneMark } from "../ui/theme.js";
+import { readingWidth } from "../ui/detail.js";
 import { isAgentMode } from "../ui/mode.js";
 
 /**
@@ -115,53 +116,41 @@ function settingLabel(kind: NotificationsResponse["kinds"][number]): string {
 }
 
 function print(response: NotificationsResponse): void {
-  out.line();
-  out.line(`  ${c.bold("Notifications")}   ${c.dim(response.email)}`);
-  out.line();
+  const lines: string[] = ["", `${c.bold("Notifications")} ${c.dim(response.email)}`];
 
   if (!response.configured) {
-    out.warn("Email is not configured on this deployment, so nothing is being delivered yet.");
-    out.line();
+    lines.push("", `${toneMark("attention")} Email is not configured on this deployment, so nothing is being delivered yet.`);
   }
 
   const width = Math.max(...response.kinds.map((kind) => kind.kind.length));
+  const reading = readingWidth() - 2;
+  lines.push("");
   for (const kind of response.kinds) {
     const sent = response.sentLast30Days[kind.kind] ?? 0;
-    const marker = kind.mandatory
-      ? c.dim(glyph.dot)
-      : kind.enabled
-        ? c.green(glyph.dot)
-        : c.dim(glyph.dot);
-    out.line(
-      `  ${marker} ${padEnd(kind.kind, width)}   ${settingLabel(kind)}${
-        sent > 0 ? c.dim(`   ${sent} sent in 30 days`) : ""
-      }`,
+    const tone = kind.mandatory ? "none" : kind.enabled ? "done" : "none";
+    lines.push(
+      `${toneMark(tone)} ${padEnd(kind.kind, width)}  ${settingLabel(kind)}${sent > 0 ? c.dim(`  ${sent} sent in 30 days`) : ""}`,
     );
-    out.line(`    ${c.dim(kind.description)}`);
+    for (const wrapped of wrapText(kind.description, reading)) lines.push(`  ${c.dim(wrapped)}`);
   }
 
   const exceptions = response.repositories.filter((repository) => repository.override);
-  out.line();
-  out.line(`  ${c.bold("Repositories")}   ${c.dim(`${response.repositories.length} connected`)}`);
+  lines.push("", `${c.bold("Repositories")} ${c.dim(`${response.repositories.length} connected`)}`);
   if (exceptions.length === 0) {
-    out.line(`  ${c.dim("all on the settings above")}`);
+    lines.push(`  ${c.dim("all on the settings above")}`);
   } else {
     const repoWidth = Math.max(...exceptions.map((repository) => repository.fullName.length));
     for (const repository of exceptions) {
       const note = noisyNote(repository);
-      out.line(
-        `  ${padEnd(repository.fullName, repoWidth)}   ${overrideLabel(repository)}${
-          note ? c.dim(`   ${note}`) : ""
-        }`,
-      );
+      lines.push(`  ${padEnd(repository.fullName, repoWidth)}  ${overrideLabel(repository)}${note ? c.dim(`  ${note}`) : ""}`);
     }
   }
 
-  nextSteps([
-    { command: "cf notifications set scan_report --severity critical", purpose: "raise the floor" },
-    { command: "cf notifications mute <repo>", purpose: "silence one repository" },
-  ]);
-  out.line();
+  lines.push(
+    ...hintLines([{ command: "cf notifications set scan_report --severity critical", purpose: "only hear about critical findings" }]),
+    "",
+  );
+  out.lines(lines);
 }
 
 function payload(response: NotificationsResponse) {

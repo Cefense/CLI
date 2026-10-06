@@ -1,14 +1,17 @@
 import { compactProof, prune, verdictLabel } from "../core/compact.js";
 import { UsageError } from "../core/errors.js";
 import { openSession, type GlobalOptions, type Session } from "../core/session.js";
-import type { Finding, FindingProof, Project, ProofCheck, ProofVerdict } from "../core/types.js";
+import type { Finding, FindingProof, Project, ProofCheck } from "../core/types.js";
 import { isAgentMode } from "../ui/mode.js";
 import * as out from "../ui/output.js";
-import { printGrouped } from "../ui/list.js";
+import { hintLine, hintLines, printGrouped, type NextStep } from "../ui/list.js";
 import { confirm, spinner } from "../ui/prompts.js";
 import { isInteractive } from "../ui/screen.js";
-import { c, displaySeverity, glyph, severityColor, severityRank } from "../ui/theme.js";
-import { relativeTime, shortId, wrapText, terminalWidth } from "../ui/format.js";
+import { c, displaySeverity, glyph, severityColor, severityRank, stateWord, toneMark, type Tone } from "../ui/theme.js";
+import { datedLabel, pathFloor, relativeTime, shortId, terminalWidth, wrapText } from "../ui/format.js";
+import { details } from "../ui/table.js";
+import { page } from "../ui/pager.js";
+import { BODY_INDENT, heading, joinDots, paragraph, readingWidth, titleLine } from "../ui/detail.js";
 import { resolveLinkedProject } from "./link.js";
 import { resolveFindingId } from "./reproduced.js";
 
@@ -24,17 +27,25 @@ function kindLabel(kind: string): string {
   return KIND_LABELS[kind] ?? kind;
 }
 
-function verdictColor(verdict: ProofVerdict | null): (value: string) => string {
-  if (verdict === "proven" || verdict === "argued") return c.green;
-  if (verdict === "refuted") return c.red;
-  if (verdict === "incomplete") return c.yellow;
-  return c.dim;
+function proofTone(proof: FindingProof): Tone {
+  if (proof.status === "running") return "running";
+  if (proof.status === "failed") return "failed";
+  if (proof.verdict === "proven" || proof.verdict === "argued") return "done";
+  if (proof.verdict === "refuted") return "failed";
+  if (proof.verdict === "incomplete") return "attention";
+  return "none";
+}
+
+function proofWord(proof: FindingProof): string {
+  if (proof.status === "running") return "running";
+  if (proof.status === "failed") return "did not finish";
+  return proof.verdict ? verdictLabel(proof.verdict).toLowerCase() : "settled";
 }
 
 function checkGlyph(check: ProofCheck): string {
-  if (check.verdict === "pass") return c.green(glyph.check);
-  if (check.verdict === "fail") return c.red(glyph.cross);
-  if (check.verdict === "warn") return c.yellow(glyph.warn);
+  if (check.verdict === "pass") return toneMark("done");
+  if (check.verdict === "fail") return toneMark("failed");
+  if (check.verdict === "warn") return toneMark("attention");
   return c.dim(glyph.ring);
 }
 
@@ -61,75 +72,82 @@ async function waitForProof(
   return latest;
 }
 
-function renderProof(proof: FindingProof, finding: Finding | null): void {
-  const width = Math.min(terminalWidth(), 96) - 4;
+function humanNext(findingId: string, proof: FindingProof, flag: string): NextStep {
+  const id = shortId(findingId);
+  if (proof.status === "running") return { command: `cf proof show ${id}${flag}`, purpose: "check on it" };
+  if (proof.status === "failed") return { command: `cf proof run ${id}${flag}`, purpose: "run the proof again" };
+  if (proof.verdict === "refuted") return { command: `cf fix generate ${id}${flag}`, purpose: "write a different patch" };
+  if (proof.verdict === "incomplete" && proof.kind === "secret-rotation" && !proof.attestedBy) {
+    return { command: `cf proof attest ${id}${flag}`, purpose: "record that the credential was rotated" };
+  }
+  return { command: `cf fix publish ${id}${flag}`, purpose: "open a pull request with this patch" };
+}
 
-  out.line();
-  const heading = finding ? finding.title : shortId(proof.findingId);
-  out.line(
-    `  ${c.bold(heading)}   ${c.dim(kindLabel(proof.kind))}${
-      proof.verdict ? `   ${verdictColor(proof.verdict)(verdictLabel(proof.verdict).toLowerCase())}` : ""
-    }`,
-  );
-  out.line();
+function proofDetail(proof: FindingProof, finding: Finding | null, flag: string): string[] {
+  const width = readingWidth();
+  const lines: string[] = [
+    titleLine(finding ? `Proof for ${finding.title}` : "Proof", shortId(proof.findingId)),
+    joinDots([
+      stateWord(proofTone(proof), proofWord(proof)),
+      kindLabel(proof.kind),
+      finding ? severityColor(finding.severity)(displaySeverity(finding.severity)) : null,
+      c.dim(`updated ${relativeTime(proof.updatedAt)}`),
+    ]),
+    "",
+    ...details([
+      ["Base", proof.baseSha.slice(0, 7)],
+      ["Patch", proof.patchHash.slice(0, 7)],
+      ["Model", proof.model],
+      ["Attested", proof.attestedBy ? `${proof.attestedBy}, ${datedLabel(proof.attestedAt)}` : null],
+      ["Note", proof.attestationNote],
+      ["Updated", datedLabel(proof.updatedAt)],
+    ]),
+  ];
 
   if (proof.status === "running") {
-    out.line(`  ${c.cyan("Replaying the evidence against this patch now.")}`);
-    out.line();
-    return;
-  }
-  if (proof.status === "failed") {
-    out.line(`  ${c.red(proof.error ?? "The proof did not finish.")}`);
-    out.line();
-    return;
-  }
+    lines.push("", `${BODY_INDENT}${c.cyan("Replaying the evidence against this patch now.")}`);
+  } else if (proof.status === "failed") {
+    lines.push("", ...paragraph(proof.error ?? "The proof did not finish.", width, c.red));
+  } else {
+    if (proof.summary) lines.push("", ...paragraph(proof.summary, width));
 
-  if (proof.summary) {
-    for (const wrapped of wrapText(proof.summary, width, "  ")) out.line(wrapped);
-    out.line();
-  }
-
-  for (const check of proof.checks) {
-    out.line(`  ${checkGlyph(check)}  ${check.label}`);
-    for (const wrapped of wrapText(check.evidence, width - 5, "     ")) out.line(c.dim(wrapped));
-  }
-  if (proof.checks.length > 0) out.line();
-
-  const witness = proof.witness;
-  if (witness && (witness.entry || witness.attackInput || witness.expectedFailure || witness.target || witness.httpRequest)) {
-    out.line(`  ${c.dim("witness")}`);
-    const field = (label: string, value: string): void => {
-      out.line(`    ${c.dim(label)}`);
-      for (const wrapped of wrapText(value, width - 6, "      ")) out.line(wrapped);
-    };
-    if (witness.entry) field("entry", witness.entry);
-    if (witness.target) field("target", `${witness.target.module} ${glyph.arrow} ${witness.target.callable}`);
-    if (witness.httpRequest) field("request", `${witness.httpRequest.method} ${witness.httpRequest.path}`);
-    if (witness.attackInput) field("attack input", witness.attackInput);
-    if (witness.expectedFailure) field("expected failure", witness.expectedFailure);
-    for (const assertion of witness.assertions ?? []) {
-      const [first, ...rest] = wrapText(assertion, width - 6, "      ");
-      out.line(`    ${c.dim(glyph.sep)} ${(first ?? "").trimStart()}`);
-      for (const wrapped of rest) out.line(c.dim(wrapped));
+    if (proof.checks.length > 0) {
+      lines.push("", heading("Checks"));
+      for (const check of proof.checks) {
+        lines.push(`${BODY_INDENT}${checkGlyph(check)} ${check.label}`);
+        lines.push(...paragraph(check.evidence, width - 2, c.dim).map((value) => `  ${value}`));
+      }
     }
-    out.line();
+
+    const witness = proof.witness;
+    if (witness && (witness.entry || witness.attackInput || witness.expectedFailure || witness.target || witness.httpRequest)) {
+      lines.push("", heading("Witness"));
+      const field = (label: string, value: string): void => {
+        lines.push(`${BODY_INDENT}${c.dim(label)}`);
+        lines.push(...paragraph(value, width - 2).map((entry) => `  ${entry}`));
+      };
+      if (witness.entry) field("Entry", witness.entry);
+      if (witness.target) field("Target", `${witness.target.module} ${glyph.arrow} ${witness.target.callable}`);
+      if (witness.httpRequest) field("Request", `${witness.httpRequest.method} ${witness.httpRequest.path}`);
+      if (witness.attackInput) field("Attack input", witness.attackInput);
+      if (witness.expectedFailure) field("Expected failure", witness.expectedFailure);
+      const assertions = witness.assertions ?? [];
+      if (assertions.length > 0) {
+        lines.push(`${BODY_INDENT}${c.dim("Assertions")}`);
+        for (const assertion of assertions) {
+          const [first, ...rest] = wrapText(assertion, width - 6);
+          lines.push(`${BODY_INDENT}  ${c.dim(glyph.sep)} ${first ?? ""}`);
+          for (const wrapped of rest) lines.push(`${BODY_INDENT}    ${wrapped}`);
+        }
+      }
+    }
   }
 
-  if (proof.attestedBy) {
-    out.line(
-      `  ${c.green(glyph.check)} attested by ${proof.attestedBy} ${c.dim(relativeTime(proof.attestedAt))}`,
-    );
-    if (proof.attestationNote) out.line(`    ${c.dim(proof.attestationNote)}`);
-    out.line();
-  }
-
-  const provenance = [
-    `base ${proof.baseSha.slice(0, 7)}`,
-    `patch ${proof.patchHash.slice(0, 7)}`,
-    proof.model,
-  ].filter(Boolean);
-  out.line(`  ${c.dim(provenance.join(`  ${glyph.sep}  `))}`);
-  out.line();
+  lines.push("");
+  const hint = hintLine(humanNext(proof.findingId, proof, flag));
+  if (hint) lines.push(hint);
+  lines.push("");
+  return lines;
 }
 
 /** The commands worth running next, given how this proof came out. */
@@ -217,46 +235,43 @@ export async function proofCommand(globals: GlobalOptions): Promise<number> {
     return row.proof.verdict ?? "none";
   };
 
-  const unproved = rows.find((row) => !row.proof);
+  const flag = globals.repo ? ` --repo ${project.fullName}` : "";
+  const proved = rows.filter((row) => row.proof).length;
   const settled = rows.find((row) => row.proof?.status === "settled");
-  const next: Array<{ command: string; purpose: string }> = [];
-  if (unproved) {
-    next.push({
-      command: `cf proof run ${shortId(unproved.finding.id)}`,
-      purpose: "replay the evidence against its patch",
-    });
-  }
-  if (settled) {
-    next.push({
-      command: `cf proof show ${shortId(settled.finding.id)}`,
-      purpose: "read the checks and the witness",
-    });
-  }
+  const next: NextStep[] = settled
+    ? [{ command: `cf proof show ${shortId(settled.finding.id)}${flag}`, purpose: "read the checks and the witness" }]
+    : [];
 
   printGrouped<Row>({
     noun: "finding",
     scope: project.fullName,
-    footnote: `${rows.filter((row) => row.proof).length} of ${rows.length} have a proof.`,
+    footnote: `${proved} of ${rows.length} have a proof.`,
     groups: groups.map((group) => ({
       label: group.label,
       tint: group.tint,
       rows: rows.filter((row) => keyOf(row) === group.key),
+      collapsed: group.key === "none" ? `run cf fix${flag} to see which have a patch to prove` : undefined,
     })),
     columns: [
-      { header: "id", value: (row) => c.dim(shortId(row.finding.id)), min: 8, max: 8 },
+      { header: "id", value: (row) => c.dim(shortId(row.finding.id)), overflow: "never" },
       {
         header: "severity",
         value: (row) =>
           severityColor(row.finding.severity)(displaySeverity(row.finding.severity).toLowerCase()),
-        min: 8,
-        max: 8,
+        overflow: "never",
       },
-      { header: "file", value: (row) => row.finding.filePath, min: 16, max: 34 },
-      { header: "title", value: (row) => row.finding.title, min: 28 },
+      { header: "title", value: (row) => row.finding.title, flex: true, min: 16 },
+      {
+        header: "file",
+        value: (row) => row.finding.filePath,
+        max: 40,
+        min: pathFloor(rows.map((row) => row.finding.filePath), Math.round(terminalWidth() / 4)),
+        overflow: "path",
+      },
       {
         header: "kind",
         value: (row) => (row.proof ? c.dim(kindLabel(row.proof.kind)) : ""),
-        min: 1,
+        overflow: "never",
       },
     ],
     pipeColumns: [
@@ -295,10 +310,11 @@ export async function proofShow(globals: GlobalOptions, findingId: string): Prom
     return 0;
   }
 
+  const flag = globals.repo ? ` --repo ${project.fullName}` : "";
   if (!proof) {
     out.line();
     out.info("No proof has been run for that finding.");
-    out.hint(`cf proof run ${shortId(findingId)}`);
+    out.lines(hintLines([{ command: `cf proof run ${shortId(findingId)}${flag}`, purpose: "replay the evidence against its patch" }]));
     out.line();
     return 0;
   }
@@ -307,7 +323,7 @@ export async function proofShow(globals: GlobalOptions, findingId: string): Prom
     .findings(project.githubRepoId)
     .then((response) => response.findings.find((entry) => entry.id === findingId) ?? null)
     .catch(() => null);
-  renderProof(proof, finding);
+  page(proofDetail(proof, finding, flag));
   return 0;
 }
 
@@ -367,12 +383,8 @@ export async function proofRun(
     .findings(project.githubRepoId)
     .then((response) => response.findings.find((entry) => entry.id === findingId) ?? null)
     .catch(() => null);
-  renderProof(proof, finding);
-  if (proof.status === "running") {
-    out.info("Next: poll until it settles");
-    out.line(`    ${c.dim(`cf proof show ${shortId(findingId)}`)}`);
-    out.line();
-  }
+  out.line();
+  page(proofDetail(proof, finding, globals.repo ? ` --repo ${project.fullName}` : ""));
   return 0;
 }
 
@@ -469,7 +481,7 @@ export async function proofAttest(
   }
 
   out.line();
-  out.success(`${glyph.check} Rotation attested for ${shortId(findingId)}`);
+  out.success(`Rotation attested for ${shortId(findingId)}`);
   out.line();
   return 0;
 }

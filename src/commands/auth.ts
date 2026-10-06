@@ -15,8 +15,11 @@ import type { GlobalOptions } from "../core/session.js";
 import { openSession } from "../core/session.js";
 import * as out from "../ui/output.js";
 import { confirm, spinner } from "../ui/prompts.js";
-import { c, glyph } from "../ui/theme.js";
-import { keyValue } from "../ui/table.js";
+import { c, toneMark } from "../ui/theme.js";
+import { details } from "../ui/table.js";
+import { hintLines } from "../ui/list.js";
+import { titleLine } from "../ui/detail.js";
+import { resolveOrganization } from "../core/organizations.js";
 import { VERSION } from "../version.js";
 import { isAgentMode } from "../ui/mode.js";
 import { prune } from "../core/compact.js";
@@ -123,14 +126,13 @@ export async function authLogin(
     return 0;
   }
 
-  out.line();
-  if (github && !github.connected) {
-    out.info("Next: connect a repository");
-    out.line(`    ${c.dim("cf repo connect")}`);
-  } else {
-    out.info("Next: see what is connected");
-    out.line(`    ${c.dim("cf status")}`);
-  }
+  out.lines(
+    hintLines([
+      github && !github.connected
+        ? { command: "cf repo connect", purpose: "connect a repository" }
+        : { command: "cf status", purpose: "see what needs attention" },
+    ]),
+  );
   out.line();
   return 0;
 }
@@ -213,7 +215,7 @@ export async function authStatus(globals: GlobalOptions): Promise<number> {
     }
     out.line();
     out.warn(`Not signed in to ${session.apiUrl}.`);
-    out.hint("Run cf auth login.");
+    out.lines(hintLines([{ command: "cf auth login", purpose: "sign in" }]));
     out.line();
     return 3;
   }
@@ -249,26 +251,35 @@ export async function authStatus(globals: GlobalOptions): Promise<number> {
     return 0;
   }
 
-  out.heading("Cefense", session.apiUrl);
-  const rows: Array<[string, string]> = [
-    ["Account", `${me.user.email}`],
-    [
-      "Credentials",
-      session.backend === "keychain"
-        ? keychainName()
-        : session.backend === "environment"
-          ? "CEFENSE_TOKEN environment variable"
-          : "local file",
-    ],
-  ];
-  if (github) {
-    rows.push([
-      "GitHub",
-      github.connected ? `connected as ${github.login}` : c.yellow("not connected"),
-    ]);
-  }
-  out.lines(keyValue(rows).map((row) => `  ${row}`));
-
-  out.line();
+  const organization = resolveOrganization(session.apiUrl);
+  const host = new URL(session.apiUrl).host;
+  out.lines([
+    titleLine(host),
+    `${toneMark("done")} Signed in as ${c.bold(me.user.email)}`,
+    "",
+    ...details([
+      [
+        "Organization",
+        organization ? `${organization.slug} ${c.dim(`(${organization.source === "stored" ? "stored selection" : organization.source === "flag" ? "--org" : "CEFENSE_ORG"})`)}` : c.dim("the only one this account belongs to"),
+      ],
+      [
+        "Credentials",
+        session.backend === "keychain"
+          ? keychainName()
+          : session.backend === "environment"
+            ? "CEFENSE_TOKEN environment variable"
+            : "local file",
+      ],
+      ["GitHub", github ? (github.connected ? `connected as ${github.login}` : c.yellow("not connected")) : null],
+      ["API", session.apiUrl],
+      ["CLI", VERSION],
+    ]),
+    ...hintLines([
+      github && !github.connected
+        ? { command: "cf repo connect", purpose: "connect a repository" }
+        : { command: "cf status", purpose: "see what needs attention" },
+    ]),
+    "",
+  ]);
   return 0;
 }
