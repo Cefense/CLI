@@ -202,6 +202,24 @@ test("audit categories match the backend's own type", { skip }, () => {
   assert.deepEqual([...AUDIT_CATEGORIES].sort(), real.sort());
 });
 
+test("triage decisions match the ones the backend accepts, and the database allows them", { skip }, () => {
+  const route = readFileSync(join(ROOT!, "apps", "backend", "src", "routes", "github.ts"), "utf8");
+  const accepted = route.match(/export const TRIAGE_DECISIONS = \[([^\]]*)\]/);
+  assert.ok(accepted, "TRIAGE_DECISIONS moved out of routes/github.ts, update this test");
+  const backend = [...accepted[1]!.matchAll(/"([a-z_]+)"/g)].map((entry) => entry[1]!);
+
+  const types = readFileSync(cliSource("core", "types.ts"), "utf8");
+  const declared = types.match(/export type TriageStatus =([^;]*);/);
+  assert.ok(declared, "the TriageStatus union moved, update this test");
+  const cli = [...declared[1]!.matchAll(/"([a-z_]+)"/g)].map((entry) => entry[1]!);
+  assert.deepEqual([...cli].sort(), [...backend].sort());
+
+  const constraint = controlSchema().match(/"finding_states_status_check"[\s\S]{0,200}?in \(([^)]*)\)/);
+  assert.ok(constraint, "the finding_states status CHECK constraint moved, update this test");
+  const allowed = [...constraint[1]!.matchAll(/'([a-z_]+)'/g)].map((entry) => entry[1]!);
+  assert.deepEqual(backend.filter((decision) => !allowed.includes(decision)), []);
+});
+
 test("fix statuses cover every state the database allows", { skip }, () => {
   // Anchored on 'generating' because several tables have a status column and
   // the fix one is not the first in the file.
