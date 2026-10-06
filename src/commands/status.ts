@@ -10,7 +10,7 @@ import { padEnd, relativeTime } from "../ui/format.js";
 import { c, scanStatusLabel } from "../ui/theme.js";
 import { spinner } from "../ui/prompts.js";
 import { isAgentMode } from "../ui/mode.js";
-import { compactProject, prune } from "../core/compact.js";
+import { attentionList, compactProject, latestWithFindings, prune } from "../core/compact.js";
 import { openIfRequested } from "../ui/open.js";
 import { allowanceMessage, readAllowanceNotice } from "../core/allowance.js";
 
@@ -76,6 +76,10 @@ export async function statusCommand(
   const available = listings.flat().filter((repo) => !repo.connected);
 
   if (isAgentMode()) {
+    const exhausted = allowance?.state === "exhausted";
+    const attention = attentionList(projects);
+    const target = attention[0];
+    const latest = latestWithFindings(projects);
     out.agentEmit(
       {
         apiUrl: session.apiUrl,
@@ -96,9 +100,13 @@ export async function statusCommand(
           ? prune({ state: allowance.state, percentUsed: allowance.percentUsed, resetsAt: allowance.resetsAt })
           : undefined,
       },
-      allowance?.state === "exhausted"
-        ? ["cf reproduced --agent", "cf plan --agent"]
-        : ["cf reproduced --agent", "cf scan --agent"],
+      [
+        exhausted ? "cf plan --agent" : "",
+        target && isActive(target) ? "cf status --agent" : "",
+        target && !isActive(target) && !exhausted ? `cf scan --repo ${target.fullName} --wait --agent` : "",
+        latest ? `cf reproduced --repo ${latest.fullName} --severity critical,high --agent` : "",
+        projects.length > 0 ? "cf repo list --agent" : "cf agent check --agent",
+      ],
     );
     return 0;
   }

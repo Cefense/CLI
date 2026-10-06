@@ -10,7 +10,7 @@ import * as out from "../ui/output.js";
 import { relativeTime, shortId, terminalWidth, wrapText } from "../ui/format.js";
 import { c, displaySeverity, glyph, severityColor, severityRank } from "../ui/theme.js";
 import { isAgentMode } from "../ui/mode.js";
-import { compactFinding, compactFindingDetail, coverageEnvelope, progressOf } from "../core/compact.js";
+import { FINDING_ROW, compactFinding, compactFindingDetail, coverageEnvelope, progressOf } from "../core/compact.js";
 import { REACHABILITY_LEDES, isReachabilityVerdict, reachabilityLabel, statusFor } from "../core/findingStatus.js";
 import { coverageLines, isPartialScan, scanIfSame } from "../core/coverage.js";
 import { CODE_HOSTS, openIfRequested } from "../ui/open.js";
@@ -279,6 +279,22 @@ export async function reproducedCommand(
     for (const row of rows) {
       counts[row.finding.severity] = (counts[row.finding.severity] ?? 0) + 1;
     }
+    const pick =
+      rows.find(
+        (row) =>
+          row.finding.reachability === "reachable" &&
+          statusFor(progressOf(row.finding, row.fix)).kind === "none",
+      ) ?? rows[0];
+    const repo = `--repo ${project.fullName}`;
+    const scoped = `${repo}${scope.label ? ` --branch ${scope.label}` : ""}${options.scanId ? ` --scan ${options.scanId}` : ""}`;
+    const filters = [
+      query.severity ? `--severity ${query.severity}` : "",
+      query.category ? `--category ${query.category}` : "",
+      options.matched && !options.onlyMatched ? "--matched" : "",
+    ]
+      .filter(Boolean)
+      .map((flag) => ` ${flag}`)
+      .join("");
     out.agentEmit(
       {
         repository: project.fullName,
@@ -290,13 +306,15 @@ export async function reproducedCommand(
         counts,
         findings: rows.map((row) => compactFinding(row.finding, row.fix)),
       },
-      rows[0]
+      pick
         ? [
-            `cf reproduced show ${rows[0].finding.id} --repo ${project.fullName} --agent`,
-            `cf fix generate ${rows[0].finding.id} --wait --agent`,
-            `cf scan --repo ${project.fullName} --agent`,
+            `cf reproduced show ${pick.finding.id} ${scoped} --agent`,
+            first.hasMore
+              ? `cf ${options.onlyMatched ? "matched" : "reproduced"} ${scoped}${filters} --limit ${Math.min(1000, first.total)} --agent`
+              : "",
           ]
-        : [`cf scan --repo ${project.fullName} --agent`],
+        : [first.scanId ? "" : `cf scan ${repo} --wait --agent`],
+      { findings: FINDING_ROW },
     );
     return options.exitCode && worst ? 1 : 0;
   }
@@ -501,13 +519,21 @@ export async function reproducedShow(
     .catch(() => ({ fix: null as Fix | null }));
 
   if (isAgentMode()) {
+    const repo = `--repo ${project.fullName}`;
+    const proof = finding.progress?.proof ?? null;
     out.agentEmit(
       { repository: project.fullName, finding: compactFindingDetail(finding, fix) },
-      fix?.status === "ready"
-        ? [`cf fix publish ${findingId} --yes --agent`]
-        : fix
-          ? [`cf fix show ${findingId} --agent`]
-          : [`cf fix generate ${findingId} --wait --agent`],
+      !fix || fix.status === "failed" || fix.status === "skipped"
+        ? [`cf fix generate ${resolved} ${repo} --wait --agent`]
+        : fix.status !== "ready"
+          ? [`cf fix show ${resolved} ${repo} --agent`]
+          : !proof
+            ? [`cf proof run ${resolved} ${repo} --wait --agent`]
+            : proof.status === "running"
+              ? [`cf proof show ${resolved} ${repo} --agent`]
+              : proof.verdict === "refuted"
+                ? [`cf fix generate ${resolved} ${repo} --wait --agent`]
+                : [`cf fix publish ${resolved} ${repo} --yes --agent`],
     );
     return 0;
   }

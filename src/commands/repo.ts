@@ -13,7 +13,7 @@ import { c, glyph, scanStatusLabel } from "../ui/theme.js";
 import { pickProject } from "./pick.js";
 import { watchScan } from "./scan.js";
 import { isAgentMode } from "../ui/mode.js";
-import { compactProject } from "../core/compact.js";
+import { PROJECT_ROW, compactProject, latestWithFindings } from "../core/compact.js";
 
 /**
  * Which host a connect is about.
@@ -209,11 +209,13 @@ export async function repoList(globals: GlobalOptions): Promise<number> {
   const { projects } = await session.client.projects();
 
   if (isAgentMode()) {
+    const latest = latestWithFindings(projects) ?? projects[0];
     out.agentEmit(
       { repositories: projects.map(compactProject) },
-      projects[0]
-        ? [`cf reproduced --repo ${projects[0].fullName} --agent`]
-        : ["cf repo connect <owner/name>"],
+      latest
+        ? [`cf reproduced --repo ${latest.fullName} --severity critical,high --agent`]
+        : ["cf agent check --agent"],
+      { repositories: PROJECT_ROW },
     );
     return 0;
   }
@@ -345,7 +347,9 @@ export async function repoSetDefault(
   writeRepoDefault(scope, { githubRepoId: project.githubRepoId, fullName: project.fullName });
 
   if (isAgentMode()) {
-    out.agentEmit({ scope, repository: project.fullName, unset: false }, ["cf reproduced --agent"]);
+    out.agentEmit({ scope, repository: project.fullName, unset: false }, [
+      `cf reproduced --repo ${project.fullName} --agent`,
+    ]);
     return 0;
   }
 

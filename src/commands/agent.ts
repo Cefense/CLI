@@ -105,7 +105,7 @@ const ENVELOPE = {
     error: {
       code: "stable machine identifier, safe to branch on",
       message: "written for a person, changes freely, never branch on it",
-      remedy: "what to do about it, or absent",
+      remedy: "the literal command to run when one you may run fixes it, otherwise a short instruction, or absent",
       exitCode: "the process exit code that accompanies this failure",
     },
   },
@@ -114,6 +114,7 @@ const ENVELOPE = {
     "Absent keys are omitted rather than sent as null, so test for presence.",
     "Empty arrays are omitted for the same reason.",
     "next names literal commands computed from the state just fetched. Prefer them over commands you compose.",
+    "List rows are lean: ids, names, status, severity, location. The matching show command returns one entry in full, and --fields <keys> returns exactly those keys of every row, including keys the lean row leaves out.",
     "--agent implies --json and disables colour, paging, prompts, and directory linking.",
   ],
 };
@@ -279,10 +280,10 @@ const WORKFLOWS = [
     goal: "Close a single finding, with the user watching.",
     steps: [
       "cf reproduced show <finding-id> --repo <owner/name> --agent",
-      "cf fix generate <finding-id> --wait --agent",
-      "cf proof run <finding-id> --wait --agent",
-      "cf fix publish <finding-id> --yes --agent",
-      "cf fix merge <finding-id> --yes --agent",
+      "cf fix generate <finding-id> --repo <owner/name> --wait --agent",
+      "cf proof run <finding-id> --repo <owner/name> --wait --agent",
+      "cf fix publish <finding-id> --repo <owner/name> --yes --agent",
+      "cf fix merge <finding-id> --repo <owner/name> --yes --agent",
       "cf scan --repo <owner/name> --wait --agent",
     ],
     note: "Read data.fix.diff before publishing. A generated patch is a proposal, and saying it is wrong is a useful answer. The proof replays the evidence against that exact patch: a refuted verdict means publishing will be refused, so regenerate instead.",

@@ -31,14 +31,14 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     code: "auth_required",
     exitCode: EXIT_AUTH,
     meaning: "No usable credentials for this Cefense instance.",
-    remedy: "Ask the user to run cf auth login. Signing in needs a browser, so you cannot do it.",
+    remedy: "Ask the user to run cf auth login. It needs a browser, so you cannot do it.",
     retry: "fix-first",
   },
   {
     code: "usage_error",
     exitCode: EXIT_USAGE,
     meaning: "The command was formed wrongly.",
-    remedy: "Read error.remedy, which names the correction. Do not re-run unchanged.",
+    remedy: "Correct the command as error.remedy says. Do not re-run it unchanged.",
     retry: "never",
   },
   {
@@ -82,7 +82,7 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     exitCode: EXIT_USAGE,
     meaning: "A check name cannot run on a repository scan.",
     remedy:
-      "Use sast, sca, secrets, iac, quality, or sbom, or a preset. runtime is named in the product but needs a running workload, so a repository scan cannot run it.",
+      "Use sast, sca, secrets, iac, quality, sbom, or a preset. runtime needs a running workload, so a repository scan cannot run it.",
     retry: "never",
   },
   {
@@ -138,7 +138,7 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     code: "unknown_organization",
     exitCode: EXIT_USAGE,
     meaning: "The slug given to cf org use is not one this account belongs to.",
-    remedy: "Run cf org list --agent for the slugs, then use one of those. Nothing was stored.",
+    remedy: "Run cf org list --agent and use one of the slugs it returns. Nothing was stored.",
     retry: "never",
   },
   {
@@ -147,7 +147,7 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     meaning:
       "The signed-in identity carries an email address that already belongs to a different Cefense account.",
     remedy:
-      "Sign in as the account that already holds that address, or sign in with a different one. If this is a development deployment sharing a database with production, the two identity providers have separate user pools and the same person has an id in each.",
+      "The user must sign in as the account that already holds that address, or with a different one. A development deployment sharing production's database sees the same person under two ids.",
     retry: "fix-first",
   },
   {
@@ -155,8 +155,7 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     exitCode: EXIT_USAGE,
     meaning:
       "The account belongs to none or to several organizations, so the API cannot pick one for you.",
-    remedy:
-      "Run cf org list --agent, then pass --org <slug>, set CEFENSE_ORG, or run cf org use <slug> once.",
+    remedy: "Run cf org list --agent, then pass --org with one of its slugs or set CEFENSE_ORG.",
     retry: "fix-first",
   },
   {
@@ -164,15 +163,14 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     exitCode: EXIT_USAGE,
     meaning: "No organization with that slug is one the account is a member of.",
     remedy:
-      "Run cf org list --agent for the slugs. The API answers the same way for a slug that does not exist and one you cannot see, so do not read it as proof either way.",
+      "Run cf org list --agent for the slugs. A slug that does not exist and one you cannot see answer the same way.",
     retry: "fix-first",
   },
   {
     code: "organization_forbidden",
     exitCode: EXIT_API,
     meaning: "The role held in this organization does not allow that action.",
-    remedy:
-      "Report it and stop. Roles are owner, admin, and member, and only the user can be given a different one.",
+    remedy: "Report it and stop. Only the user can be given a different role.",
     retry: "never",
   },
   {
@@ -200,7 +198,7 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     code: "unknown_target",
     exitCode: EXIT_USAGE,
     meaning: "The named coding agent is not one cf skill knows about.",
-    remedy: "Run cf skill list --agent to see the supported ids.",
+    remedy: "Run cf skill list --agent for the supported ids.",
     retry: "never",
   },
   {
@@ -228,8 +226,7 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     code: "finding_not_found",
     exitCode: EXIT_USAGE,
     meaning: "No finding with that id is in the scan being read.",
-    remedy:
-      "Finding ids belong to one scan and are replaced by a rescan. List again rather than reusing an old id.",
+    remedy: "List the findings again. Ids belong to one scan and a rescan replaces them.",
     retry: "fix-first",
   },
   {
@@ -250,7 +247,7 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     code: "branch_not_found",
     exitCode: EXIT_USAGE,
     meaning: "The code host has no branch by that name.",
-    remedy: "Run cf branches --agent for the names the host actually has.",
+    remedy: "Run cf branches --repo <owner/name> --agent for the names the host has.",
     retry: "fix-first",
   },
   {
@@ -258,14 +255,14 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     exitCode: EXIT_USAGE,
     meaning: "The branch exists but has never been scanned.",
     remedy:
-      "Run cf scan --branch <name> --wait --agent first. The CLI refuses to silently read the default branch instead.",
+      "Run cf scan --repo <owner/name> --branch <name> --wait --agent first. The CLI never falls back to the default branch.",
     retry: "fix-first",
   },
   {
     code: "fix_not_found",
     exitCode: EXIT_USAGE,
     meaning: "No patch has been generated for that finding.",
-    remedy: "Run cf fix generate <finding-id> --wait --agent.",
+    remedy: "Run cf fix generate <finding-id> --repo <owner/name> --wait --agent.",
     retry: "fix-first",
   },
   {
@@ -280,35 +277,39 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     code: "fix_not_published",
     exitCode: EXIT_USAGE,
     meaning: "There is no pull request to merge.",
-    remedy: "Run cf fix publish <finding-id> --yes --agent first, once the user has agreed.",
+    remedy:
+      "Once the user agrees, run cf fix publish <finding-id> --repo <owner/name> --yes --agent.",
     retry: "fix-first",
   },
   {
     code: "fix_in_progress",
     exitCode: EXIT_USAGE,
     meaning: "A patch for that finding is already generating or publishing.",
-    remedy: "Poll cf fix show <finding-id> --agent. Do not start a second one.",
+    remedy: "Poll cf fix show <finding-id> --repo <owner/name> --agent. Do not start a second one.",
     retry: "fix-first",
   },
   {
     code: "proof_not_found",
     exitCode: EXIT_USAGE,
     meaning: "No proof has been run for that finding.",
-    remedy: "Run cf proof run <finding-id> --wait --agent. A patch has to exist first.",
+    remedy:
+      "Run cf proof run <finding-id> --repo <owner/name> --wait --agent. A patch has to exist first.",
     retry: "fix-first",
   },
   {
     code: "proof_in_progress",
     exitCode: EXIT_USAGE,
     meaning: "A proof for that finding is already running.",
-    remedy: "Poll cf proof show <finding-id> --agent. Do not start a second one.",
+    remedy:
+      "Poll cf proof show <finding-id> --repo <owner/name> --agent. Do not start a second one.",
     retry: "fix-first",
   },
   {
     code: "proof_not_settled",
     exitCode: EXIT_USAGE,
     meaning: "The proof has not finished, so it has no verdict yet.",
-    remedy: "Poll cf proof show <finding-id> --agent until status is settled or failed.",
+    remedy:
+      "Poll cf proof show <finding-id> --repo <owner/name> --agent until status is settled or failed.",
     retry: "transient",
   },
   {
@@ -332,14 +333,14 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     exitCode: EXIT_USAGE,
     meaning: "No value was given for the environment variable.",
     remedy:
-      "Pipe the value on stdin with --stdin, or pass --from-env to read the variable of the same name from your shell. The value is never taken as an argument.",
+      "Pipe the value with --stdin, or pass --from-env to read the same name from the shell. Never pass it as an argument.",
     retry: "fix-first",
   },
   {
     code: "env_var_not_found",
     exitCode: EXIT_USAGE,
     meaning: "No environment variable of that name is stored for this repository.",
-    remedy: "Run cf proof env --agent to list the names that are stored.",
+    remedy: "Run cf proof env --repo <owner/name> --agent for the stored names.",
     retry: "never",
   },
   {
@@ -375,14 +376,16 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     code: "pull_request_blocked",
     exitCode: EXIT_API,
     meaning: "A required review or status check is pending on the pull request.",
-    remedy: "A person set that rule. Report it and stop. Branch protection is respected, not bypassed.",
+    remedy:
+      "A person set that rule. Report it and stop. Branch protection is respected, not bypassed.",
     retry: "fix-first",
   },
   {
     code: "pull_request_conflicted",
     exitCode: EXIT_API,
     meaning: "The pull request branch conflicts with its base.",
-    remedy: "Report it. Resolving the conflict is work for a person or for you in the working tree.",
+    remedy:
+      "Report it. Resolving the conflict is work for a person or for you in the working tree.",
     retry: "fix-first",
   },
   {
@@ -418,15 +421,14 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     code: "provider_unavailable",
     exitCode: EXIT_API,
     meaning: "That code host is not configured on this Cefense deployment.",
-    remedy: "Report it. Run cf provider list --agent to see what is available.",
+    remedy: "Run cf provider list --agent for the hosts this deployment has, then report it.",
     retry: "never",
   },
   {
     code: "provider_forbidden",
     exitCode: EXIT_API,
     meaning: "The connected account may not act on that repository.",
-    remedy:
-      "The installation is missing the repository, or lacks write access. The user must grant it.",
+    remedy: "The user must grant the installation access to the repository, with write access.",
     retry: "fix-first",
   },
   {
@@ -440,7 +442,8 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     code: "sbom_unavailable",
     exitCode: EXIT_API,
     meaning: "The scan carries no component inventory.",
-    remedy: "The sbom check has to be on and the repository rescanned before there is one to export.",
+    remedy:
+      "The sbom check has to be on and the repository rescanned before there is one to export.",
     retry: "fix-first",
   },
   {
@@ -490,7 +493,7 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     exitCode: EXIT_API,
     meaning: "The organization has spent its allowance for the period.",
     remedy:
-      "Run cf plan --agent to see what is left and when it resets. Nothing you run will start a scan until the period resets or the plan changes, and only the user can pay for a plan.",
+      "Run cf plan --agent for when it resets, tell the user, and stop. Only a plan change or the reset clears it.",
     retry: "never",
   },
   {
@@ -498,14 +501,15 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     exitCode: EXIT_API,
     meaning: "The plan covers fewer repositories than the account is trying to connect.",
     remedy:
-      "Run cf plan --agent for the limit. Tell the user to disconnect a repository or move up a plan. Connecting another will keep failing until one of those happens.",
+      "Run cf plan --agent for the limit, tell the user, and stop. Do not disconnect a repository to make room.",
     retry: "never",
   },
   {
     code: "depth_unavailable",
     exitCode: EXIT_API,
     meaning: "The plan does not include max-depth scans.",
-    remedy: "Re-run without max depth, which scans at default depth. cf plan --agent says which plans include it.",
+    remedy:
+      "Re-run without max depth, which scans at default depth. cf plan --agent says which plans include it.",
     retry: "fix-first",
   },
   {
@@ -513,7 +517,7 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     exitCode: EXIT_USAGE,
     meaning: "The notification named is not one the product sends.",
     remedy:
-      "Use connection, scan_report, scan_failed, advisory, fix_pr_opened, or immunity. Run cf notifications --agent to read the current settings and their exact names.",
+      "Use connection, scan_report, scan_failed, advisory, fix_pr_opened, or immunity. Run cf notifications --agent for the current settings.",
     retry: "never",
   },
   {
@@ -529,8 +533,7 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     code: "notification_no_severity",
     exitCode: EXIT_USAGE,
     meaning: "That notification does not carry findings, so it has no severity floor.",
-    remedy:
-      "Only scan_report, advisory and immunity take --severity. The others are single events: a scan stopped, a pull request opened, an account was connected.",
+    remedy: "Only scan_report, advisory and immunity take --severity.",
     retry: "never",
   },
   {
@@ -551,36 +554,36 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     code: "repository_not_found",
     exitCode: EXIT_USAGE,
     meaning: "The repository named is not connected to this organization.",
-    remedy:
-      "Run cf repo list --agent for the names that are, and pass one of those as owner/name.",
+    remedy: "Run cf repo list --agent and pass one of its names as --repo owner/name.",
     retry: "never",
   },
   {
     code: "ambiguous_repository",
     exitCode: EXIT_USAGE,
     meaning: "The repository name given matches more than one connected repository.",
-    remedy: "Name it in full as owner/name. Run cf repo list --agent to read the exact names.",
+    remedy: "Run cf repo list --agent and pass the full owner/name.",
     retry: "never",
   },
   {
     code: "invalid_plan",
     exitCode: EXIT_USAGE,
     meaning: "The plan named is not one that can be bought.",
-    remedy: "Use plus, pro, or max. free is what an organization falls back to, not something to buy.",
+    remedy:
+      "Use plus, pro, or max. free is what an organization falls back to, not something to buy.",
     retry: "never",
   },
   {
     code: "invalid_seats",
     exitCode: EXIT_USAGE,
     meaning: "The --seats value is not a seat count.",
-    remedy: "Pass a whole number from 0 to 500. It counts seats beyond the ones the plan already includes.",
+    remedy: "Pass a whole number from 0 to 500, counting seats beyond the ones the plan includes.",
     retry: "never",
   },
   {
     code: "billing_unavailable",
     exitCode: EXIT_API,
     meaning: "This Cefense deployment has no billing configured, so nothing can be bought on it.",
-    remedy: "Report it. cf plan --agent still reports the plan and the meter, and no flag turns billing on.",
+    remedy: "Report it. cf plan --agent still reports the plan and the meter.",
     retry: "never",
   },
   {
@@ -588,7 +591,7 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     exitCode: EXIT_API,
     meaning: "Only an owner or admin of the organization may change what it pays.",
     remedy:
-      "Report it and stop. cf plan --agent reads the meter from any role, and data.canAdministerBilling says whether this account could have changed it.",
+      "Report it and stop. data.canAdministerBilling in cf plan --agent says whether this account could change it.",
     retry: "never",
   },
   {
@@ -596,23 +599,21 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     exitCode: EXIT_API,
     meaning: "The organization has never subscribed, so there is no billing account to manage.",
     remedy:
-      "There is no portal until something has been bought. Run cf plan upgrade <plan> --agent and give the user the checkout URL it prints.",
+      "There is no portal until something is bought. Run cf plan upgrade <plan> --agent and give the user the checkout URL.",
     retry: "fix-first",
   },
   {
     code: "plan_unavailable",
     exitCode: EXIT_API,
     meaning: "That plan, or the extra seats asked for, is not on sale on this deployment yet.",
-    remedy:
-      "Report it verbatim. The price does not exist in the payment provider, which only an operator can create.",
+    remedy: "Report it verbatim. Only an operator can create the price.",
     retry: "never",
   },
   {
     code: "already_subscribed",
     exitCode: EXIT_API,
     meaning: "The organization already has a subscription, so a new one cannot be started.",
-    remedy:
-      "Changing an existing plan happens in the workspace, under Plan and usage, because it is prorated and charged immediately. Tell the user rather than retrying.",
+    remedy: "Tell the user to change plans in the workspace under Plan and usage. Do not retry.",
     retry: "never",
   },
   {
@@ -633,14 +634,16 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     code: "auth_unavailable",
     exitCode: EXIT_API,
     meaning: "The sign-in service is briefly unreachable, so the session could not be checked.",
-    remedy: "Wait about 30 seconds and retry. The session itself is fine, so do not ask the user to sign in again.",
+    remedy:
+      "Wait about 30 seconds and retry. The session is fine, so do not ask the user to sign in again.",
     retry: "transient",
   },
   {
     code: "scan_in_flight",
     exitCode: EXIT_API,
     meaning: "The repository already has as many scans running as it is allowed.",
-    remedy: "Run cf status --agent and wait for a running scan to finish before starting another.",
+    remedy:
+      "Run cf status --agent and wait for the running scan to settle before starting another.",
     retry: "transient",
   },
   {

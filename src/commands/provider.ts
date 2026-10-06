@@ -234,9 +234,7 @@ export async function providerConnect(
   const status = await ensureProviderConnected(session, provider, { assumeYes: globals.yes });
 
   if (isAgentMode()) {
-    out.agentEmit({ provider, connected: true, login: status.login ?? null }, [
-      `cf repo connect --provider ${provider}`,
-    ]);
+    out.agentEmit({ provider, connected: true, login: status.login ?? null }, ["cf status --agent"]);
     return 0;
   }
   if (out.isJsonMode()) {

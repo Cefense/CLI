@@ -1,4 +1,4 @@
-import { compactProof, prune, verdictLabel } from "../core/compact.js";
+import { PROOF_ROW, compactProof, prune, verdictLabel } from "../core/compact.js";
 import { UsageError } from "../core/errors.js";
 import { openSession, type GlobalOptions, type Session } from "../core/session.js";
 import type { Finding, FindingProof, Project, ProofCheck, ProofVerdict } from "../core/types.js";
@@ -133,15 +133,16 @@ function renderProof(proof: FindingProof, finding: Finding | null): void {
 }
 
 /** The commands worth running next, given how this proof came out. */
-function proofNext(findingId: string, proof: FindingProof | null): string[] {
-  if (!proof) return [`cf proof run ${findingId} --wait --agent`];
-  if (proof.status === "running") return [`cf proof show ${findingId} --agent`];
-  if (proof.status === "failed") return [`cf proof run ${findingId} --wait --agent`];
-  if (proof.verdict === "refuted") return [`cf fix generate ${findingId} --wait --agent`];
+function proofNext(findingId: string, proof: FindingProof | null, repository: string): string[] {
+  const repo = `--repo ${repository}`;
+  if (!proof) return [`cf proof run ${findingId} ${repo} --wait --agent`];
+  if (proof.status === "running") return [`cf proof show ${findingId} ${repo} --agent`];
+  if (proof.status === "failed") return [`cf proof run ${findingId} ${repo} --wait --agent`];
+  if (proof.verdict === "refuted") return [`cf fix generate ${findingId} ${repo} --wait --agent`];
   if (proof.verdict === "incomplete" && proof.kind === "secret-rotation" && !proof.attestedBy) {
-    return [`cf proof attest ${findingId} --yes --agent`];
+    return [`cf proof attest ${findingId} ${repo} --yes --agent`];
   }
-  return [`cf fix publish ${findingId} --yes --agent`];
+  return [`cf fix publish ${findingId} ${repo} --yes --agent`];
 }
 
 interface Row {
@@ -177,15 +178,16 @@ export async function proofCommand(globals: GlobalOptions): Promise<number> {
   const { rows, scanId } = await loadRows(session, project);
 
   if (isAgentMode()) {
+    const proofs = rows.filter((row) => row.proof).map((row) => row.proof as FindingProof);
+    const pending = proofs.find((proof) => proof.status === "running" || proof.verdict === "refuted") ?? proofs[0];
     out.agentEmit(
       prune({
         repository: project.fullName,
         scanId,
-        proofs: rows
-          .filter((row) => row.proof)
-          .map((row) => compactProof(row.proof as FindingProof, { checks: false })),
+        proofs: proofs.map((proof) => compactProof(proof, { checks: false })),
       }),
-      [],
+      [pending ? `cf proof show ${pending.findingId} --repo ${project.fullName} --agent` : ""],
+      { proofs: PROOF_ROW },
     );
     return 0;
   }
@@ -285,7 +287,7 @@ export async function proofShow(globals: GlobalOptions, findingId: string): Prom
   if (isAgentMode()) {
     out.agentEmit(
       prune({ findingId, proof: proof ? compactProof(proof) : null }),
-      proofNext(findingId, proof),
+      proofNext(findingId, proof, project.fullName),
     );
     return 0;
   }
@@ -354,7 +356,7 @@ export async function proofRun(
   );
 
   if (isAgentMode()) {
-    out.agentEmit(prune({ findingId, proof: compactProof(proof) }), proofNext(findingId, proof));
+    out.agentEmit(prune({ findingId, proof: compactProof(proof) }), proofNext(findingId, proof, project.fullName));
     return 0;
   }
 
@@ -398,14 +400,14 @@ export async function proofAttest(
   if (!existing) {
     throw new UsageError(
       `No proof has been run for ${findingId}.`,
-      `Run cf proof run ${findingId} --wait first.`,
+      `Run cf proof run ${findingId} --repo ${project.fullName} --wait first.`,
       "proof_not_found",
     );
   }
   if (existing.status !== "settled") {
     throw new UsageError(
       `The proof for ${findingId} is ${existing.status}, so it has no verdict to attest.`,
-      `Run cf proof show ${findingId} once it has settled.`,
+      `Run cf proof show ${findingId} --repo ${project.fullName} once it has settled.`,
       "proof_not_settled",
     );
   }
@@ -459,7 +461,7 @@ export async function proofAttest(
   progress.stop("Rotation attested");
 
   if (isAgentMode()) {
-    out.agentEmit(prune({ findingId, proof: compactProof(proof) }), proofNext(findingId, proof));
+    out.agentEmit(prune({ findingId, proof: compactProof(proof) }), proofNext(findingId, proof, project.fullName));
     return 0;
   }
 

@@ -1,4 +1,5 @@
-import { AGENT_SCHEMA_VERSION, prune } from "../core/compact.js";
+import { AGENT_SCHEMA_VERSION, prune, shapeRow, type RowShape } from "../core/compact.js";
+import { errorCode } from "../core/codes.js";
 import { CefenseError, EXIT_API } from "../core/errors.js";
 import { sanitizeForTerminal, terminalWidth } from "./format.js";
 import { isAgentMode } from "./mode.js";
@@ -62,33 +63,137 @@ export function setCommandName(value: string): void {
   commandName = value;
 }
 
-export function agentEmit(data: unknown, next: string[] = []): void {
+function lean(data: unknown, rows: Record<string, RowShape>): unknown {
+  if (!isPlainObject(data)) return data;
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    const shape = rows[key];
+    result[key] =
+      shape && Array.isArray(value)
+        ? value.map((entry) => (isPlainObject(entry) ? shapeRow(entry, shape) : entry))
+        : value;
+  }
+  return result;
+}
+
+export function agentEmit(
+  data: unknown,
+  next: string[] = [],
+  rows: Record<string, RowShape> = {},
+): void {
   const payload: Record<string, unknown> = {
     schemaVersion: AGENT_SCHEMA_VERSION,
     ok: true,
     command: commandName,
-    data: project(data),
+    data: fields ? project(data) : lean(data, rows),
   };
-  if (next.length > 0) payload.next = next;
+  const commands = [...new Set(next)].filter(Boolean);
+  if (commands.length > 0) payload.next = commands;
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
+const NEEDS_CONSENT = [
+  /^cf auth (login|logout)\b/,
+  /^cf provider (connect|disconnect)\b/,
+  /^cf fix (publish|merge)\b/,
+  /^cf proof (attest|env set|env unset)\b/,
+  /^cf triage\b/,
+  /^cf settings [a-z]/,
+  /^cf skill (install|uninstall)\b/,
+  /^cf plan (upgrade|portal)\b/,
+  /^cf repo (connect|disconnect|set-default)\b/,
+  /^cf org use\b/,
+  /^cf notifications (set|mute)\b/,
+  /\s--yes\b/,
+  /\s--url\b/,
+];
+
+const COMMAND_ENDS = new Set([
+  "to",
+  "first",
+  "once",
+  "then",
+  "for",
+  "and",
+  "or",
+  "until",
+  "if",
+  "when",
+  "before",
+  "after",
+  "again",
+  "so",
+  "instead",
+  "here",
+]);
+
+const VALUE_FLAGS = new Set([
+  "--repo",
+  "--org",
+  "--branch",
+  "--scan",
+  "--severity",
+  "--category",
+  "--limit",
+  "--before",
+  "--provider",
+  "--format",
+  "--method",
+  "--every",
+]);
+
+function commandAt(text: string): string | null {
+  const words: string[] = [];
+  for (const raw of text.split(/\s+/)) {
+    const word = raw.replace(/`/g, "");
+    const previous = words[words.length - 1] ?? "";
+    if (words.length > 1 && !VALUE_FLAGS.has(previous) && COMMAND_ENDS.has(word.toLowerCase())) break;
+    const trimmed = word.replace(/[.,;:]+$/, "");
+    if (trimmed) words.push(trimmed);
+    if (trimmed !== word) break;
+  }
+  return words.length > 1 ? words.join(" ") : null;
+}
+
+function runnable(command: string): boolean {
+  return !command.includes("<") && !NEEDS_CONSENT.some((pattern) => pattern.test(command));
+}
+
+function remedyCommand(remedy: string): string | null {
+  const first = remedy.split(/(?<=\.)\s+(?=[A-Z])/)[0] ?? "";
+  if (!/^(?:(?:Run|Poll)\s+)?`?cf\s/.test(first)) return null;
+  for (const match of first.matchAll(/(?:^|[\s`])(cf\s)/g)) {
+    const command = commandAt(first.slice((match.index ?? 0) + match[0].length - 3));
+    if (command && runnable(command)) return command;
+  }
+  return null;
+}
+
+export function agentRemedy(remedy: string | null, code: string): string | null {
+  const fallback = code === "usage_error" ? null : (errorCode(code)?.remedy ?? null);
+  const text = (remedy ?? fallback)?.replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  const command = remedyCommand(text);
+  if (!command) return text;
+  return /\s--agent\b/.test(command) ? command : `${command} --agent`;
+}
+
 export function agentError(error: unknown): void {
-  const detail =
-    error instanceof CefenseError
-      ? { code: error.code, message: error.message, remedy: error.remedy, exitCode: error.exitCode }
-      : {
-          code: "internal_error",
-          message: error instanceof Error ? error.message : String(error),
-          remedy: null,
-          exitCode: EXIT_API,
-        };
+  const known = error instanceof CefenseError;
+  const code = known ? error.code : "internal_error";
+  const message = (error instanceof Error ? error.message : String(error)).replace(/\s+/g, " ").trim();
+  const detail = {
+    code,
+    message,
+    remedy: agentRemedy(known ? error.remedy : null, code),
+    exitCode: known ? error.exitCode : EXIT_API,
+  };
   process.stdout.write(
     `${JSON.stringify({
       schemaVersion: AGENT_SCHEMA_VERSION,
       ok: false,
       command: commandName,
-      error: prune(detail as unknown as Record<string, unknown>),
+      error: prune(detail),
     })}\n`,
   );
 }

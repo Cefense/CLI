@@ -15,6 +15,17 @@ import { shortId } from "../ui/format.js";
 
 const SETTLED = new Set(["ready", "failed", "skipped", "opened", "merged", "closed"]);
 
+function fixNext(findingId: string, repo: string, fix: Fix | null): string[] {
+  if (!fix || fix.status === "failed" || fix.status === "skipped") {
+    return [`cf fix generate ${findingId} ${repo} --wait --agent`];
+  }
+  if (fix.status === "ready") {
+    return [`cf proof show ${findingId} ${repo} --agent`, `cf fix publish ${findingId} ${repo} --yes --agent`];
+  }
+  if (fix.status === "generating" || fix.status === "publishing") return [`cf fix show ${findingId} ${repo} --agent`];
+  return [];
+}
+
 async function waitForFix(
   session: Session,
   findingId: string,
@@ -69,24 +80,21 @@ async function resolveFinding(
   session: Session,
   globals: GlobalOptions,
   candidate: string,
-): Promise<string> {
+): Promise<{ findingId: string; repo: string }> {
   const { project } = await resolveLinkedProject(session, globals);
-  return resolveFindingId(session, project, candidate);
+  return { findingId: await resolveFindingId(session, project, candidate), repo: `--repo ${project.fullName}` };
 }
 
 export async function fixShow(globals: GlobalOptions, findingId: string): Promise<number> {
   const session = await openSession(globals, { auth: true });
-  findingId = await resolveFinding(session, globals, findingId);
+  const located = await resolveFinding(session, globals, findingId);
+  findingId = located.findingId;
   const { fix } = await session.client.fixForFinding(findingId);
 
   if (isAgentMode()) {
     out.agentEmit(
       { findingId, fix: fix ? compactFix(fix, { diff: true }) : null },
-      fix?.status === "ready"
-        ? [`cf fix publish ${findingId} --yes --agent`]
-        : fix
-          ? []
-          : [`cf fix generate ${findingId} --wait --agent`],
+      fixNext(findingId, located.repo, fix),
     );
     return 0;
   }
@@ -118,7 +126,8 @@ export async function fixGenerate(
   options: { wait?: boolean } = {},
 ): Promise<number> {
   const session = await openSession(globals, { auth: true });
-  findingId = await resolveFinding(session, globals, findingId);
+  const located = await resolveFinding(session, globals, findingId);
+  findingId = located.findingId;
 
   const existing = await session.client
     .fixForFinding(findingId)
@@ -126,7 +135,7 @@ export async function fixGenerate(
   if (existing.fix?.status === "generating" || existing.fix?.status === "publishing") {
     throw new UsageError(
       `A fix for ${findingId} is already ${existing.fix.status}.`,
-      `Run cf fix show ${findingId} to check on it.`,
+      `Run cf fix show ${findingId} ${located.repo} to check on it.`,
       "fix_in_progress",
     );
   }
@@ -152,14 +161,7 @@ export async function fixGenerate(
   );
 
   if (isAgentMode()) {
-    out.agentEmit(
-      { findingId, fix: compactFix(fix, { diff: true }) },
-      fix.status === "ready"
-        ? [`cf fix publish ${findingId} --yes --agent`]
-        : fix.status === "generating"
-          ? [`cf fix show ${findingId} --agent`]
-          : [],
-    );
+    out.agentEmit({ findingId, fix: compactFix(fix, { diff: true }) }, fixNext(findingId, located.repo, fix));
     return 0;
   }
 
@@ -179,19 +181,20 @@ export async function fixGenerate(
 
 export async function fixPublish(globals: GlobalOptions, findingId: string): Promise<number> {
   const session = await openSession(globals, { auth: true });
-  findingId = await resolveFinding(session, globals, findingId);
+  const located = await resolveFinding(session, globals, findingId);
+  findingId = located.findingId;
   const { fix } = await session.client.fixForFinding(findingId);
 
   if (!fix) {
     throw new UsageError(
       `No patch has been generated for ${findingId}.`,
-      `Run cf fix generate ${findingId} --wait first.`,
+      `Run cf fix generate ${findingId} ${located.repo} --wait first.`,
       "fix_not_found",
     );
   }
   if (fix.status === "opened") {
     if (isAgentMode()) {
-      out.agentEmit({ findingId, alreadyOpen: true, fix: compactFix(fix) });
+      out.agentEmit({ findingId, alreadyOpen: true, fix: compactFix(fix) }, fixNext(findingId, located.repo, fix));
       return 0;
     }
     out.line();
@@ -203,8 +206,8 @@ export async function fixPublish(globals: GlobalOptions, findingId: string): Pro
     throw new UsageError(
       `The patch for ${findingId} is ${fix.status}, so it cannot be published.`,
       fix.status === "failed"
-        ? `Run cf fix generate ${findingId} --wait to try again.`
-        : `Run cf fix show ${findingId} to check on it.`,
+        ? `Run cf fix generate ${findingId} ${located.repo} --wait to try again.`
+        : `Run cf fix show ${findingId} ${located.repo} to check on it.`,
       "fix_not_ready",
     );
   }
@@ -247,7 +250,7 @@ export async function fixPublish(globals: GlobalOptions, findingId: string): Pro
   progress.stop(published.prUrl ? `Opened ${published.prUrl}` : "Published");
 
   if (isAgentMode()) {
-    out.agentEmit({ findingId, fix: compactFix(published) });
+    out.agentEmit({ findingId, fix: compactFix(published) }, fixNext(findingId, located.repo, published));
     return 0;
   }
 
@@ -303,7 +306,12 @@ export async function fixMerge(
   options: { method?: string; deleteBranch?: boolean } = {},
 ): Promise<number> {
   const session = await openSession(globals, { auth: true });
-  if (findingId) findingId = await resolveFinding(session, globals, findingId);
+  let repo: string | null = null;
+  if (findingId) {
+    const located = await resolveFinding(session, globals, findingId);
+    findingId = located.findingId;
+    repo = located.repo;
+  }
 
   if (!findingId) {
     if (!isInteractive()) {
@@ -336,14 +344,14 @@ export async function fixMerge(
   if (!fix) {
     throw new UsageError(
       `No patch has been generated for ${findingId}.`,
-      `Run cf fix generate ${findingId} --wait first.`,
+      `Run cf fix generate ${findingId}${repo ? ` ${repo}` : ""} --wait first.`,
       "fix_not_found",
     );
   }
   if (!fix.prNumber) {
     throw new UsageError(
       `No pull request has been opened for ${findingId}.`,
-      `Run cf fix publish ${findingId} --yes first.`,
+      `Run cf fix publish ${findingId}${repo ? ` ${repo}` : ""} --yes first.`,
       "fix_not_published",
     );
   }
@@ -403,7 +411,7 @@ export async function fixMerge(
         branchDeleted: result.branchDeleted,
         fix: result.fix ? compactFix(result.fix) : null,
       }),
-      [`cf scan --wait --agent`],
+      [repo ? `cf scan ${repo} --wait --agent` : ""],
     );
     return 0;
   }

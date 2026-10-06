@@ -24,8 +24,14 @@ export async function branchesCommand(globals: GlobalOptions): Promise<number> {
         branches: listing.branches.map((branch) => compactBranch(branch, listing.defaultBranch)),
       },
       [
-        `cf scan --repo ${project.fullName} --branch <name> --wait --agent`,
-        `cf reproduced --repo ${project.fullName} --branch <name> --agent`,
+        ...listing.branches
+          .filter((branch) => branch.name !== listing.defaultBranch)
+          .slice(0, 1)
+          .map((branch) =>
+            branch.scanId
+              ? `cf reproduced --repo ${project.fullName} --branch ${branch.name} --agent`
+              : `cf scan --repo ${project.fullName} --branch ${branch.name} --wait --agent`,
+          ),
       ],
     );
     return 0;

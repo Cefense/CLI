@@ -6,7 +6,7 @@ import * as out from "../ui/output.js";
 import { relativeTime } from "../ui/format.js";
 import { c, glyph } from "../ui/theme.js";
 import { isAgentMode } from "../ui/mode.js";
-import { compactAuditEvent } from "../core/compact.js";
+import { AUDIT_ROW, compactAuditEvent } from "../core/compact.js";
 
 export const AUDIT_CATEGORIES = [
   "scan",
@@ -84,6 +84,7 @@ const PAGE_SIZE = 200;
 const PAGE_CAP = 10;
 /** What the route returns when --limit is absent, matching its own default. */
 const DEFAULT_LIMIT = 200;
+const AGENT_LIMIT = 50;
 
 async function collectByCategory(
   session: Session,
@@ -112,7 +113,7 @@ export async function auditCommand(
   const session = await openSession(globals, { auth: true });
   const categories = parseAuditCategories(options.category);
   const before = parseBefore(options.before);
-  const query = { limit: options.limit, before };
+  const query = { limit: options.limit ?? (isAgentMode() ? AGENT_LIMIT : undefined), before };
 
   // The route pages by time, not by category, so a category is a cut of the
   // page rather than a filter the server applies.
@@ -124,9 +125,16 @@ export async function auditCommand(
     : await collectByCategory(session, select, query);
 
   if (isAgentMode()) {
+    const hasMore = events.length > 0 && events.length >= (query.limit ?? DEFAULT_LIMIT);
+    const oldest = events[events.length - 1];
     out.agentEmit(
-      { total: events.length, events: events.map(compactAuditEvent) },
-      ["cf status --agent"],
+      { total: events.length, hasMore: hasMore || undefined, events: events.map(compactAuditEvent) },
+      [
+        hasMore && oldest
+          ? `cf audit --before ${oldest.at}${categories.length > 0 ? ` --category ${categories.join(",")}` : ""}${options.limit ? ` --limit ${options.limit}` : ""} --agent`
+          : "",
+      ],
+      { events: AUDIT_ROW },
     );
     return 0;
   }

@@ -118,7 +118,7 @@ export async function authLogin(
         userId: me.user.id,
         credentialBackend: saved.backend,
       },
-      github?.connected ? ["cf status --agent"] : ["cf repo connect <owner/name>"],
+      github?.connected ? ["cf status --agent"] : ["cf provider list --agent"],
     );
     return 0;
   }
@@ -233,7 +233,7 @@ export async function authStatus(globals: GlobalOptions): Promise<number> {
         credentialBackend: session.backend,
         github: github ? prune({ connected: github.connected, login: github.login }) : null,
       },
-      github?.connected ? ["cf status --agent"] : ["cf repo connect <owner/name>"],
+      github?.connected ? ["cf status --agent"] : ["cf provider list --agent"],
     );
     return 0;
   }
