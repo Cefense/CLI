@@ -52,7 +52,7 @@ function pathOf(command: Command): string {
   return parts.join(" ");
 }
 
-function describeCommand(command: Command): CommandNode {
+export function describeCommand(command: Command): CommandNode {
   const node: CommandNode = {
     path: pathOf(command),
     summary: command.description(),
