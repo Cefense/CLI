@@ -360,10 +360,10 @@ test("help under agent mode is one envelope describing the command", () => {
 
 test("the agent schema carries the new commands and still leaves global flags out", () => {
   const nodes = schema();
-  for (const path of ["finding", "finding list", "finding view", "finding matched", "repo view", "browse"]) {
+  for (const path of ["finding", "finding list", "finding view", "repo view", "browse"]) {
     assert.ok(nodes.has(path), `${path} missing from cf agent schema`);
   }
-  for (const path of ["reproduced", "reproduced show", "matched"]) assert.ok(nodes.has(path), `${path} was dropped`);
+  for (const path of ["reproduced", "reproduced show"]) assert.ok(nodes.has(path), `${path} was dropped`);
   for (const node of nodes.values()) {
     for (const option of node.options) {
       assert.ok(!GLOBAL_LONGS.includes(option.flags), `${node.path} lists the global ${option.flags}`);

@@ -31,7 +31,6 @@ import { page } from "../ui/pager.js";
 export interface ReproducedOptions {
   severity?: string;
   category?: string;
-  matched?: boolean;
   limit?: number;
   exitCode?: boolean;
   branch?: string;
@@ -247,15 +246,6 @@ function renderDetail(
     }
   }
 
-  if (finding.intelligenceSources.length > 0) {
-    push("", heading("Research"));
-    for (const source of finding.intelligenceSources) {
-      push(`${BODY_INDENT}${joinDots([c.magenta(source.source), source.title ?? "untitled", c.dim(`${source.confidence}% match`)])}`);
-      push(...paragraph(source.rationale, wrap - 2, c.dim).map((value) => `  ${value}`));
-      push(`${BODY_INDENT}  ${c.dim(source.sourceUrl)}`);
-    }
-  }
-
   if (finding.remediation?.summary || finding.remediation?.guidance) {
     push("", heading("Remediation"));
     push(...paragraph(finding.remediation.summary, wrap));
@@ -277,7 +267,7 @@ function renderDetail(
 
 export async function reproducedCommand(
   globals: GlobalOptions,
-  options: ReproducedOptions & { onlyMatched?: boolean },
+  options: ReproducedOptions,
 ): Promise<number> {
   const session = await openSession(globals, { auth: true });
   const { project } = await resolveLinkedProject(session, globals);
@@ -287,7 +277,6 @@ export async function reproducedCommand(
     limit: options.limit,
     severity: normaliseSeverity(options.severity),
     category: normaliseCategory(options.category),
-    matched: options.onlyMatched ? true : options.matched,
     scanId: scope.scanId,
   };
 
@@ -327,7 +316,6 @@ export async function reproducedCommand(
     const filters = [
       query.severity ? `--severity ${query.severity}` : "",
       query.category ? `--category ${query.category}` : "",
-      options.matched && !options.onlyMatched ? "--matched" : "",
     ]
       .filter(Boolean)
       .map((flag) => ` ${flag}`)
@@ -347,7 +335,7 @@ export async function reproducedCommand(
         ? [
             `cf reproduced show ${pick.finding.id} ${scoped} --agent`,
             first.hasMore
-              ? `cf ${options.onlyMatched ? "matched" : "reproduced"} ${scoped}${filters} --limit ${Math.min(1000, first.total)} --agent`
+              ? `cf reproduced ${scoped}${filters} --limit ${Math.min(1000, first.total)} --agent`
               : "",
           ]
         : [first.scanId ? "" : `cf scan ${repo} --wait --agent`],
@@ -378,9 +366,7 @@ export async function reproducedCommand(
 
   const empty = !first.scanId
     ? `${project.fullName} has not been scanned yet.`
-    : options.onlyMatched
-      ? `No findings in ${project.fullName} are joined to research yet.`
-      : `No findings in ${project.fullName}.`;
+    : `No findings in ${project.fullName}.`;
 
   const banner = isPartialScan(readScan)
     ? [
@@ -390,7 +376,7 @@ export async function reproducedCommand(
     : [];
 
   printGrouped<Row>({
-    noun: options.onlyMatched ? "matched finding" : "finding",
+    noun: "finding",
     scope: scope.label ? `${project.fullName}#${scope.label}` : project.fullName,
     total: first.total,
     banner,

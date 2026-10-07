@@ -6,7 +6,6 @@ import { activeOrganization, type OrganizationsResponse } from "./organizations.
 import { USER_AGENT } from "../version.js";
 import { isAgentMode } from "../ui/mode.js";
 import type {
-  Article,
   AuditResponse,
   BillingInterval,
   BillingResponse,
@@ -463,7 +462,6 @@ export class CefenseClient {
       offset?: number;
       severity?: string;
       category?: string;
-      matched?: boolean;
       scanId?: string;
     } = {},
   ): Promise<FindingsResponse> {
@@ -600,4 +598,4 @@ export class CefenseClient {
   }
 }
 
-export type { Article, Project, Fix };
+export type { Project, Fix };

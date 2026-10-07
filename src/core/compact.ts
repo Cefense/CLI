@@ -56,7 +56,6 @@ export const FINDING_ROW: RowShape = {
     "status",
     "package",
     "fixedIn",
-    "matchedSources",
     "fix",
   ],
   nested: { fix: ["status", "prNumber", "prUrl"] },
@@ -245,7 +244,6 @@ export function compactFinding(
       ? `${finding.dependency.name}@${finding.dependency.installedVersion}`
       : null,
     fixedIn: finding.dependency?.fixedVersion ?? null,
-    matchedSources: finding.intelligenceSources.length || null,
     introducedIn: finding.introducedIn
       ? prune({
           sha: finding.introducedIn.sha,
@@ -394,15 +392,6 @@ export function compactFindingDetail(
           ineffectiveSanitizers: finding.dataflow.ineffectiveSanitizers ?? [],
         })
       : null,
-    research: finding.intelligenceSources.map((source) =>
-      prune({
-        source: source.source,
-        title: source.title,
-        confidence: source.confidence,
-        rationale: source.rationale,
-        url: source.sourceUrl,
-      }),
-    ),
     references: finding.vulnerabilityRefs.map((ref) =>
       prune({ kind: ref.kind, id: ref.identifier, title: ref.title, url: ref.url }),
     ),

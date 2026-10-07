@@ -212,17 +212,6 @@ export interface CommitsResponse {
 
 export type WireSeverity = "critical" | "high" | "medium" | "low";
 
-export interface IntelligenceSource {
-  articleId: string;
-  source: string;
-  sourceUrl: string;
-  title: string | null;
-  publishedAt: string | null;
-  matchType: string;
-  confidence: number;
-  rationale: string;
-}
-
 /** The commit a finding was first seen in, when reconciliation recorded one. */
 export interface FindingOrigin {
   sha: string;
@@ -311,7 +300,6 @@ export interface Finding {
   fingerprint: string | null;
   createdAt: string;
   introducedIn?: FindingOrigin | null;
-  intelligenceSources: IntelligenceSource[];
   reachability?: ReachabilityVerdict | null;
   reachabilityEvidence?: ReachabilityEvidence | null;
   dependency?: FindingDependency | null;
@@ -376,24 +364,6 @@ export interface Fix {
 }
 
 export type FixBehaviorChange = "none" | "narrowed" | "removed";
-
-export interface Article {
-  id: string;
-  source: string;
-  sourceUrl: string;
-  title: string;
-  author: string | null;
-  publishedAt: string | null;
-  excerpt: string | null;
-  preview: string | null;
-  tags: string[] | null;
-  cveIds: string[] | null;
-  summary: string | null;
-  articleClass: string | null;
-  technologies: string[];
-  matched?: boolean;
-  stackRelevant?: boolean;
-}
 
 export interface CefenseProfile {
   email: string;

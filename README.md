@@ -27,9 +27,9 @@
 
 ## What this is
 
-Cefense scans your repositories for vulnerabilities, joins each finding to the security research that explains it, and generates patches you can ship as pull requests.
+Cefense scans your repositories for vulnerabilities, shows the code behind each finding, and generates patches you can ship as pull requests.
 
-This CLI is a complete alternative to the web workspace. Everything the GUI does against a real API route, this does too: connect GitHub, GitLab and Bitbucket accounts, connect repositories, run scans, browse findings, read the research behind them, triage what is not real, generate a patch, review the diff, open the pull request, and read the account's audit log.
+This CLI is a complete alternative to the web workspace. Everything the GUI does against a real API route, this does too: connect GitHub, GitLab and Bitbucket accounts, connect repositories, run scans, browse findings, triage what is not real, generate a patch, review the diff, open the pull request, and read the account's audit log.
 
 It talks only to the Cefense public API. It never reaches into a database, and it ships with no client secret and no baked-in endpoints.
 
@@ -128,9 +128,8 @@ Repositories live on GitHub, GitLab, or Bitbucket. Once one is connected it is a
 | `cf commits` | the commit history, and what each scanned commit introduced or resolved |
 | `cf triage <finding-id> <decision>` | record a finding as `false-positive`, `accepted-risk`, or `open` |
 | `cf audit` | everything that has happened on this account, newest first |
-| `cf finding list` | every finding in your code, worst first, `--matched` for only the researched ones |
-| `cf finding view <finding-id>` | one finding in full, with research, data flow and references |
-| `cf finding matched` | only the findings joined to the research that explains them |
+| `cf finding list` | every finding in your code, worst first |
+| `cf finding view <finding-id>` | one finding in full, with data flow and references |
 | `cf browse [finding-id]` | open the workspace, or one finding, in your browser |
 | `cf fix` | browse findings and their patches side by side |
 | `cf fix show <finding-id>` | the patch generated for one finding |
@@ -138,11 +137,9 @@ Repositories live on GitHub, GitLab, or Bitbucket. Once one is connected it is a
 | `cf fix publish <finding-id>` | open a pull request with a generated patch |
 | `cf fix merge [finding-id]` | merge that pull request and delete its branch, `--no-delete-branch` keeps it, prompts when omitted |
 
-The older names still work and run the same commands: `cf reproduced` is `cf finding list`, `cf reproduced show` (and `cf finding show`) is `cf finding view`, and `cf matched` is `cf finding matched`. Scripts and agents written against them do not need to change.
+The older names still work and run the same commands: `cf reproduced` is `cf finding list`, and `cf reproduced show` (and `cf finding show`) is `cf finding view`. Scripts and agents written against them do not need to change. `cf matched`, `cf finding matched` and `--matched` are gone: Cefense no longer joins findings to articles, so there is no matched subset to list.
 
-`cf finding list` and `cf finding matched` both take `--branch <name>` to read one branch's last scan, and `--scan <id>` to read a scan by id. Without either you get the newest scan of the repository, whichever branch it ran on.
-
-`cf finding list --matched` narrows the list to the findings joined to security research, which is the same set `cf finding matched` shows: use whichever reads better in the command you are already running.
+`cf finding list` takes `--branch <name>` to read one branch's last scan, and `--scan <id>` to read a scan by id. Without either you get the newest scan of the repository, whichever branch it ran on.
 
 `cf browse` opens the Cefense workspace, and `cf browse <finding-id>` opens that finding in it. `--code` opens the repository, or the finding's lines, on its code host instead, and `-n, --no-browser` prints the address rather than opening it.
 
@@ -201,12 +198,11 @@ Single keys act on whatever is selected. Labels are context aware, so a finding 
 
 | Key | Where | Action |
 | --- | --- | --- |
-| `g` | `reproduced`, `matched`, `fix` | generate a patch, or regenerate, or retry |
-| `p` | `reproduced`, `matched`, `fix` | open the pull request, or view it |
-| `m` | `reproduced`, `matched`, `fix` | merge that pull request and delete its branch |
-| `o` | `reproduced`, `matched` | open the file on its code host |
-| `a` | `reproduced`, `matched` | read the research behind the finding |
-| `t` | `reproduced`, `matched` | record the finding as a false positive, an accepted risk, or open |
+| `g` | `reproduced`, `fix` | generate a patch, or regenerate, or retry |
+| `p` | `reproduced`, `fix` | open the pull request, or view it |
+| `m` | `reproduced`, `fix` | merge that pull request and delete its branch |
+| `o` | `reproduced` | open the file on its code host |
+| `t` | `reproduced` | record the finding as a false positive, an accepted risk, or open |
 | `u` | `fix` | refresh |
 | `enter` | `settings` | choose the trigger, interval or depth under the cursor, or toggle the check |
 | `s` `f` `o` | `branches` | scan this branch, read its findings, open it on its code host |
@@ -439,7 +435,7 @@ Under `--agent`, every finding carries both `severity` (the wire value, so filte
 
 ## Linking a directory to a repository
 
-`finding`, `fix`, `scan` and the older `reproduced` and `matched` act on one repository. The first time you run any of them in a directory, the CLI asks which one and remembers the answer:
+`finding`, `fix`, `scan` and the older `reproduced` act on one repository. The first time you run any of them in a directory, the CLI asks which one and remembers the answer:
 
 ```
   This directory is not linked to a Cefense repository.

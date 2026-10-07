@@ -31,7 +31,6 @@ function finding(over: Partial<Finding> = {}): Finding {
     vulnerabilityRefs: [],
     fingerprint: null,
     createdAt: "2026-09-25T00:00:00Z",
-    intelligenceSources: [],
     ...over,
   };
 }

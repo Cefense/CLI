@@ -47,7 +47,6 @@ function finding(over: Partial<Finding> = {}): Finding {
     vulnerabilityRefs: [],
     fingerprint: null,
     createdAt: "2026-09-25T00:00:00Z",
-    intelligenceSources: [],
     reachability: "reachable",
     introducedIn: {
       sha: "9ab756c7aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -178,7 +177,6 @@ test("list shapes never name a key the full row does not have", () => {
     ...Object.keys(compactFinding(finding({ category: "dependency", cveId: "CVE-1" }), fix())),
     "package",
     "fixedIn",
-    "matchedSources",
   ]);
   for (const key of FINDING_ROW.keys) assert.ok(findingKeys.has(key), `finding row names ${key}`);
   const projectKeys = new Set(Object.keys(compactProject(project("acme/api", scan()))));

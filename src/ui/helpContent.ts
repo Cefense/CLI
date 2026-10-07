@@ -45,7 +45,6 @@ export const ROOT_SECTIONS: readonly RootSection[] = [
 export const LEGACY_NAMES: Readonly<Record<string, string>> = {
   reproduced: "finding list",
   "reproduced show": "finding view",
-  matched: "finding matched",
 };
 
 export const COMMAND_SYNONYMS: Readonly<Record<string, string>> = {
@@ -75,7 +74,6 @@ export const DOC_SLUGS: Readonly<Record<string, string>> = {
   triage: "cli-triage",
   finding: "cli-findings",
   reproduced: "cli-findings",
-  matched: "cli-findings",
   fix: "cli-fixes",
   proof: "cli-fixes",
   settings: "cli-settings",
@@ -94,7 +92,7 @@ export const DETAILS: Readonly<Record<string, string>> = {
   finding:
     "Work with the findings of a repository's newest scan. Every finding id belongs to one scan, and a rescan replaces them all. Any unambiguous prefix of an id works, from four characters up",
   "finding view":
-    "Show one finding in full: the vulnerable code, how data reaches it, the research that explains it, and the state of its fix",
+    "Show one finding in full: the vulnerable code, how data reaches it, and the state of its fix",
   browse:
     "Open the Cefense workspace in your browser. Pass a finding id to open that finding. The workspace shows the repository your browser last had selected, so pass --code to open the repository itself, or the finding's lines, on its code host instead",
   "repo view": "Show one connected repository: where it lives, its last scan, and how it is scanned",
@@ -175,7 +173,7 @@ export const EXAMPLES: Readonly<Record<string, readonly string[]>> = {
   ],
   audit: ["cf audit", "cf audit --category fix,proof --limit 50", "cf audit --before 2026-09-01T00:00:00Z"],
 
-  finding: ["cf finding list", `cf finding view ${FINDING_ID}`, "cf finding matched --severity critical"],
+  finding: ["cf finding list", `cf finding view ${FINDING_ID}`, "cf finding list --severity critical"],
   "finding list": [
     "cf finding list",
     "cf finding list --severity critical,high --category dependency",
@@ -189,10 +187,8 @@ export const EXAMPLES: Readonly<Record<string, readonly string[]>> = {
     "# Open the vulnerable lines on the code host",
     `cf finding view ${FINDING_ID} --web`,
   ],
-  "finding matched": ["cf finding matched", "cf finding matched --severity critical,high"],
   reproduced: ["cf reproduced", "cf reproduced --severity critical,high --exit-code"],
   "reproduced show": [`cf reproduced show ${FINDING_ID}`, `cf reproduced show ${FINDING_ID} --json`],
-  matched: ["cf matched", "cf matched --repo acme/api --agent"],
 
   fix: ["cf fix", `cf fix generate ${FINDING_ID} --wait`, `cf fix publish ${FINDING_ID}`],
   "fix show": [`cf fix show ${FINDING_ID}`, "# Open the pull request in a browser", `cf fix show ${FINDING_ID} --web`],

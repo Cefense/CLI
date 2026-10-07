@@ -431,17 +431,15 @@ function findingsOptions(command: Command): Command {
     .option("--exit-code", "Exit 1 when a critical or high finding is present");
 }
 
-function listFindings(onlyMatched: boolean) {
+function listFindings() {
   return run((globals, command) =>
     reproducedCommand(globals, {
       severity: command.opts().severity,
       category: command.opts().category,
       limit: command.opts().limit,
-      matched: onlyMatched ? undefined : command.opts().matched,
       branch: command.opts().branch,
       scanId: command.opts().scan,
       exitCode: Boolean(command.opts().exitCode),
-      ...(onlyMatched ? { onlyMatched: true } : {}),
     }),
   );
 }
@@ -465,29 +463,19 @@ const finding = program.command("finding").description("List and read the findin
 
 findingsOptions(finding.command("list"))
   .description("List the findings in a repository, worst first")
-  .option("--matched", "Only findings joined to security research")
-  .action(listFindings(false));
+  .action(listFindings());
 
 viewFinding(finding.command("view"))
   .alias("show")
-  .description("Show one finding with its research, data flow, and fix");
-
-findingsOptions(finding.command("matched"))
-  .description("List only the findings joined to the research that explains them")
-  .action(listFindings(true));
+  .description("Show one finding with its data flow and fix");
 
 const reproduced = findingsOptions(program.command("reproduced", { hidden: true }))
   .description("Browse the findings in your code, the same as cf finding list")
-  .option("--matched", "Only findings joined to security research")
-  .action(listFindings(false));
+  .action(listFindings());
 
 viewFinding(reproduced.command("show")).description(
-  "Show one finding with its research, data flow, and fix, the same as cf finding view",
+  "Show one finding with its data flow and fix, the same as cf finding view",
 );
-
-findingsOptions(program.command("matched", { hidden: true }))
-  .description("Findings joined to the research that explains them, the same as cf finding matched")
-  .action(listFindings(true));
 
 const fix = withGlobals(program.command("fix"))
   .description("Generate patches for findings and open pull requests")

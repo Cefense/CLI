@@ -10,7 +10,7 @@ metadata:
 
 # Cefense
 
-Cefense scans a repository, reports its vulnerabilities, joins each to the research that explains it, writes a patch, proves it, and opens a pull request. You drive it with `cf`.
+Cefense scans a repository, reports its vulnerabilities, writes a patch, proves it, and opens a pull request. You drive it with `cf`.
 
 Use it for "is this repo vulnerable", "what should I fix first", "fix that finding". It reports on what was committed and scanned, not your working tree.
 
@@ -40,12 +40,11 @@ cf repo list --agent
 ```sh
 cf scan --repo acme/api --wait --agent
 cf reproduced --repo acme/api --severity critical,high --agent
-cf matched --repo acme/api --agent
 ```
 
 `cf scan --wait` blocks until the scan settles (up to about ten minutes) and returns `status` (`completed`, `failed`, `cancelled`) and `findings`. `--progress` adds one JSON line per poll on stderr; `--branch <name>` scans another branch.
 
-`cf reproduced` lists findings worst first, with `counts` by severity; `cf matched` only those joined to research. Filters: `--severity critical,high,watch,info`, `--category code,dependency,secret,misconfig,os-package`, `--limit <n>`, `--branch <name>`, `--scan <id>`, and `--exit-code` (exit 1 on any Critical or High).
+`cf reproduced` lists findings worst first, with `counts` by severity. Filters: `--severity critical,high,watch,info`, `--category code,dependency,secret,misconfig,os-package`, `--limit <n>`, `--branch <name>`, `--scan <id>`, and `--exit-code` (exit 1 on any Critical or High).
 
 Filter on `severity` (`critical`, `high`, `medium`, `low`), tell people `severityLabel` (Critical, High, Watch, Info). `reachability` is `reachable`, `imported`, `dev-only`, `unimported`, or `unknown`: work `reachable` first. `status` is `none`, `working`, `ready`, `proven`, `pr`, `merged`, `refuted`, or `review`.
 
@@ -55,7 +54,7 @@ Filter on `severity` (`critical`, `high`, `medium`, `low`), tell people `severit
 cf reproduced show <finding-id> --repo acme/api --agent
 ```
 
-Read this before forming an opinion. It adds `description`, `code`, `dataflow` (source, steps, sink, `ineffectiveSanitizers`), `reachabilityEvidence`, `exploitPath`, `research`, `references`, `remediation`, `introducedIn`, `dependency` (`installed`, `fixedIn`, `direct`, `requiredBy`), and the current `fix` with its diff. If the list was read with `--branch` or `--scan`, pass the same flag here.
+Read this before forming an opinion. It adds `description`, `code`, `dataflow` (source, steps, sink, `ineffectiveSanitizers`), `reachabilityEvidence`, `exploitPath`, `references`, `remediation`, `introducedIn`, `dependency` (`installed`, `fixedIn`, `direct`, `requiredBy`), and the current `fix` with its diff. If the list was read with `--branch` or `--scan`, pass the same flag here.
 
 ## 4. Fix it and open a pull request
 
