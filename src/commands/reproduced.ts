@@ -1,6 +1,6 @@
 import { openSession, type GlobalOptions } from "../core/session.js";
 import { UsageError } from "../core/errors.js";
-import type { Finding, Fix, Project } from "../core/types.js";
+import type { Finding, Fix, InvestigationSummary, Project } from "../core/types.js";
 import type { Session } from "../core/session.js";
 import { blobUrl, providerLabel, providerOf } from "../core/providers.js";
 import { hintLine, printGrouped, type NextStep } from "../ui/list.js";
@@ -280,13 +280,14 @@ export async function reproducedCommand(
     scanId: scope.scanId,
   };
 
-  const load = async (): Promise<{ rows: Row[]; scanId: string | null; total: number; hasMore: boolean }> => {
+  const load = async (): Promise<{ rows: Row[]; scanId: string | null; total: number; hasMore: boolean; investigation?: InvestigationSummary }> => {
     const response = await session.client.findings(project.githubRepoId, query);
     const fixes = await fixesFor(session, response.scanId);
     return {
       rows: sortRows(response.findings.map((finding) => ({ finding, fix: fixes.get(finding.id) ?? null }))),
       scanId: response.scanId,
       total: response.total,
+      investigation: response.investigation,
       hasMore: response.hasMore,
     };
   };
@@ -326,6 +327,7 @@ export async function reproducedCommand(
         branch: scope.label,
         scanId: first.scanId,
         total: first.total,
+        investigation: first.investigation,
         hasMore: first.hasMore,
         ...coverageEnvelope(readScan),
         counts,
@@ -350,6 +352,7 @@ export async function reproducedCommand(
       branch: scope.label,
       scanId: first.scanId,
       total: first.total,
+      investigation: first.investigation,
       hasMore: first.hasMore,
       ...coverageEnvelope(readScan),
       findings: rows.map((row) => ({ ...row.finding, fix: row.fix })),

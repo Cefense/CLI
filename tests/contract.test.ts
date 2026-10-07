@@ -411,3 +411,10 @@ test("proof env names follow the database constraint", { skip }, () => {
     assert.throws(() => parseEnvName(bad), (error: { code?: string }) => error.code === "invalid_env_name");
   }
 });
+
+test("investigation lifecycle matches the shared schema and database", { skip }, () => {
+  const source = readFileSync(join(ROOT!, "packages", "schemas", "src", "investigation.ts"), "utf8");
+  const states = constArray(source, "INVESTIGATION_STATUSES").sort();
+  assert.deepEqual(typeUnion("InvestigationStatus").sort(), states);
+  assert.deepEqual(namedCheckConstraint(controlSchema(), "findings_investigation_status_check").sort(), states);
+});
