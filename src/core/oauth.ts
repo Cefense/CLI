@@ -41,8 +41,14 @@ export function redirectPorts(redirectUris: string[]): number[] {
   return ports;
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+}
+
 function resultPage(title: string, message: string, ok: boolean): string {
   const accent = ok ? "#1f9d55" : "#c53030";
+  const safeTitle = escapeHtml(title);
+  const safeMessage = escapeHtml(message);
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Cefense</title><style>
 :root{color-scheme:light dark}
 body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0d10;color:#e6e8eb;
@@ -50,7 +56,7 @@ font:16px/1.6 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif}
 .card{max-width:26rem;padding:2.5rem;text-align:center}
 h1{font-size:1.25rem;margin:0 0 .5rem;color:${accent}}
 p{margin:0;color:#9aa3ad}
-</style></head><body><div class="card"><h1>${title}</h1><p>${message}</p></div></body></html>`;
+</style></head><body><div class="card"><h1>${safeTitle}</h1><p>${safeMessage}</p></div></body></html>`;
 }
 
 async function listenOnFirstFreePort(server: Server, ports: number[]): Promise<number> {
