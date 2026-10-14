@@ -257,6 +257,102 @@ export interface FindingProgress {
   proof: { status: ProofStatus; verdict: ProofVerdict | null } | null;
 }
 
+export type WorkspaceStage = "weakness" | "attack" | "impact" | "fix" | "proof";
+
+export type ChainSource = "mitre" | "cefense";
+
+export type ChainShown = "full" | "weakness-only";
+
+export type RouteHopRole = "entry" | "hop" | "sink";
+
+export type ImpactAssetKind =
+  | "database"
+  | "table"
+  | "secret"
+  | "cloud-credentials"
+  | "files"
+  | "process"
+  | "sessions";
+
+export type DataClass = "personal" | "credential" | "payment";
+
+export type D3fendTacticName = "Model" | "Harden" | "Detect" | "Isolate" | "Deceive" | "Evict" | "Restore";
+
+export type LikelihoodSignalKind = "reachability" | "proof" | "epss" | "kev";
+
+export interface AttackStep {
+  id: string;
+  name: string;
+  tactics: string[];
+  source: ChainSource;
+  why?: string;
+  observedAt?: string;
+  observedFrom?: string;
+}
+
+export interface RouteHop {
+  label: string;
+  file?: string;
+  line?: number;
+  role: RouteHopRole;
+}
+
+export interface ImpactField {
+  name: string;
+  class: DataClass;
+}
+
+export interface ImpactAsset {
+  kind: ImpactAssetKind;
+  name: string;
+  detail: string;
+  recordShare?: number;
+  fields?: ImpactField[];
+  downtimeHours?: [number, number];
+}
+
+export interface FindingImpact {
+  assets: ImpactAsset[];
+  downtimeHours?: [number, number];
+}
+
+export interface D3fendRef {
+  id: string;
+  name: string;
+  tactic: D3fendTacticName;
+}
+
+export interface Chain {
+  weakness: {
+    cve?: string;
+    cwe: string | null;
+    cweName: string | null;
+    cweDescription?: string;
+    cweIds: string[];
+  };
+  attack: {
+    capec?: { id: string; name: string; description?: string };
+    route: RouteHop[];
+    steps: AttackStep[];
+  };
+  impact: FindingImpact;
+  fix: { d3fend: D3fendRef[] };
+  mappingVersion: string;
+  shown: ChainShown;
+}
+
+export interface LossEstimate {
+  low: number;
+  high: number;
+  inputs: Array<{ label: string; value: string }>;
+  formulaVersion: string;
+}
+
+export interface Likelihood {
+  score: number;
+  signals: Array<{ kind: LikelihoodSignalKind; label: string }>;
+}
+
 export interface Finding {
   id: string;
   scanId: string;
@@ -304,6 +400,9 @@ export interface Finding {
   reachabilityEvidence?: ReachabilityEvidence | null;
   dependency?: FindingDependency | null;
   progress?: FindingProgress | null;
+  chain?: Chain | null;
+  loss?: LossEstimate | null;
+  likelihood?: Likelihood | null;
 }
 
 /** A user's decision about a finding, kept per repository and per fingerprint. */
@@ -440,8 +539,6 @@ export interface PlanDefinition {
   scanEveryPush: boolean;
   pullRequestScans: boolean;
   imageScanning: boolean;
-  immunityWatch: boolean;
-  immunityHyper: boolean;
   ssoAndAudit: boolean;
   scanIntervalFloor: string | null;
   features: string[];
@@ -501,7 +598,7 @@ export type NotificationKind =
   | "scan_failed"
   | "advisory"
   | "fix_pr_opened"
-  | "immunity";
+  | "guard";
 
 export type NotificationCadence = "every" | "daily";
 
@@ -513,6 +610,7 @@ export interface NotificationKindRow {
   description: string;
   /** A security notice, which cannot be turned off. */
   mandatory: boolean;
+  adminsOnly?: boolean;
   supportsSeverity: boolean;
   supportsCadence: boolean;
   repositoryScoped: boolean;
@@ -606,4 +704,53 @@ export interface FindingProof {
   error: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface BusinessContextInput {
+  recordsHeld: number;
+  revenuePerHourCents: number;
+  costPerRecordLowCents: number;
+  costPerRecordHighCents: number;
+}
+
+export interface BusinessContext extends BusinessContextInput {
+  updatedAt: string;
+  updatedBy: { id: string; name: string | null } | null;
+}
+
+export interface BusinessContextResponse {
+  context: BusinessContext | null;
+  canEdit: boolean;
+}
+
+export type GuardDecoyKind = "user-credential" | "config-key" | "file" | "route" | "session-token";
+
+export interface GuardDecoy {
+  id: string;
+  findingId: string | null;
+  findingFingerprint: string | null;
+  d3fendId: string;
+  d3fendName?: string | null;
+  kind: GuardDecoyKind;
+  location: string;
+  createdAt: string;
+  retiredAt: string | null;
+  trips: number;
+  lastTrippedAt: string | null;
+}
+
+export interface GuardEvent {
+  id: string;
+  kind: string;
+  decoyId: string | null;
+  findingId: string | null;
+  findingFingerprint: string | null;
+  occurredAt: string;
+  sourceIp: string | null;
+  detail: Record<string, unknown>;
+}
+
+export interface GuardResponse {
+  decoys: GuardDecoy[];
+  events: GuardEvent[];
 }

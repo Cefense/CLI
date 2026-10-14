@@ -3,7 +3,7 @@ name: cefense
 description: Find, understand, and fix security vulnerabilities in this repository using the Cefense CLI. Use when asked to run a security scan, check this repository for vulnerabilities or CVEs, triage or explain security findings, generate a patch for a vulnerability, or open a pull request that fixes one.
 license: MIT
 metadata:
-  version: 6
+  version: 7
   homepage: https://cefense.com
   documentation: https://cefense.com/agent
 ---
@@ -56,6 +56,8 @@ cf reproduced show <finding-id> --repo acme/api --agent
 
 Read this before forming an opinion. It adds `description`, `code`, `dataflow` (source, steps, sink, `ineffectiveSanitizers`), `reachabilityEvidence`, `exploitPath`, `references`, `remediation`, `introducedIn`, `dependency` (`installed`, `fixedIn`, `direct`, `requiredBy`), and the current `fix` with its diff. If the list was read with `--branch` or `--scan`, pass the same flag here.
 
+A finding is read in five stages: Weakness, Attack, Impact, Fix, Proof. `chain` carries the ids for them: `cweIds`, `capec`, `attack` (ATT&CK technique ids), `seen` (the ones a Guard decoy observed; the rest are predicted from the code), `assets`, and `d3fend` (the defensive techniques). `chain.shown` is `full` or `weakness-only`; a weakness-only finding has no Attack or Impact until it is confirmed. `loss` is the cost of one incident as `lowCents` and `highCents`, an estimate that is absent until the organization's business context is set. `likelihood` is a 0-100 score. Quote these as estimates, never as facts.
+
 ## 4. Fix it and open a pull request
 
 ```sh
@@ -107,15 +109,21 @@ cf commits --repo acme/api --agent
 cf settings --repo acme/api --agent
 cf audit --category fix,repository --agent
 cf plan --agent
+cf org context --agent
+cf guard --repo acme/api --agent
 ```
 
 A commit with `scanned: false` is unknown, not clean. `cf audit` returns 50 events and `next` pages back. `cf plan` reads the allowance that `allowance_exhausted` refers to.
+
+`cf org context` reads the business answers every cost estimate comes from (`recordsHeld`, `revenuePerHourCents`, `costPerRecordLowCents`, `costPerRecordHighCents`). An owner or admin sets them with `cf org context set --records 180000 --revenue-per-hour 6000 --cost-per-record 4-14`, in dollars; flags left out keep their value. The numbers are the user's to give, so ask for them and never estimate them.
+
+`cf guard` (beta, read-only) lists the decoys Cefense planted for open findings and every recorded touch of one (`trips`, with `at` and `from`). Without `--repo` it reads the whole organization.
 
 ## Gates
 
 These refuse with `confirmation_required` (exit 2) until `--yes` is passed: `cf fix publish`, `cf fix merge`, `cf proof attest`, and `cf skill install`. Ask the user first. Never add `--yes` because a command failed.
 
-These need the user's agreement without a flag: `cf triage`, `cf settings mode`, `every`, `depth` and `checks`, `cf scan --url` (adds a repository), and `cf plan upgrade` (returns a checkout URL, buys nothing).
+These need the user's agreement without a flag: `cf triage`, `cf settings mode`, `every`, `depth` and `checks`, `cf scan --url` (adds a repository), `cf plan upgrade` (returns a checkout URL, buys nothing), and `cf org context set` (changes every cost estimate in the organization).
 
 ## Errors
 

@@ -10,6 +10,8 @@ import type {
   BillingInterval,
   BillingResponse,
   BranchesResponse,
+  BusinessContextInput,
+  BusinessContextResponse,
   CefenseProfile,
   CliConfigResponse,
   CommitsResponse,
@@ -19,6 +21,7 @@ import type {
   GithubRepo,
   GithubReposResponse,
   GithubStatus,
+  GuardResponse,
   MergeResult,
   MeResponse,
   NotificationKindRow,
@@ -543,6 +546,20 @@ export class CefenseClient {
 
   clearNotificationRepository(repositoryId: string): Promise<void> {
     return this.request("DELETE", `/api/notifications/repositories/${encodeURIComponent(repositoryId)}`);
+  }
+
+  businessContext(): Promise<BusinessContextResponse> {
+    return this.request<BusinessContextResponse>("GET", "/api/organization/business-context");
+  }
+
+  setBusinessContext(input: BusinessContextInput): Promise<BusinessContextResponse> {
+    return this.request("PUT", "/api/organization/business-context", { body: input });
+  }
+
+  guard(githubRepoId?: string | null): Promise<GuardResponse> {
+    return this.request<GuardResponse>("GET", "/api/guard", {
+      query: githubRepoId ? { repository: githubRepoId } : {},
+    });
   }
 
   billing(): Promise<BillingResponse> {

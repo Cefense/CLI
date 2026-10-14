@@ -15,6 +15,14 @@ import { compactProject } from "../core/compact.js";
 import { ORGANIZATION_ROLES } from "../core/organizations.js";
 import { BILLING_INTERVALS, BILLING_PLANS, BILLING_STATUSES } from "./plan.js";
 import { PROVIDERS } from "../core/providers.js";
+import {
+  CHAIN_SHOWN,
+  D3FEND_TACTIC_NAMES,
+  IMPACT_ASSET_KINDS,
+  LIKELIHOOD_SIGNAL_KINDS,
+  WORKSPACE_STAGES,
+} from "../core/chain.js";
+import { GUARD_DECOY_KINDS } from "./guard.js";
 import type { Project } from "../core/types.js";
 import * as out from "../ui/output.js";
 import { VERSION } from "../version.js";
@@ -212,6 +220,24 @@ const ENUMS = {
     values: [...ORGANIZATION_ROLES],
     note: "owner is Cefense's own role, not one of the two the identity provider models. It is the seat that cannot be removed by a peer administrator.",
   },
+  workspaceStage: {
+    values: [...WORKSPACE_STAGES],
+    note: "The five stages a finding is read in, in this order. cf finding view prints one block per stage.",
+  },
+  chainShown: {
+    values: [...CHAIN_SHOWN],
+    note: "weakness-only means only the Weakness stage is shown: Attack and Impact appear once the finding is confirmed.",
+  },
+  impactAssetKind: [...IMPACT_ASSET_KINDS],
+  d3fendTactic: [...D3FEND_TACTIC_NAMES],
+  likelihoodSignal: {
+    values: [...LIKELIHOOD_SIGNAL_KINDS],
+    note: "data.finding.likelihood is a 0-100 score. data.finding.loss is the cost of one incident in cents, and is absent until the organization's business context is set.",
+  },
+  guardDecoyKind: {
+    values: [...GUARD_DECOY_KINDS],
+    note: "Guard is in beta and cf guard is read-only.",
+  },
 };
 
 const GATES = [
@@ -256,6 +282,12 @@ const GATES = [
     requires: "the user's agreement",
     effect: "Opens a checkout for a paid plan and returns the URL that completes it.",
     rule: "Nothing is bought by running it and no agent can finish it, but it is a step towards spending their money. Ask first, hand over the URL, and stop.",
+  },
+  {
+    command: "cf org context set",
+    requires: "the user's agreement",
+    effect: "Changes the business answers every cost estimate in the organization is computed from.",
+    rule: "The numbers are the user's to give. Ask for them, and never estimate or invent them.",
   },
   {
     command: "cf settings",

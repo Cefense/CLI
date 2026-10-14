@@ -31,7 +31,7 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "scan_failed",
   "advisory",
   "fix_pr_opened",
-  "immunity",
+  "guard",
 ];
 
 export const NOTIFICATION_CADENCES: readonly NotificationCadence[] = ["every", "daily"];
@@ -107,7 +107,7 @@ function overrideLabel(repository: NotificationRepositoryRow): string {
 }
 
 function settingLabel(kind: NotificationsResponse["kinds"][number]): string {
-  if (kind.mandatory) return c.dim("always");
+  if (kind.mandatory) return c.dim(kind.adminsOnly ? "always, to owners and admins" : "always");
   if (!kind.enabled) return c.dim("off");
   const parts: string[] = [];
   if (kind.supportsSeverity && kind.minSeverity) parts.push(`${kind.minSeverity} and above`);
@@ -162,6 +162,7 @@ function payload(response: NotificationsResponse) {
         kind: kind.kind,
         enabled: kind.mandatory ? true : kind.enabled,
         mandatory: kind.mandatory || undefined,
+        adminsOnly: kind.adminsOnly || undefined,
         minSeverity: kind.supportsSeverity ? kind.minSeverity : undefined,
         cadence: kind.supportsCadence ? kind.cadence : undefined,
         sentLast30Days: response.sentLast30Days[kind.kind] || undefined,

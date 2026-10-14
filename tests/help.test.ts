@@ -360,7 +360,7 @@ test("help under agent mode is one envelope describing the command", () => {
 
 test("the agent schema carries the new commands and still leaves global flags out", () => {
   const nodes = schema();
-  for (const path of ["finding", "finding list", "finding view", "repo view", "browse"]) {
+  for (const path of ["finding", "finding list", "finding view", "repo view", "browse", "org context", "org context set", "guard"]) {
     assert.ok(nodes.has(path), `${path} missing from cf agent schema`);
   }
   for (const path of ["reproduced", "reproduced show"]) assert.ok(nodes.has(path), `${path} was dropped`);
@@ -393,6 +393,6 @@ test("browse addresses findings the way the workspace reads them", () => {
   assert.equal(workspaceUrl("https://cefense.com/"), "https://cefense.com/app/feed");
   assert.equal(
     workspaceUrl("https://cefense.com", { org: "acme", finding: "1885c309-f992-4483-a2b2-48f35221449c" }),
-    "https://cefense.com/app/acme/feed/reproduced/1885c309",
+    "https://cefense.com/app/acme/feed/weakness/1885c309",
   );
 });

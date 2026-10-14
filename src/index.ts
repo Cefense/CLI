@@ -30,6 +30,8 @@ import { authLogin, authLogout, authStatus } from "./commands/auth.js";
 import { repoConnect, repoDisconnect, repoList, repoSetDefault } from "./commands/repo.js";
 import { repoView } from "./commands/repoview.js";
 import { orgList, orgShow, orgUse } from "./commands/org.js";
+import { orgContextSet, orgContextShow } from "./commands/orgcontext.js";
+import { guardCommand } from "./commands/guard.js";
 import { PAID_BILLING_PLANS, planPortal, planShow, planUpgrade } from "./commands/plan.js";
 import {
   notificationsRepository,
@@ -213,6 +215,25 @@ withGlobals(org.command("show"))
   .description("Show the organization commands act on, and where that choice came from")
   .action(run(() => orgShow()));
 
+const orgContext = withGlobals(org.command("context"))
+  .description("Show the business answers every finding's cost estimate is computed from")
+  .action(run((globals) => orgContextShow(globals)));
+
+withGlobals(orgContext.command("set"))
+  .description("Set the business answers behind every cost estimate (owners and admins)")
+  .option("--records <n>", "Records of personal data the organization holds")
+  .option("--revenue-per-hour <usd>", "Revenue per hour in dollars, lost while a system is down")
+  .option("--cost-per-record <low-high>", "What one exposed record costs, in dollars, for example 4-14")
+  .action(
+    run((globals, command) =>
+      orgContextSet(globals, {
+        records: command.opts().records,
+        revenuePerHour: command.opts().revenuePerHour,
+        costPerRecord: command.opts().costPerRecord,
+      }),
+    ),
+  );
+
 const plan = withGlobals(program.command("plan"))
   .description("Show the organization's plan and what is left of its allowance")
   .action(run((globals) => planShow(globals)));
@@ -241,7 +262,7 @@ const notifications = withGlobals(program.command("notifications"))
   .action(run((globals) => notificationsShow(globals)));
 
 withGlobals(notifications.command("set"))
-  .argument("<kind>", "One of scan_report, scan_failed, advisory, fix_pr_opened, or immunity")
+  .argument("<kind>", "One of scan_report, scan_failed, advisory, or fix_pr_opened")
   .description("Turn a notification on or off, or change its severity floor")
   .option("--on", "Send this one")
   .option("--off", "Stop sending this one")
@@ -369,6 +390,10 @@ withGlobals(program.command("scan"))
       }),
     ),
   );
+
+withGlobals(program.command("guard"))
+  .description("List the decoys planted for open findings, and who touched them (beta)")
+  .action(run((globals) => guardCommand(globals)));
 
 withGlobals(program.command("branches"))
   .description("Show every branch and the last scan of each")

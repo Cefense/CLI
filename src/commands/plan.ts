@@ -127,8 +127,6 @@ function compactPlan(entry: PlanDefinition, current: BillingPlan): Record<string
     scanEveryPush: entry.scanEveryPush || null,
     pullRequestScans: entry.pullRequestScans || null,
     imageScanning: entry.imageScanning || null,
-    immunityWatch: entry.immunityWatch || null,
-    immunityHyper: entry.immunityHyper || null,
     ssoAndAudit: entry.ssoAndAudit || null,
     scanIntervalFloor: entry.scanIntervalFloor,
     current: entry.id === current ? true : null,

@@ -103,6 +103,7 @@ const NEEDS_CONSENT = [
   /^cf plan (upgrade|portal)\b/,
   /^cf repo (connect|disconnect|set-default)\b/,
   /^cf org use\b/,
+  /^cf org context set\b/,
   /^cf notifications (set|mute)\b/,
   /\s--yes\b/,
   /\s--url\b/,

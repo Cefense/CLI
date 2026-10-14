@@ -138,8 +138,12 @@ export function fixSummary(fix: Fix): string {
 }
 
 export function renderFixSection(fix: Fix | null, width: number, status?: FindingStatus): string[] {
+  return ["", heading("Fix"), ...renderFixBody(fix, width, status)];
+}
+
+export function renderFixBody(fix: Fix | null, width: number, status?: FindingStatus): string[] {
   const body = readingWidth(width);
-  const lines: string[] = ["", heading("Fix")];
+  const lines: string[] = [];
   const push = (value = "") => lines.push(value ? `${BODY_INDENT}${value}` : "");
 
   if (!fix) {

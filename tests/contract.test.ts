@@ -25,6 +25,16 @@ import {
   REACHABILITY_VERDICTS,
   STATUS_KINDS,
 } from "../src/core/findingStatus.js";
+import {
+  CHAIN_SHOWN,
+  D3FEND_TACTIC_NAMES,
+  IMPACT_ASSET_KINDS,
+  LIKELIHOOD_SIGNAL_KINDS,
+  WORKSPACE_STAGES,
+} from "../src/core/chain.js";
+import { GUARD_DECOY_KINDS } from "../src/commands/guard.js";
+import { BUSINESS_CONTEXT_LIMITS } from "../src/commands/orgcontext.js";
+import { workspaceUrl } from "../src/commands/browse.js";
 
 /**
  * The CLI is published standalone and cannot import @cefense/schemas, so every
@@ -138,7 +148,7 @@ test("scan depths match the database constraint", { skip }, () => {
 /**
  * A scan outcome the CLI does not model is a scan the CLI quietly treats as
  * complete, which is the one mistake this field exists to prevent. The
- * constraint also allows null — a scanner too old to report coverage — which
+ * constraint also allows null (a scanner too old to report coverage), which
  * the CLI carries as the optional field rather than as a union member.
  */
 test("scan outcomes match the database constraint", { skip }, () => {
@@ -174,8 +184,8 @@ function planFlags(source: string): string[] {
 
 test("plan capability flags match the product's plan definition", { skip }, () => {
   const real = planFlags(billingSchema());
-  assert.ok(real.includes("immunityWatch"), "PlanDefinition moved, so this test is asserting nothing");
-  assert.ok(real.includes("immunityHyper"), "PlanDefinition moved, so this test is asserting nothing");
+  assert.ok(real.includes("imageScanning"), "PlanDefinition moved, so this test is asserting nothing");
+  assert.ok(real.includes("ssoAndAudit"), "PlanDefinition moved, so this test is asserting nothing");
   const cli = planFlags(readFileSync(cliSource("core", "types.ts"), "utf8"));
   assert.deepEqual(cli, real, "the product's plans carry capability flags the CLI does not model");
   const compact = readFileSync(cliSource("commands", "plan.ts"), "utf8");
@@ -400,4 +410,81 @@ test("finding status kinds and wording match the workspace's status rings", { sk
   for (const [, title] of body[0].matchAll(/title:\s*"([^"]+)"/g)) {
     assert.ok(cli.includes(`"${title}"`), `the CLI does not say "${title}" where the workspace does`);
   }
+});
+
+function sharedSchema(file: string): string {
+  return readFileSync(join(ROOT!, "packages", "schemas", "src", file), "utf8");
+}
+
+function constStrings(source: string, name: string): string[] {
+  const match = source.match(new RegExp(`export const ${name} = \\[([\\s\\S]*?)\\]`));
+  if (!match) throw new Error(`${name} not found in the shared schema`);
+  return [...match[1]!.matchAll(/"([^"]+)"/g)].map((entry) => entry[1]!);
+}
+
+function typeUnionStrings(name: string): string[] {
+  const source = readFileSync(cliSource("core", "types.ts"), "utf8");
+  const declared = source.match(new RegExp(`export type ${name} =([^;]*);`));
+  assert.ok(declared, `the ${name} union moved, update this test`);
+  return [...declared[1]!.matchAll(/"([^"]+)"/g)].map((entry) => entry[1]!);
+}
+
+test("workspace stages match the product's, in order", { skip }, () => {
+  const real = constStrings(sharedSchema("stages.ts"), "WORKSPACE_STAGES");
+  assert.deepEqual([...WORKSPACE_STAGES], real);
+  assert.deepEqual(typeUnionStrings("WorkspaceStage"), real);
+});
+
+test("the workspace URL a finding opens at names a stage the workspace has", { skip }, () => {
+  const real = constStrings(sharedSchema("stages.ts"), "WORKSPACE_STAGES");
+  const url = workspaceUrl("https://cefense.com", { org: "acme", finding: "1885c309-f992-4483-a2b2-48f35221449c" });
+  const parts = new URL(url).pathname.split("/");
+  assert.equal(parts.at(-1), "1885c309");
+  assert.ok(real.includes(parts.at(-2)!), `cf browse opens a finding at ${parts.at(-2)}, which is not in WORKSPACE_STAGES`);
+});
+
+test("chain vocabularies match the product's shared schema", { skip }, () => {
+  const chain = sharedSchema("chain.ts");
+  const pairs: Array<[string, readonly string[], string]> = [
+    ["CHAIN_SHOWN", CHAIN_SHOWN, "ChainShown"],
+    ["IMPACT_ASSET_KINDS", IMPACT_ASSET_KINDS, "ImpactAssetKind"],
+    ["D3FEND_TACTIC_NAMES", D3FEND_TACTIC_NAMES, "D3fendTacticName"],
+    ["LIKELIHOOD_SIGNAL_KINDS", LIKELIHOOD_SIGNAL_KINDS, "LikelihoodSignalKind"],
+    ["CHAIN_SOURCES", ["mitre", "cefense"], "ChainSource"],
+    ["ROUTE_HOP_ROLES", ["entry", "hop", "sink"], "RouteHopRole"],
+    ["DATA_CLASSES", ["personal", "credential", "payment"], "DataClass"],
+  ];
+  for (const [name, cli, union] of pairs) {
+    const real = constStrings(chain, name);
+    assert.ok(real.length > 0, `${name} moved, so this test is asserting nothing`);
+    assert.deepEqual([...cli], real, `the CLI's copy of ${name} drifted`);
+    assert.deepEqual(typeUnionStrings(union), real, `the CLI's ${union} union drifted from ${name}`);
+  }
+});
+
+test("guard decoy kinds match the product's and the database's", { skip }, () => {
+  const real = constStrings(sharedSchema("guard.ts"), "GUARD_DECOY_KINDS");
+  assert.deepEqual([...GUARD_DECOY_KINDS], real);
+  assert.deepEqual(typeUnionStrings("GuardDecoyKind"), real);
+  assert.deepEqual([...GUARD_DECOY_KINDS].sort(), namedCheckConstraint(controlSchema(), "guard_decoys_kind_check").sort());
+});
+
+test("business context limits match the product's, and the database allows what the CLI sends", { skip }, () => {
+  const source = sharedSchema("risk.ts");
+  const block = source.match(/export const BUSINESS_CONTEXT_LIMITS = \{([\s\S]*?)\}/);
+  assert.ok(block, "BUSINESS_CONTEXT_LIMITS moved, update this test");
+  const real = Object.fromEntries(
+    [...block[1]!.matchAll(/(\w+):\s*([\d_]+)/g)].map((entry) => [entry[1]!, Number(entry[2]!.replace(/_/g, ""))]),
+  );
+  assert.deepEqual({ ...BUSINESS_CONTEXT_LIMITS }, real);
+
+  const control = controlSchema();
+  const amounts = control.match(/"organization_business_context_amounts_check",\s*sql`([^`]*)`/);
+  assert.ok(amounts, "organization_business_context_amounts_check moved, update this test");
+  for (const column of ["recordsHeld", "revenuePerHourCents", "costPerRecordLowCents", "costPerRecordHighCents"]) {
+    assert.ok(amounts[1]!.includes(`\${table.${column}} >= 0`), `the database no longer floors ${column} at zero`);
+  }
+  const range = control.match(/"organization_business_context_range_check",\s*sql`([^`]*)`/);
+  assert.ok(range, "organization_business_context_range_check moved, update this test");
+  assert.equal(range[1]!.trim(), "${table.costPerRecordLowCents} <= ${table.costPerRecordHighCents}");
 });

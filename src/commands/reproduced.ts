@@ -1,13 +1,13 @@
 import { openSession, type GlobalOptions } from "../core/session.js";
 import { UsageError } from "../core/errors.js";
-import type { Finding, Fix, Project } from "../core/types.js";
+import type { AttackStep, Chain, Finding, Fix, Project, RouteHop } from "../core/types.js";
 import type { Session } from "../core/session.js";
 import { blobUrl, providerLabel, providerOf } from "../core/providers.js";
 import { hintLine, printGrouped, type NextStep } from "../ui/list.js";
 import { resolveBranch, resolveLinkedProject } from "./link.js";
-import { renderFixSection, statusLabel, statusState } from "./fixactions.js";
+import { renderFixBody, statusLabel, statusState } from "./fixactions.js";
 import * as out from "../ui/output.js";
-import { datedLabel, pathFloor, shortId, terminalWidth } from "../ui/format.js";
+import { datedLabel, padEnd, pathFloor, shortId, terminalWidth, wrapText } from "../ui/format.js";
 import { c, displaySeverity, glyph, severityColor, severityRank, toneMark } from "../ui/theme.js";
 import { details } from "../ui/table.js";
 import {
@@ -22,8 +22,30 @@ import {
   viewOn,
 } from "../ui/detail.js";
 import { isAgentMode } from "../ui/mode.js";
-import { FINDING_ROW, compactFinding, compactFindingDetail, coverageEnvelope, progressOf } from "../core/compact.js";
-import { REACHABILITY_LEDES, isReachabilityVerdict, reachabilityLabel, statusFor } from "../core/findingStatus.js";
+import {
+  FINDING_ROW,
+  compactFinding,
+  compactFindingDetail,
+  coverageEnvelope,
+  progressOf,
+  verdictLabel,
+} from "../core/compact.js";
+import {
+  REACHABILITY_LEDES,
+  isReachabilityVerdict,
+  reachabilityLabel,
+  statusFor,
+  type FindingStatus,
+} from "../core/findingStatus.js";
+import {
+  WEAKNESS_ONLY_NOTE,
+  assetKindLabel,
+  formatDollarRange,
+  hasFullChain,
+  isSeen,
+  sourceLabel,
+  tacticLabel,
+} from "../core/chain.js";
 import { coverageLines, isPartialScan, scanIfSame } from "../core/coverage.js";
 import { CODE_HOSTS, openIfRequested } from "../ui/open.js";
 import { page } from "../ui/pager.js";
@@ -148,7 +170,204 @@ function detailNext(finding: Finding, fix: Fix | null, flag: string): NextStep {
   return { command: `cf fix show ${id}${flag}`, purpose: "read the patch" };
 }
 
-function renderDetail(
+function sub(label: string): string {
+  return `${BODY_INDENT}${c.dim(label)}`;
+}
+
+function stepState(step: AttackStep): string {
+  if (!isSeen(step)) return c.dim("predicted");
+  const from = step.observedFrom ? ` from ${step.observedFrom}` : "";
+  return c.red(`seen ${datedLabel(step.observedAt)}${from}`);
+}
+
+export function stepLine(step: AttackStep, idWidth = step.id.length): string {
+  return `${BODY_INDENT}${joinColumns([
+    padEnd(step.id, idWidth),
+    step.name,
+    step.tactics.length > 0 ? c.dim(step.tactics.map(tacticLabel).join(", ")) : null,
+    stepState(step),
+    c.dim(sourceLabel(step.source)),
+  ])}`;
+}
+
+function joinColumns(parts: Array<string | null | undefined>): string {
+  return parts.filter((part): part is string => Boolean(part)).join("  ");
+}
+
+function packageLines(dependency: NonNullable<Finding["dependency"]>): string[] {
+  const lines = [
+    "",
+    sub("Package"),
+    ...indent(
+      details([
+        ["Package", `${dependency.name} ${c.dim(`(${dependency.ecosystem})`)}`],
+        ["Installed", dependency.installedVersion],
+        ["Fixed in", dependency.fixedVersion ?? c.dim("no fixed release published yet")],
+        ["Origin", originLine(dependency)],
+        [
+          "Required by",
+          dependency.direct === false && dependency.requiredBy.length > 0
+            ? dependency.requiredBy.slice(0, 5).join(", ")
+            : null,
+        ],
+      ]),
+    ),
+  ];
+  for (const chain of dependency.paths.filter((entry) => entry.length > 1).slice(0, 3)) {
+    lines.push(`${BODY_INDENT}${c.dim(chain.join(` ${glyph.arrow} `))}`);
+  }
+  return lines;
+}
+
+function reachabilityLines(finding: Finding, wrap: number): string[] {
+  if (!isReachabilityVerdict(finding.reachability)) return [];
+  const evidence = finding.reachabilityEvidence;
+  const lines = ["", sub("Reachability"), ...paragraph(evidence?.why ?? REACHABILITY_LEDES[finding.reachability], wrap)];
+  const path = evidence?.path ?? [];
+  if (path.length > 1) {
+    for (const step of path) {
+      lines.push(`${BODY_INDENT}${c.dim(glyph.arrow)} ${step.path}${step.symbol ? c.dim(` ${step.symbol}`) : ""}`);
+    }
+  }
+  if (evidence && evidence.symbols.length > 0) {
+    lines.push(
+      `${BODY_INDENT}${c.dim(`vulnerable ${evidence.symbols.length === 1 ? "export" : "exports"}: ${evidence.symbols.join(", ")}`)}`,
+    );
+  }
+  return lines;
+}
+
+function dataflowLines(finding: Finding): string[] {
+  if (!finding.dataflow) return [];
+  const lines = ["", sub("Data flow")];
+  lines.push(`${BODY_INDENT}${c.dim("source")}  ${finding.dataflow.sourceKind}`);
+  for (const step of finding.dataflow.steps ?? []) {
+    const where = step.location ? c.dim(`${step.location.file}:${step.location.startLine}`) : "";
+    lines.push(`${BODY_INDENT}${c.dim(glyph.arrow)} ${joinDots([step.label, c.dim(step.role), where])}`);
+  }
+  lines.push(`${BODY_INDENT}${c.dim("sink")}    ${finding.dataflow.sinkKind}`);
+  if (finding.dataflow.ineffectiveSanitizers?.length) {
+    lines.push(`${BODY_INDENT}${c.yellow(`ineffective: ${finding.dataflow.ineffectiveSanitizers.join(", ")}`)}`);
+  }
+  return lines;
+}
+
+function routeLines(route: RouteHop[]): string[] {
+  if (route.length === 0) return [];
+  const lines = ["", sub("Route")];
+  for (const hop of route) {
+    const where = hop.file ? c.dim(hop.line ? `${hop.file}:${hop.line}` : hop.file) : null;
+    lines.push(`${BODY_INDENT}${c.dim(glyph.arrow)} ${joinDots([hop.label, c.dim(hop.role), where])}`);
+  }
+  return lines;
+}
+
+export function weaknessBlock(finding: Finding, wrap: number, evidence: boolean): string[] {
+  const weakness = finding.chain?.weakness;
+  const cve = weakness?.cve ?? finding.cveId;
+  const cwe = weakness?.cwe ?? finding.cwe;
+  const lines = ["", heading("Weakness")];
+  if (cve) lines.push(`${BODY_INDENT}${cve}`);
+  if (cwe) lines.push(`${BODY_INDENT}${joinColumns([cwe, weakness?.cweName ?? null])}`);
+  const also = (weakness?.cweIds ?? []).filter((id) => id !== cwe);
+  if (also.length > 0) lines.push(`${BODY_INDENT}${c.dim(`also ${also.join(", ")}`)}`);
+  if (!cve && !cwe) lines.push(`${BODY_INDENT}${c.dim("No CVE or CWE is recorded for this finding.")}`);
+
+  if (finding.vulnerableCode?.trim()) {
+    lines.push("", sub("Code"), ...codeBlock(finding.vulnerableCode, finding.startLine, wrap));
+  }
+  if (finding.dependency) lines.push(...packageLines(finding.dependency));
+  lines.push(...reachabilityLines(finding, wrap));
+  if (evidence) {
+    if (finding.exploitPath) lines.push("", sub("Exploit path"), ...paragraph(finding.exploitPath, wrap));
+    lines.push(...dataflowLines(finding));
+  }
+  if (finding.chain?.shown === "weakness-only") lines.push("", `${BODY_INDENT}${c.dim(WEAKNESS_ONLY_NOTE)}`);
+  return lines;
+}
+
+export function attackBlock(finding: Finding & { chain: Chain }, wrap: number): string[] {
+  const attack = finding.chain.attack;
+  const lines = ["", heading("Attack")];
+  if (attack.capec) lines.push(`${BODY_INDENT}${joinColumns([attack.capec.id, attack.capec.name])}`);
+  const idWidth = Math.max(0, ...attack.steps.map((step) => step.id.length));
+  for (const step of attack.steps) lines.push(stepLine(step, idWidth));
+  if (!attack.capec && attack.steps.length === 0) {
+    lines.push(`${BODY_INDENT}${c.dim("No attack pattern is mapped for this weakness.")}`);
+  }
+  if (attack.route.length > 0) lines.push(...routeLines(attack.route));
+  else lines.push(...dataflowLines(finding));
+  if (finding.dataflow?.ineffectiveSanitizers?.length && attack.route.length > 0) {
+    lines.push(`${BODY_INDENT}${c.yellow(`ineffective: ${finding.dataflow.ineffectiveSanitizers.join(", ")}`)}`);
+  }
+  if (finding.exploitPath) lines.push("", sub("Exploit path"), ...paragraph(finding.exploitPath, wrap));
+  return lines;
+}
+
+export function impactBlock(finding: Finding & { chain: Chain }, wrap: number): string[] {
+  const lines = ["", heading("Impact")];
+  const assets = finding.chain.impact.assets;
+  for (const asset of assets) {
+    lines.push(`${BODY_INDENT}${joinColumns([`${assetKindLabel(asset.kind)} ${asset.name}`, asset.detail ? c.dim(asset.detail) : null])}`);
+  }
+  if (assets.length === 0) lines.push(`${BODY_INDENT}${c.dim("No asset is mapped for this finding.")}`);
+
+  const loss = finding.loss;
+  if (loss) {
+    lines.push("", `${BODY_INDENT}${formatDollarRange(loss.low, loss.high)} for one incident ${c.dim(`(estimate, ${loss.formulaVersion})`)}`);
+    for (const input of loss.inputs) {
+      for (const wrapped of wrapText(`${input.label}: ${input.value}`, wrap - 2)) lines.push(`${BODY_INDENT}  ${c.dim(wrapped)}`);
+    }
+  } else {
+    lines.push("", `${BODY_INDENT}${c.dim("No cost estimate yet. cf org context shows what it needs.")}`);
+  }
+
+  const likelihood = finding.likelihood;
+  if (likelihood) {
+    lines.push("", `${BODY_INDENT}Likelihood ${likelihood.score} of 100`);
+    for (const signal of likelihood.signals) {
+      for (const wrapped of wrapText(signal.label, wrap - 2)) lines.push(`${BODY_INDENT}  ${c.dim(wrapped)}`);
+    }
+  }
+  return lines;
+}
+
+function fixBlock(finding: Finding, fix: Fix | null, width: number, status: FindingStatus): string[] {
+  const wrap = readingWidth(width);
+  const lines = ["", heading("Fix")];
+  for (const ref of finding.chain?.fix.d3fend ?? []) {
+    lines.push(`${BODY_INDENT}${joinColumns([ref.id, ref.name, c.dim(ref.tactic)])}`);
+  }
+  if (finding.remediation?.summary || finding.remediation?.guidance) {
+    if (lines.length > 2) lines.push("");
+    lines.push(...paragraph(finding.remediation.summary, wrap));
+    if (finding.remediation.guidance && finding.remediation.guidance !== finding.remediation.summary) {
+      lines.push("", ...paragraph(finding.remediation.guidance, wrap, c.dim));
+    }
+  }
+  const body = renderFixBody(fix, width, status);
+  if (lines.length > 2 && body.length > 0) lines.push("");
+  lines.push(...body);
+  return lines;
+}
+
+export function proofBlock(finding: Finding, fix: Fix | null): string[] {
+  const proof = finding.progress?.proof ?? null;
+  const lines = ["", heading("Proof")];
+  if (!proof) {
+    lines.push(`${BODY_INDENT}${c.dim(fix ? "No proof has run on this patch yet." : "Nothing to prove until there is a patch.")}`);
+  } else if (proof.status === "running") {
+    lines.push(`${BODY_INDENT}${c.cyan("Proving the patch.")}`);
+  } else if (proof.status === "failed") {
+    lines.push(`${BODY_INDENT}${c.red("The proof could not run.")}`);
+  } else if (proof.verdict) {
+    const tone = proof.verdict === "refuted" ? c.red : proof.verdict === "proven" || proof.verdict === "argued" ? c.green : c.yellow;
+    lines.push(`${BODY_INDENT}${tone(verdictLabel(proof.verdict))}  ${c.dim(proof.verdict)}`);
+  }
+  return lines;
+}
+
+export function renderDetail(
   project: Project,
   row: Row,
   width: number,
@@ -158,6 +377,7 @@ function renderDetail(
   const finding = row.finding;
   const wrap = readingWidth(width);
   const status = statusFor(progressOf(finding, row.fix));
+  const full = hasFullChain(finding);
   const lines: string[] = [];
   const push = (...values: string[]) => lines.push(...values);
 
@@ -174,8 +394,6 @@ function renderDetail(
     ...details([
       ["Location", `${spanOf(finding)}${finding.symbol ? c.dim(` in ${finding.symbol}`) : ""}`],
       ["Category", finding.category],
-      ["Advisory", finding.cveId],
-      ["Weakness", finding.cwe],
       ["Rule", finding.ruleId],
       ["Confidence", finding.confidence !== null ? finding.confidence.toFixed(2) : null],
       ["State", finding.state && finding.state !== "CANDIDATE" ? finding.state.toLowerCase() : null],
@@ -186,75 +404,13 @@ function renderDetail(
 
   if (finding.description) push("", ...paragraph(finding.description, wrap));
 
-  if (finding.vulnerableCode?.trim()) {
-    push("", heading("Code"), ...codeBlock(finding.vulnerableCode, finding.startLine, wrap));
+  push(...weaknessBlock(finding, wrap, !full));
+  if (full) {
+    push(...attackBlock(finding, wrap));
+    push(...impactBlock(finding, wrap));
   }
-
-  if (finding.dependency) {
-    const dependency = finding.dependency;
-    push("", heading("Package"));
-    push(
-      ...indent(
-        details([
-          ["Package", `${dependency.name} ${c.dim(`(${dependency.ecosystem})`)}`],
-          ["Installed", dependency.installedVersion],
-          ["Fixed in", dependency.fixedVersion ?? c.dim("no fixed release published yet")],
-          ["Origin", originLine(dependency)],
-          [
-            "Required by",
-            dependency.direct === false && dependency.requiredBy.length > 0
-              ? dependency.requiredBy.slice(0, 5).join(", ")
-              : null,
-          ],
-        ]),
-      ),
-    );
-    for (const chain of dependency.paths.filter((entry) => entry.length > 1).slice(0, 3)) {
-      push(`${BODY_INDENT}${c.dim(chain.join(` ${glyph.arrow} `))}`);
-    }
-  }
-
-  if (isReachabilityVerdict(finding.reachability)) {
-    const evidence = finding.reachabilityEvidence;
-    push("", heading("Reachability"));
-    push(...paragraph(evidence?.why ?? REACHABILITY_LEDES[finding.reachability], wrap));
-    const path = evidence?.path ?? [];
-    if (path.length > 1) {
-      for (const step of path) {
-        push(`${BODY_INDENT}${c.dim(glyph.arrow)} ${step.path}${step.symbol ? c.dim(` ${step.symbol}`) : ""}`);
-      }
-    }
-    if (evidence && evidence.symbols.length > 0) {
-      push(
-        `${BODY_INDENT}${c.dim(`vulnerable ${evidence.symbols.length === 1 ? "export" : "exports"}: ${evidence.symbols.join(", ")}`)}`,
-      );
-    }
-  }
-
-  if (finding.exploitPath) push("", heading("Exploit path"), ...paragraph(finding.exploitPath, wrap));
-
-  if (finding.dataflow) {
-    push("", heading("Data flow"));
-    push(`${BODY_INDENT}${c.dim("source")}  ${finding.dataflow.sourceKind}`);
-    for (const step of finding.dataflow.steps ?? []) {
-      const where = step.location ? c.dim(`${step.location.file}:${step.location.startLine}`) : "";
-      push(`${BODY_INDENT}${c.dim(glyph.arrow)} ${joinDots([step.label, c.dim(step.role), where])}`);
-    }
-    push(`${BODY_INDENT}${c.dim("sink")}    ${finding.dataflow.sinkKind}`);
-    if (finding.dataflow.ineffectiveSanitizers?.length) {
-      push(`${BODY_INDENT}${c.yellow(`ineffective: ${finding.dataflow.ineffectiveSanitizers.join(", ")}`)}`);
-    }
-  }
-
-  if (finding.remediation?.summary || finding.remediation?.guidance) {
-    push("", heading("Remediation"));
-    push(...paragraph(finding.remediation.summary, wrap));
-    if (finding.remediation.guidance && finding.remediation.guidance !== finding.remediation.summary) {
-      push("", ...paragraph(finding.remediation.guidance, wrap, c.dim));
-    }
-  }
-
-  push(...renderFixSection(row.fix, width, status));
+  push(...fixBlock(finding, row.fix, width, status));
+  push(...proofBlock(finding, row.fix));
 
   push("");
   const hint = hintLine(detailNext(finding, row.fix, flag));

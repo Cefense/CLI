@@ -37,7 +37,7 @@ export interface RootSection {
 export const ROOT_SECTIONS: readonly RootSection[] = [
   { title: "CORE COMMANDS", commands: ["status", "scan", "browse"] },
   { title: "FINDINGS AND FIXES", commands: ["finding", "fix", "proof", "triage"] },
-  { title: "REPOSITORY COMMANDS", commands: ["repo", "settings", "branches", "commits", "sbom"] },
+  { title: "REPOSITORY COMMANDS", commands: ["repo", "settings", "branches", "commits", "sbom", "guard"] },
   { title: "ACCOUNT COMMANDS", commands: ["auth", "org", "plan", "provider", "notifications", "audit"] },
   { title: "ADDITIONAL COMMANDS", commands: ["skill", "agent", "completion"] },
 ];
@@ -92,7 +92,13 @@ export const DETAILS: Readonly<Record<string, string>> = {
   finding:
     "Work with the findings of a repository's newest scan. Every finding id belongs to one scan, and a rescan replaces them all. Any unambiguous prefix of an id works, from four characters up",
   "finding view":
-    "Show one finding in full: the vulnerable code, how data reaches it, and the state of its fix",
+    "Show one finding in full, in the five stages the workspace uses: Weakness (CVE and CWE), Attack (CAPEC and the ATT&CK steps, predicted or seen), Impact (what it reaches, the cost range and the likelihood), Fix (D3FEND and the patch) and Proof",
+  "org context":
+    "Show the business answers every finding's cost estimate is computed from: records held, revenue per hour, and what one exposed record costs. Members can read them; owners and admins set them",
+  "org context set":
+    "Set the business answers behind every cost estimate, in dollars. Flags you leave out keep their current value. Only an owner or admin can change them",
+  guard:
+    "Beta. List the decoys Cefense planted for open findings and every recorded touch of one, with the time and the address it came from. Read-only. Pass --repo for one repository, otherwise the whole organization",
   browse:
     "Open the Cefense workspace in your browser. Pass a finding id to open that finding. The workspace shows the repository your browser last had selected, so pass --code to open the repository itself, or the finding's lines, on its code host instead",
   "repo view": "Show one connected repository: where it lives, its last scan, and how it is scanned",
@@ -115,10 +121,16 @@ export const EXAMPLES: Readonly<Record<string, readonly string[]>> = {
   "auth logout": ["cf auth logout", "# Sign out of every Cefense instance at once", "cf auth logout --all"],
   "auth status": ["cf auth status", "cf auth status --json"],
 
-  org: ["cf org list", "cf org use acme", "cf org show"],
+  org: ["cf org list", "cf org use acme", "cf org context"],
   "org list": ["cf org list", "cf org list --json"],
   "org use": ["cf org use acme", "# Act on another organization for one command only", "cf finding list --org acme-labs"],
   "org show": ["cf org show", "CEFENSE_ORG=acme-labs cf org show"],
+  "org context": ["cf org context", "cf org context --json"],
+  "org context set": [
+    "cf org context set --records 180000 --revenue-per-hour 6000 --cost-per-record 4-14",
+    "# Change one answer and keep the others",
+    "cf org context set --revenue-per-hour 7500",
+  ],
 
   plan: ["cf plan", "cf plan upgrade pro", "cf plan portal"],
   "plan upgrade": ["cf plan upgrade pro", "cf plan upgrade max --yearly", "cf plan upgrade pro --seats 3"],
@@ -216,6 +228,8 @@ export const EXAMPLES: Readonly<Record<string, readonly string[]>> = {
   ],
 
   sbom: ["cf sbom > sbom.json", "cf sbom --format spdx --output sbom.spdx.json"],
+
+  guard: ["cf guard", "cf guard --repo acme/api", "cf guard --repo acme/api --agent"],
 
   skill: ["cf skill install", "cf skill install claude cursor", "cf skill list"],
   "skill install": ["cf skill install", "cf skill install claude cursor --yes", "cf skill install --all --global"],

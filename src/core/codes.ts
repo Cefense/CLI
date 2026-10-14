@@ -488,14 +488,14 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     exitCode: EXIT_USAGE,
     meaning: "The notification named is not one the product sends.",
     remedy:
-      "Use connection, scan_report, scan_failed, advisory, fix_pr_opened, or immunity. Run cf notifications --agent for the current settings.",
+      "Use connection, scan_report, scan_failed, advisory, fix_pr_opened, or guard. Run cf notifications --agent for the current settings.",
     retry: "never",
   },
   {
     code: "notification_mandatory",
     exitCode: EXIT_API,
     meaning:
-      "That notification is a security notice and cannot be turned off. It is how the account owner finds out a credential for their account was granted.",
+      "That notification is a security notice and cannot be turned off: connection tells the account owner a credential for their account was granted, and guard tells owners and admins someone touched a decoy.",
     remedy:
       "Do not retry. Tell the user it cannot be disabled, and that every other notification can be.",
     retry: "never",
@@ -504,7 +504,7 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     code: "notification_no_severity",
     exitCode: EXIT_USAGE,
     meaning: "That notification does not carry findings, so it has no severity floor.",
-    remedy: "Only scan_report, advisory and immunity take --severity.",
+    remedy: "Only scan_report and advisory take --severity.",
     retry: "never",
   },
   {
@@ -519,6 +519,14 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     exitCode: EXIT_USAGE,
     meaning: "The cadence named is not one the product models.",
     remedy: "Use every for one email per event, or daily for at most one a day.",
+    retry: "never",
+  },
+  {
+    code: "invalid_business_context",
+    exitCode: EXIT_USAGE,
+    meaning: "A cf org context set value is not a usable business answer, or one the organization still needs is missing.",
+    remedy:
+      "Pass whole records, and dollars with at most two decimals, with the low cost per record first, for example --cost-per-record 4-14. The first time, pass --records, --revenue-per-hour and --cost-per-record together. Ask the user for the numbers; never estimate them.",
     retry: "never",
   },
   {

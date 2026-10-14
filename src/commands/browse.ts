@@ -3,7 +3,7 @@ import { activeOrganization } from "../core/organizations.js";
 import { blobUrl } from "../core/providers.js";
 import { prune } from "../core/compact.js";
 import { UsageError } from "../core/errors.js";
-import type { Project } from "../core/types.js";
+import type { Project, WorkspaceStage } from "../core/types.js";
 import { resolveLinkedProject } from "./link.js";
 import { resolveFindingId } from "./reproduced.js";
 import { CODE_HOSTS, openExternal } from "../ui/open.js";
@@ -12,6 +12,8 @@ import * as out from "../ui/output.js";
 
 export const WORKSPACE_FINDING_PREFIX = 8;
 
+export const WORKSPACE_FINDING_STAGE: WorkspaceStage = "weakness";
+
 export function workspaceUrl(
   base: string,
   options: { org?: string | null; finding?: string | null } = {},
@@ -19,7 +21,7 @@ export function workspaceUrl(
   const parts: string[] = [];
   if (options.org) parts.push(options.org);
   parts.push("feed");
-  if (options.finding) parts.push("reproduced", options.finding.slice(0, WORKSPACE_FINDING_PREFIX));
+  if (options.finding) parts.push(WORKSPACE_FINDING_STAGE, options.finding.slice(0, WORKSPACE_FINDING_PREFIX));
   return `${base.replace(/\/+$/, "")}/app/${parts.map(encodeURIComponent).join("/")}`;
 }
 

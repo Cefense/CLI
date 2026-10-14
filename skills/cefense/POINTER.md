@@ -14,7 +14,7 @@ cf fix merge <finding-id> --repo <owner/name> --yes --agent
 
 Every command takes `--agent` and prints one line of JSON on stdout. Branch on `error.code`, and prefer the literal commands in `next`. Lists are lean; `show` commands and `--fields` give the full record.
 
-Ask the user before `cf fix publish`, before `cf fix merge` as a separate ask, and before `cf proof attest`, `cf triage`, `cf settings` changes, `cf scan --url`, and `cf plan upgrade`. Never add `--yes` because a command failed.
+Ask the user before `cf fix publish`, before `cf fix merge` as a separate ask, and before `cf proof attest`, `cf triage`, `cf settings` changes, `cf scan --url`, `cf plan upgrade`, and `cf org context set`. Never add `--yes` because a command failed.
 
 Read `{{reference}}` before using any of this: it holds the workflows, the gates, and how to read errors. `cf agent check --agent` says what is blocking you, and `cf agent schema --agent` prints the whole command surface.
 

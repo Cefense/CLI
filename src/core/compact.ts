@@ -15,6 +15,7 @@ import type {
 import type { Organization } from "./organizations.js";
 import { providerOf } from "./providers.js";
 import { reachabilityLabel, statusFor } from "./findingStatus.js";
+import { compactChain } from "./chain.js";
 
 export const AGENT_SCHEMA_VERSION = 1;
 
@@ -395,6 +396,9 @@ export function compactFindingDetail(
     references: finding.vulnerabilityRefs.map((ref) =>
       prune({ kind: ref.kind, id: ref.identifier, title: ref.title, url: ref.url }),
     ),
+    chain: compactChain(finding),
+    loss: finding.loss ? { lowCents: finding.loss.low, highCents: finding.loss.high } : null,
+    likelihood: finding.likelihood ? finding.likelihood.score : null,
   });
 }
 

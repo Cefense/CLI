@@ -1,6 +1,12 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { challengeFor, constantTimeEquals, createPkcePair, redirectPorts } from "../src/core/oauth.js";
+import { challengeFor, constantTimeEquals, createPkcePair, redirectPorts, resultPage } from "../src/core/oauth.js";
+
+test("resultPage escapes a provider-supplied error_description", () => {
+  const page = resultPage("Sign-in failed", `<img src=x onerror="alert(1)">'&`, false);
+  assert.ok(!page.includes("<img"));
+  assert.ok(page.includes("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;&#39;&amp;"));
+});
 
 test("challengeFor matches the RFC 7636 appendix B vector", () => {
   assert.equal(
