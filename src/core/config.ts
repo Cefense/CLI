@@ -102,6 +102,9 @@ export function readActiveOrganization(apiUrl: string): string | null {
 }
 
 export function writeActiveOrganization(apiUrl: string, slug: string): void {
+  if (apiUrl === "__proto__" || apiUrl === "constructor" || apiUrl === "prototype") {
+    return;
+  }
   const all = readJson<OrganizationsFile>("organizations.json") ?? {};
   all[apiUrl] = slug;
   writeJson("organizations.json", all);
