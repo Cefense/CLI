@@ -257,7 +257,7 @@ export interface FindingProgress {
   proof: { status: ProofStatus; verdict: ProofVerdict | null } | null;
 }
 
-export type WorkspaceStage = "weakness" | "attack" | "impact" | "fix" | "proof";
+export type WorkspaceStage = "weakness" | "attack" | "fix" | "proof";
 
 export type ChainSource = "mitre" | "cefense";
 

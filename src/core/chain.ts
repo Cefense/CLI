@@ -10,7 +10,7 @@ import type {
   WorkspaceStage,
 } from "./types.js";
 
-export const WORKSPACE_STAGES: readonly WorkspaceStage[] = ["weakness", "attack", "impact", "fix", "proof"];
+export const WORKSPACE_STAGES: readonly WorkspaceStage[] = ["weakness", "attack", "fix", "proof"];
 
 export const CHAIN_SHOWN: readonly ChainShown[] = ["full", "weakness-only"];
 
