@@ -2,7 +2,6 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { compactFinding, compactFix, progressOf } from "../src/core/compact.js";
 import { reachabilityLabel, statusFor } from "../src/core/findingStatus.js";
-import { trimValue } from "../src/commands/proofenv.js";
 import type { Finding, Fix } from "../src/core/types.js";
 
 function finding(over: Partial<Finding> = {}): Finding {
@@ -125,11 +124,4 @@ test("a compact fix lists its files only when there is more than one", () => {
   const many = compactFix(fix({ files: [{ path: "a.ts" }, { path: "b.ts" }], behaviorChange: "removed" }));
   assert.deepEqual(many.files, ["a.ts", "b.ts"]);
   assert.equal(many.behaviorChange, "removed");
-});
-
-test("a piped value loses exactly one trailing newline", () => {
-  assert.equal(trimValue("secret\n"), "secret");
-  assert.equal(trimValue("secret\r\n"), "secret");
-  assert.equal(trimValue("a\n\n"), "a\n");
-  assert.equal(trimValue("no-newline"), "no-newline");
 });

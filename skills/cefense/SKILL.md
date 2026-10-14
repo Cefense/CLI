@@ -113,9 +113,9 @@ A commit with `scanned: false` is unknown, not clean. `cf audit` returns 50 even
 
 ## Gates
 
-These refuse with `confirmation_required` (exit 2) until `--yes` is passed: `cf fix publish`, `cf fix merge`, `cf proof attest`, `cf skill install`, `cf proof env unset`, and `cf proof env set` when it replaces a value. Ask the user first. Never add `--yes` because a command failed.
+These refuse with `confirmation_required` (exit 2) until `--yes` is passed: `cf fix publish`, `cf fix merge`, `cf proof attest`, and `cf skill install`. Ask the user first. Never add `--yes` because a command failed.
 
-These need the user's agreement without a flag: `cf triage`, `cf settings mode`, `every`, `depth` and `checks`, `cf scan --url` (adds a repository), `cf plan upgrade` (returns a checkout URL, buys nothing), and `cf proof env set` (test credentials only).
+These need the user's agreement without a flag: `cf triage`, `cf settings mode`, `every`, `depth` and `checks`, `cf scan --url` (adds a repository), and `cf plan upgrade` (returns a checkout URL, buys nothing).
 
 ## Errors
 

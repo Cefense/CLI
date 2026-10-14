@@ -322,35 +322,6 @@ export const ERROR_CODES: ErrorCodeEntry[] = [
     retry: "never",
   },
   {
-    code: "invalid_env_name",
-    exitCode: EXIT_USAGE,
-    meaning: "An environment variable name is letters, digits and underscores, not starting with a digit.",
-    remedy: "Rename it, for example DATABASE_URL.",
-    retry: "fix-first",
-  },
-  {
-    code: "env_value_required",
-    exitCode: EXIT_USAGE,
-    meaning: "No value was given for the environment variable.",
-    remedy:
-      "Pipe the value with --stdin, or pass --from-env to read the same name from the shell. Never pass it as an argument.",
-    retry: "fix-first",
-  },
-  {
-    code: "env_var_not_found",
-    exitCode: EXIT_USAGE,
-    meaning: "No environment variable of that name is stored for this repository.",
-    remedy: "Run cf proof env --repo <owner/name> --agent for the stored names.",
-    retry: "never",
-  },
-  {
-    code: "proof_env_unavailable",
-    exitCode: EXIT_API,
-    meaning: "Encryption is not configured on this deployment, so a value cannot be stored safely.",
-    remedy: "Report it and stop. An operator has to configure encryption on the server.",
-    retry: "never",
-  },
-  {
     code: "fix_unsafe_path",
     exitCode: EXIT_API,
     meaning: "The patch would write outside the repository, or to a path the server will not touch.",

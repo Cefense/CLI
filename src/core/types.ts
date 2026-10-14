@@ -257,37 +257,6 @@ export interface FindingProgress {
   proof: { status: ProofStatus; verdict: ProofVerdict | null } | null;
 }
 
-export type InvestigationStatus = "pending" | "confirmed" | "refuted" | "blocked" | "inconclusive";
-
-export interface InvestigationBlocker {
-  kind: "environment" | "service" | "runtime";
-  name: string;
-  detail: string;
-  evidence: string;
-}
-
-export interface FindingInvestigation {
-  status: InvestigationStatus;
-  summary: string;
-  model: string | null;
-  method: "runtime" | "source" | null;
-  blockers: InvestigationBlocker[];
-  evidence: string;
-  turns: number;
-  durationMs: number;
-  assessedAt: string | null;
-}
-
-export interface InvestigationSummary {
-  total: number;
-  pending: number;
-  confirmed: number;
-  refuted: number;
-  blocked: number;
-  inconclusive: number;
-  blockers: InvestigationBlocker[];
-}
-
 export interface Finding {
   id: string;
   scanId: string;
@@ -305,7 +274,6 @@ export interface Finding {
   ruleId: string | null;
   type: string | null;
   state: string;
-  investigation?: FindingInvestigation | null;
   confidence: number | null;
   exploitPath: string | null;
   symbol: string | null;
@@ -357,7 +325,6 @@ export interface FindingChain {
 }
 
 export interface FindingsResponse {
-  investigation?: InvestigationSummary;
   scanId: string | null;
   findings: Finding[];
   chains: FindingChain[];
@@ -639,14 +606,4 @@ export interface FindingProof {
   error: string | null;
   createdAt: string;
   updatedAt: string;
-}
-
-export interface ProofEnvVar {
-  name: string;
-  updatedAt: string;
-}
-
-export interface ProofEnvResponse {
-  variables: ProofEnvVar[];
-  encryptionConfigured: boolean;
 }

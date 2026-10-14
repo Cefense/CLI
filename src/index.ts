@@ -65,7 +65,6 @@ import {
 import { fixCommand } from "./commands/fix.js";
 import { fixGenerate, fixMerge, fixPublish, fixShow } from "./commands/fixcmds.js";
 import { proofAttest, proofCommand, proofRun, proofShow } from "./commands/proof.js";
-import { proofEnvList, proofEnvSet, proofEnvUnset } from "./commands/proofenv.js";
 import { skillInstall, skillList, skillShow, skillUninstall } from "./commands/skill.js";
 import { agentCheck, agentSchema } from "./commands/agent.js";
 import { browseCommand } from "./commands/browse.js";
@@ -543,29 +542,6 @@ withGlobals(proof.command("attest"))
       proofAttest(globals, command.args[0] as string, { note: command.opts().note }),
     ),
   );
-
-const proofEnv = withGlobals(proof.command("env"))
-  .description("List the environment a proof run needs to boot the app, by name only")
-  .action(run((globals) => proofEnvList(globals)));
-
-withGlobals(proofEnv.command("set"))
-  .argument("<name>", "The variable name, for example DATABASE_URL")
-  .description("Store a value for a proof run to use, write-only")
-  .option("--stdin", "Read the value from stdin")
-  .option("--from-env", "Read the value from the variable of the same name in this shell")
-  .action(
-    run((globals, command) =>
-      proofEnvSet(globals, command.args[0] as string, {
-        stdin: Boolean(command.opts().stdin),
-        fromEnv: Boolean(command.opts().fromEnv),
-      }),
-    ),
-  );
-
-withGlobals(proofEnv.command("unset"))
-  .argument("<name>", "The variable to delete")
-  .description("Delete a stored value")
-  .action(run((globals, command) => proofEnvUnset(globals, command.args[0] as string)));
 
 const settings = withGlobals(program.command("settings"))
   .description("Choose when this repository is scanned and which checks run")

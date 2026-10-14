@@ -19,7 +19,6 @@ import { CHECKS, SCAN_DEPTHS, SCAN_INTERVALS, SCAN_MODES } from "../src/commands
 import { ORGANIZATION_ROLES } from "../src/core/organizations.js";
 import { verdictLabel } from "../src/core/compact.js";
 import { FINDING_CATEGORIES } from "../src/commands/reproduced.js";
-import { parseEnvName } from "../src/commands/proofenv.js";
 import {
   REACHABILITY_LABELS,
   REACHABILITY_LEDES,
@@ -401,20 +400,4 @@ test("finding status kinds and wording match the workspace's status rings", { sk
   for (const [, title] of body[0].matchAll(/title:\s*"([^"]+)"/g)) {
     assert.ok(cli.includes(`"${title}"`), `the CLI does not say "${title}" where the workspace does`);
   }
-});
-
-test("proof env names follow the database constraint", { skip }, () => {
-  assert.match(controlSchema(), /proof_env_vars_name_check", sql`\$\{table\.name\} ~ '\^\[A-Za-z_\]\[A-Za-z0-9_\]\*\$'`/);
-  assert.equal(parseEnvName("DATABASE_URL"), "DATABASE_URL");
-  assert.equal(parseEnvName("_x1"), "_x1");
-  for (const bad of ["1X", "A-B", "A B", ""]) {
-    assert.throws(() => parseEnvName(bad), (error: { code?: string }) => error.code === "invalid_env_name");
-  }
-});
-
-test("investigation lifecycle matches the shared schema and database", { skip }, () => {
-  const source = readFileSync(join(ROOT!, "packages", "schemas", "src", "investigation.ts"), "utf8");
-  const states = constArray(source, "INVESTIGATION_STATUSES").sort();
-  assert.deepEqual(typeUnion("InvestigationStatus").sort(), states);
-  assert.deepEqual(namedCheckConstraint(controlSchema(), "findings_investigation_status_check").sort(), states);
 });

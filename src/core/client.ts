@@ -25,8 +25,6 @@ import type {
   NotificationOverride,
   NotificationsResponse,
   ProfileResponse,
-  ProofEnvResponse,
-  ProofEnvVar,
   Project,
   ProjectsResponse,
   PaidBillingPlan,
@@ -513,25 +511,6 @@ export class CefenseClient {
     return this.request("POST", `/api/proof/findings/${encodeURIComponent(findingId)}/attest`, {
       body: note ? { note } : {},
     });
-  }
-
-  proofEnv(repositoryId: string): Promise<ProofEnvResponse> {
-    return this.request("GET", `/api/proof/repositories/${encodeURIComponent(repositoryId)}/env`);
-  }
-
-  setProofEnv(repositoryId: string, name: string, value: string): Promise<{ variable: ProofEnvVar }> {
-    return this.request(
-      "PUT",
-      `/api/proof/repositories/${encodeURIComponent(repositoryId)}/env/${encodeURIComponent(name)}`,
-      { body: { value } },
-    );
-  }
-
-  deleteProofEnv(repositoryId: string, name: string): Promise<{ removed: boolean }> {
-    return this.request(
-      "DELETE",
-      `/api/proof/repositories/${encodeURIComponent(repositoryId)}/env/${encodeURIComponent(name)}`,
-    );
   }
 
   /**

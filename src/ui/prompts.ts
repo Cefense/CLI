@@ -82,11 +82,6 @@ export async function text(options: {
   );
 }
 
-export async function secret(options: { message: string }): Promise<string> {
-  requireInteractive(options.message, "Pipe the value on stdin with --stdin instead.");
-  return unwrap(await clack.password({ message: options.message, mask: "*" }));
-}
-
 export async function confirmByTyping(options: {
   message: string;
   expected: string;

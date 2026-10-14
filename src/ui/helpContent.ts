@@ -203,9 +203,6 @@ export const EXAMPLES: Readonly<Record<string, readonly string[]>> = {
     `cf proof attest ${FINDING_ID}`,
     `cf proof attest ${FINDING_ID} --note "key revoked and reissued"`,
   ],
-  "proof env": ["cf proof env", "cf proof env set DATABASE_URL --from-env", "cf proof env unset DATABASE_URL"],
-  "proof env set": ["cf proof env set DATABASE_URL --from-env", "cf proof env set API_TOKEN --stdin < token.txt"],
-  "proof env unset": ["cf proof env unset DATABASE_URL", "cf proof env unset API_TOKEN"],
 
   settings: ["cf settings", "cf settings mode push", "cf settings checks balanced"],
   "settings mode": ["cf settings mode push", "cf settings mode scheduled --every 24h", "cf settings mode manual"],

@@ -96,7 +96,7 @@ const NEEDS_CONSENT = [
   /^cf auth (login|logout)\b/,
   /^cf provider (connect|disconnect)\b/,
   /^cf fix (publish|merge)\b/,
-  /^cf proof (attest|env set|env unset)\b/,
+  /^cf proof attest\b/,
   /^cf triage\b/,
   /^cf settings [a-z]/,
   /^cf skill (install|uninstall)\b/,
